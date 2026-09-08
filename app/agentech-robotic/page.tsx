@@ -1,3 +1,22 @@
+import type { Metadata, ResolvingMetadata } from "next";
+
+export async function generateMetadata(
+  _props: unknown,
+  parent: ResolvingMetadata
+): Promise<Metadata> {
+  const inherited = await parent;
+
+  return {
+    alternates: {
+      canonical: "/agentech-robotic"
+    },
+    openGraph: {
+      ...inherited.openGraph,
+      url: "/agentech-robotic"
+    }
+  };
+}
+
 import Image from "next/image";
 import { RoboticsMobileProductBrowser } from "@/components/robotics-mobile-product-browser";
 

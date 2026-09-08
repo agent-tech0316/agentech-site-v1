@@ -20,11 +20,9 @@ const routes = [
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const lastModified = new Date();
   const roleRoutes = internshipRoles.map((role) => `/career-intern/${role.slug}`);
 
   return [...routes, ...roleRoutes].map((route) => ({
-    url: `${siteUrl}${route}`,
-    lastModified
+    url: `${siteUrl}${route}`
   }));
 }

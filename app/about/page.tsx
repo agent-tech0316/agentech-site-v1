@@ -1,3 +1,22 @@
+import type { Metadata, ResolvingMetadata } from "next";
+
+export async function generateMetadata(
+  _props: unknown,
+  parent: ResolvingMetadata
+): Promise<Metadata> {
+  const inherited = await parent;
+
+  return {
+    alternates: {
+      canonical: "/about"
+    },
+    openGraph: {
+      ...inherited.openGraph,
+      url: "/about"
+    }
+  };
+}
+
 const teamMembers = [
   {
     name: "Bill Wang",
