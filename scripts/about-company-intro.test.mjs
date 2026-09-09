@@ -39,40 +39,39 @@ test("interactive company journey stays between the team heading and cards witho
   assert.match(journey, /EAIS[\s\S]*?robotics projects[\s\S]*?maker community/);
 });
 
-test("journey exposes three manual tabs with complete roving keyboard and panel semantics", () => {
+test("journey exposes the three approved steps together as lightweight editorial cards", () => {
   assert.equal((journey.match(/id: "(?:idea|build|share)"/g) ?? []).length, 3);
   assert.match(journey, /id: "idea"[\s\S]*?label: "Idea"/);
   assert.match(journey, /id: "build"[\s\S]*?label: "Build"/);
   assert.match(journey, /id: "share"[\s\S]*?label: "Share"/);
-  assert.match(journey, /useState\(0\)/);
-  assert.match(journey, /role="tablist"/);
-  assert.match(journey, /role="tab"/);
-  assert.match(journey, /aria-selected=/);
-  assert.match(journey, /aria-controls=/);
-  assert.match(journey, /tabIndex=\{isActive \? 0 : -1\}/);
-  assert.match(journey, /role="tabpanel"/);
-  assert.match(journey, /aria-labelledby=/);
-  for (const key of ["ArrowRight", "ArrowLeft", "Home", "End"]) {
-    assert.ok(journey.includes(`"${key}"`), `${key} keyboard behavior should be implemented`);
-  }
+  assert.match(journey, /<header className=\{styles\.introHeader\}>/);
+  assert.match(journey, /data-about-journey-grid/);
+  assert.match(journey, /<article[\s\S]*?data-journey-card[\s\S]*?data-journey-step=\{step\.id\}/);
+  assert.match(journey, /data-journey-number/);
+  assert.match(journey, /data-journey-label/);
+  assert.match(journey, /<IdeaWorkshop active\s*\/>/);
+  assert.doesNotMatch(journey, /useState|useRef|KeyboardEvent/);
+  assert.doesNotMatch(journey, /role="tab(?:list|panel)?"|aria-selected=|aria-controls=|\shidden=\{/);
   assert.doesNotMatch(journey, /setInterval|setTimeout/);
 });
 
-test("journey uses a responsive Manrope layout with stable scenes and accessible motion", () => {
+test("journey uses the approved responsive three-card editorial layout", () => {
   assert.match(stylesheet, /\.intro\s*{[^}]*display:\s*grid/s);
   assert.match(stylesheet, /\.intro\s*{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
+  assert.match(stylesheet, /\.introHeader\s*{[^}]*display:\s*grid/s);
   assert.match(stylesheet, /\.statement\s*{[^}]*font-family:\s*var\(--font-sans\)/s);
   assert.match(stylesheet, /\.statement\s*{[^}]*font-weight:\s*500/s);
-  assert.match(stylesheet, /\.statement\s*{[^}]*max-width:\s*24ch/s);
-  assert.match(stylesheet, /\.statementRule\s*{[^}]*flex-shrink:\s*0/s);
   assert.match(stylesheet, /\.copy\s*{[^}]*max-width:\s*52ch/s);
   assert.match(stylesheet, /\.copy\s*{[^}]*line-height:\s*1\.7/s);
-  assert.match(stylesheet, /\.tab\s*{[^}]*min-height:\s*44px/s);
-  assert.match(stylesheet, /\.tab:focus-visible\s*{/s);
-  assert.match(stylesheet, /\.panel\s*{[^}]*min-height:\s*18rem/s);
-  assert.match(stylesheet, /@media\s*\(min-width:\s*768px\)[\s\S]*?\.intro\s*{[^}]*grid-template-columns:\s*minmax\(0,\s*0\.9fr\)\s*minmax\(0,\s*2fr\)/);
-  assert.match(stylesheet, /@media\s*\(min-width:\s*768px\)[\s\S]*?\.statement\s*{[^}]*max-width:\s*22ch/);
-  assert.match(stylesheet, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?animation:\s*none/);
+  assert.match(stylesheet, /\.cardGrid\s*{[^}]*display:\s*grid[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
+  assert.match(stylesheet, /\.card\s*{[^}]*border-top:\s*1px solid var\(--journey-line\)/s);
+  const cardRule = stylesheet.match(/\.card\s*{([^}]*)}/s)?.[1] ?? "";
+  assert.doesNotMatch(cardRule, /box-shadow|border-radius|background:/);
+  assert.match(stylesheet, /\.scene\s*{[^}]*aspect-ratio:\s*520\s*\/\s*250/s);
+  assert.match(stylesheet, /\.scene:focus-within\s*{[^}]*outline:\s*[23]px solid var\(--journey-blue\)[^}]*outline-offset:\s*[23]px/s);
+  assert.match(stylesheet, /@media\s*\(min-width:\s*768px\)[\s\S]*?\.cardGrid\s*{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(stylesheet, /@media\s*\(min-width:\s*1100px\)[\s\S]*?\.cardGrid\s*{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+  assert.doesNotMatch(stylesheet, /\.tabs?\b|\.panels?\b|journey-panel-enter/);
 });
 
 test("the original six members remain unchanged and three new members are appended in order", () => {

@@ -1,7 +1,5 @@
 "use client";
 
-import { useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
 import { IdeaWorkshop } from "./about-idea-workshop";
 import styles from "./about-intro.module.css";
 
@@ -36,115 +34,56 @@ const steps = [
 ] as const;
 
 export function AboutJourney() {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-
-  const activateAndFocus = (index: number) => {
-    setActiveIndex(index);
-    tabRefs.current[index]?.focus();
-  };
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    let nextIndex = index;
-
-    switch (event.key) {
-      case "ArrowRight":
-        nextIndex = (index + 1) % steps.length;
-        break;
-      case "ArrowLeft":
-        nextIndex = (index - 1 + steps.length) % steps.length;
-        break;
-      case "Home":
-        nextIndex = 0;
-        break;
-      case "End":
-        nextIndex = steps.length - 1;
-        break;
-      default:
-        return;
-    }
-
-    event.preventDefault();
-    activateAndFocus(nextIndex);
-  };
-
   return (
     <section data-about-intro className={styles.intro} aria-labelledby="about-journey-statement">
-      <div className={styles.statementColumn}>
-        <p id="about-journey-statement" data-about-intro-statement className={styles.statement}>
+      <header className={styles.introHeader}>
+        <h2 id="about-journey-statement" data-about-intro-statement className={styles.statement}>
           At Agentech, we turn curiosity into creation with AI and robotics.
-        </p>
-        <span className={styles.statementRule} aria-hidden="true" />
-      </div>
-
-      <div className={styles.journey}>
+        </h2>
         <p data-about-intro-copy className={styles.copy}>
           {"Through software tools, robot applications, and hands-on learning, we help you explore ideas, build skills, and create projects of your own."}
         </p>
+      </header>
 
-        <div className={styles.tabs} role="tablist" aria-label="Explore how Agentech ideas take shape">
-          {steps.map((step, index) => {
-            const isActive = index === activeIndex;
+      <div data-about-journey-grid className={styles.cardGrid}>
+        {steps.map((step, index) => {
+          const isInteractive = step.id === "idea";
+          const Scene = step.Scene;
 
-            return (
-              <button
-                key={step.id}
-                ref={(node) => {
-                  tabRefs.current[index] = node;
-                }}
-                type="button"
-                id={`about-journey-tab-${step.id}`}
-                role="tab"
-                aria-selected={isActive}
-                aria-controls={`about-journey-panel-${step.id}`}
-                tabIndex={isActive ? 0 : -1}
-                className={styles.tab}
-                onClick={() => setActiveIndex(index)}
-                onKeyDown={(event) => handleKeyDown(event, index)}
-              >
-                <span className={styles.tabNumber} aria-hidden="true">
+          return (
+            <article
+              key={step.id}
+              data-journey-card
+              data-journey-step={step.id}
+              className={styles.card}
+              aria-labelledby={`about-journey-title-${step.id}`}
+            >
+              <p className={styles.stepLabel}>
+                <span data-journey-number className={styles.stepNumber} aria-hidden="true">
                   0{index + 1}
                 </span>
-                <span>{step.label}</span>
-              </button>
-            );
-          })}
-        </div>
+                <span data-journey-label>{step.label}</span>
+              </p>
 
-        <div className={styles.panels}>
-          {steps.map((step, index) => {
-            const isActive = index === activeIndex;
-            const isInteractive = step.id === "idea";
-            const Scene = step.Scene;
-
-            return (
               <div
-                key={step.id}
-                id={`about-journey-panel-${step.id}`}
-                role="tabpanel"
-                aria-labelledby={`about-journey-tab-${step.id}`}
-                data-journey-step={step.id}
-                className={styles.panel}
-                hidden={!isActive}
+                data-journey-scene
+                data-journey-scene-kind={step.id}
+                className={styles.scene}
+                aria-hidden={isInteractive ? undefined : true}
               >
-                <div data-journey-panel-inner className={styles.panelInner}>
-                  <div className={styles.panelCopy}>
-                    <p className={styles.eyebrow}>{step.eyebrow}</p>
-                    <h2 className={styles.panelTitle}>{step.title}</h2>
-                    <p className={styles.description}>{step.description}</p>
-                  </div>
-                  <div
-                    data-journey-scene
-                    className={styles.scene}
-                    aria-hidden={isInteractive ? undefined : true}
-                  >
-                    {isInteractive ? <IdeaWorkshop active={isActive} /> : Scene ? <Scene /> : null}
-                  </div>
-                </div>
+                {isInteractive ? <IdeaWorkshop active /> : Scene ? <Scene /> : null}
               </div>
-            );
-          })}
-        </div>
+
+              <div className={styles.cardCopy}>
+                <p className={styles.eyebrow}>{step.eyebrow}</p>
+                <h3 id={`about-journey-title-${step.id}`} className={styles.cardTitle}>
+                  {step.title}
+                </h3>
+                <p className={styles.description}>{step.description}</p>
+              </div>
+            </article>
+          );
+        })}
       </div>
     </section>
   );

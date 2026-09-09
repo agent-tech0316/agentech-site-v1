@@ -11,12 +11,12 @@ const [journey, workshop, stylesheet, introStyles] = await Promise.all([
 
 test("Idea uses the interactive frame player while Build and Share remain decorative", () => {
   assert.match(journey, /import \{ IdeaWorkshop \} from "\.\/about-idea-workshop"/);
-  assert.match(journey, /<IdeaWorkshop active=\{isActive\}\s*\/>/);
+  assert.match(journey, /<IdeaWorkshop active\s*\/>/);
   assert.match(journey, /aria-hidden=\{isInteractive \? undefined : true\}/);
   assert.doesNotMatch(journey, /function IdeaScene/);
   assert.match(journey, /function BuildScene/);
   assert.match(journey, /function ShareScene/);
-  assert.match(introStyles, /\.scene\s*{[^}]*min-height:\s*13rem/s);
+  assert.match(introStyles, /\.scene\s*{[^}]*aspect-ratio:\s*520\s*\/\s*250/s);
 });
 
 test("the four complete v3 frames stay aligned with no vector drawing overlay", () => {
