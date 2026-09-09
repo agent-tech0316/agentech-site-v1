@@ -1,0 +1,52 @@
+.demo { min-width: 0; width: 100%; max-width: 520px; justify-self: end; }
+.art.art { position: relative; width: 100%; aspect-ratio: 1; margin: 0; color: #e5d9bb; filter: none; mix-blend-mode: normal; }
+/* The original bitmap supplies line opacity; empty pixels are truly transparent.
+   Keep theme color separate from the moving/stationary layer composition. */
+:global(:root[data-theme="light"]) .demo .art.art { color: #000; filter: none; mix-blend-mode: normal; }
+.definitions { position: absolute; pointer-events: none; }
+.layer { position: absolute; inset: 0; }
+.arm {
+  transform-origin: 39.1% 61.9%;
+}
+.demo[data-wave-state="running"] .arm { animation: firstWave 2.7s ease-in-out both; }
+
+.editor { position: relative; margin: 0; padding: 18px 18px 14px; border: 1px solid var(--eaic-line); border-radius: 12px; background: color-mix(in srgb, var(--eaic-panel) 92%, transparent); }
+.prompt { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; color: var(--eaic-ink); font-family: var(--font-sans), sans-serif; font-size: 12px; font-weight: 600; }
+.prompt > span { color: var(--eaic-muted); font-family: var(--font-mono), monospace; font-size: 9px; letter-spacing: .09em; white-space: nowrap; }
+.codeRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.code { display: inline-flex; align-items: center; min-width: 0; color: var(--eaic-ink); font-family: var(--font-mono), monospace; font-size: clamp(12px, 1.05vw, 14px); white-space: nowrap; }
+.code input { width: 5.5ch; min-width: 44px; min-height: 44px; margin: 0 3px; padding: 0 3px; border: 0; border-bottom: 1px solid var(--eaic-accent); border-radius: 3px 3px 0 0; background: color-mix(in srgb, var(--eaic-accent) 9%, transparent); color: var(--eaic-accent); font: inherit; font-weight: 600; text-align: center; caret-color: var(--eaic-accent); }
+.code input::placeholder { color: var(--eaic-accent); opacity: .5; }
+.code input[aria-invalid="true"] { border-bottom-style: dashed; }
+.code input:focus-visible, .run:focus-visible { outline: 2px solid var(--eaic-accent); outline-offset: 3px; }
+.argument { color: var(--eaic-muted); }
+.string { color: var(--eaic-accent); }
+.run { display: inline-flex; width: 44px; min-height: 44px; flex: none; justify-content: center; align-items: center; border: 1px solid var(--eaic-line); border-radius: 9px; background: transparent; color: var(--eaic-accent); cursor: pointer; transition: border-color 150ms, background 150ms; }
+.run:hover:not(:disabled) { border-color: var(--eaic-accent); background: color-mix(in srgb, var(--eaic-accent) 10%, transparent); }
+.run:disabled { cursor: wait; opacity: .4; }
+.status { min-height: 2.8em; margin: 12px 0 0; color: var(--eaic-ink); font-family: var(--font-sans), sans-serif; font-size: 12px; line-height: 1.4; }
+.boundary { margin: 4px 0 0; color: var(--eaic-muted); font-family: var(--font-sans), sans-serif; font-size: 10px; line-height: 1.5; }
+
+@keyframes firstWave {
+  0%, 100% { transform: rotate(0deg); }
+  18% { transform: rotate(-14deg); }
+  38% { transform: rotate(7deg); }
+  58% { transform: rotate(-12deg); }
+  78% { transform: rotate(5deg); }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .editor { padding-inline: 12px; }
+  .codeRow { gap: 6px; }
+  .code { font-size: 12px; }
+}
+@media (max-width: 767px) {
+  .demo { max-width: 480px; justify-self: center; padding-bottom: 36px; }
+  .editor { padding: 16px 12px 12px; }
+  .codeRow { gap: 6px; }
+  .code { font-size: clamp(12px, 3.3vw, 13px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .demo[data-wave-state="running"] .arm { animation: none; }
+  .run { transition: none; }
+}

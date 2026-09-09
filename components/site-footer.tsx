@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import "./site-footer.css";
+
 export function SiteFooter() {
   const pathname = usePathname();
 
@@ -16,13 +18,19 @@ export function SiteFooter() {
 
   return (
     <footer className="border-t border-[#363d45]/70 bg-black">
-      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-5 text-[11px] font-medium uppercase tracking-[0.18em] text-slate sm:gap-5 sm:px-6 sm:py-8 sm:text-sm sm:tracking-[0.22em] lg:flex-row lg:items-center lg:justify-between lg:px-8">
+      <div
+        data-site-footer-inner
+        className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-5 text-[11px] font-medium uppercase tracking-[0.18em] text-slate sm:gap-5 sm:px-6 sm:py-8 sm:text-sm sm:tracking-[0.22em] lg:flex-row lg:items-center lg:justify-between lg:px-8"
+      >
         <p>Agentech, Inc.</p>
-        <div className="flex gap-6 sm:flex-col sm:gap-5 lg:flex-row lg:items-center lg:gap-8">
-          <Link href="/about" className="transition hover:text-white">
+        <div
+          data-site-footer-links
+          className="flex gap-6 sm:flex-col sm:gap-5 lg:flex-row lg:items-center lg:gap-8"
+        >
+          <Link data-site-footer-link href="/about" className="transition hover:text-white">
             About
           </Link>
-          <Link href="/news" className="transition hover:text-white">
+          <Link data-site-footer-link href="/news" className="transition hover:text-white">
             News
           </Link>
         </div>

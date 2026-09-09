@@ -1,0 +1,91 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { mkdirSync } from "node:fs";
+const require = createRequire(import.meta.url);
+const { chromium } = require(process.env.AGENTECH_PLAYWRIGHT_PATH ?? "playwright");
+const origin = process.env.EAIC_WAVE_ORIGIN ?? "http://127.0.0.1:3005";
+const browser = await chromium.connectOverCDP(process.env.EAIC_WAVE_CDP ?? "http://127.0.0.1:9233");
+const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: "no-preference" });
+const page = await context.newPage();
+const errors = [], writes = [];
+page.on("pageerror", error => errors.push(error.message));
+page.on("request", request => { if (["POST", "PUT", "PATCH"].includes(request.method()) && /\/api\//.test(request.url())) writes.push(request.url()); });
+mkdirSync(".codex-artifacts/wave", { recursive: true });
+try {
+  await page.goto(`${origin}/agentech-products/eaic`);
+  assert.equal(await page.locator('[data-eaic-wave-demo] input').count(), 1, "The robot needs one editable action-word field below the artwork");
+  const input = page.getByRole("textbox", { name: "Robot action" });
+  const demo = page.locator("[data-eaic-wave-demo]");
+  await page.waitForFunction(() => document.querySelector('[data-eaic-wave-demo]').dataset.artReady === 'true');
+  await input.fill("wave;alert(1)");
+  await input.press("Enter");
+  assert.equal(await demo.getAttribute("data-wave-count"), "0");
+  await input.fill("wa");
+  await input.press("Enter");
+  assert.equal(await demo.getAttribute("data-wave-count"), "0");
+  await input.fill("wave");
+  await page.waitForFunction(() => document.querySelector('[data-eaic-wave-demo]').dataset.waveCount === '1');
+  assert.equal(await demo.getAttribute("data-wave-state"), "running");
+  const motion = await page.locator('[data-eaic-wave-arm]').evaluate(el => getComputedStyle(el).animationName);
+  assert.notEqual(motion, "none", "A correct word must animate the actual arm layer");
+  assert.equal(await page.locator('[data-eaic-wave-body]').evaluate(el => getComputedStyle(el).transform), "none", "The body must stay still");
+  // Freeze at a visible point of the real CSS animation, not a simulated pose.
+  await page.locator('[data-eaic-wave-arm]').evaluate(el => { const animation = el.getAnimations()[0]; animation.pause(); animation.currentTime = 486; });
+  const armTransform = await page.locator('[data-eaic-wave-arm]').evaluate(el => getComputedStyle(el).transform);
+  assert.notEqual(armTransform, "matrix(1, 0, 0, 1, 0, 0)");
+  await page.locator('.eaic-public-hero-art').screenshot({ path: '.codex-artifacts/wave/arm-in-motion.png' });
+  await page.locator('[data-eaic-wave-arm]').evaluate(el => el.getAnimations()[0].play());
+  await page.waitForFunction(() => document.querySelector('[data-eaic-wave-demo]').dataset.waveState === 'complete');
+  await input.press("Enter");
+  await page.waitForFunction(() => document.querySelector('[data-eaic-wave-demo]').dataset.waveCount === '2');
+  await page.waitForFunction(() => document.querySelector('[data-eaic-wave-demo]').dataset.waveState === 'complete');
+  await input.press("Enter");
+  await page.waitForFunction(() => document.querySelector('[data-eaic-wave-demo]').dataset.waveCount === '3');
+  await input.fill("walk");
+  await input.press("Enter");
+  await page.waitForFunction(() => document.querySelector('[data-eaic-wave-demo]').dataset.waveState === 'complete');
+  assert.match(await page.locator('[data-eaic-wave-status]').innerText(), /Try wave/, "An earlier wave completion must not overwrite a newer invalid-command explanation");
+  await input.fill("wave");
+  await page.waitForFunction(() => document.querySelector('[data-eaic-wave-demo]').dataset.waveCount === '4');
+  await page.waitForFunction(() => document.querySelector('[data-eaic-wave-demo]').dataset.waveState === 'complete');
+  const views = [];
+  for (const width of [1440, 768, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    for (const theme of ["dark", "light"]) {
+      await page.getByRole("radio", { name: theme === "dark" ? "Dark" : "Light", exact: true }).click();
+      await demo.scrollIntoViewIfNeeded();
+      const state = await demo.evaluate(el => {
+        const input = el.querySelector('input').getBoundingClientRect();
+        const art = el.querySelector('[data-eaic-wave-body]').getBoundingClientRect();
+        return { overflow: document.documentElement.scrollWidth - innerWidth, inputHeight: input.height, inputWidth: input.width, fieldBelowArt: input.top >= art.bottom, demoWidth: el.getBoundingClientRect().width };
+      });
+      assert.equal(state.overflow, 0);
+      assert.ok(state.inputHeight >= 44);
+      assert.ok(state.inputWidth >= 44);
+      assert.ok(state.fieldBelowArt);
+      await page.screenshot({ path: `.codex-artifacts/wave/${width}-${theme}.png` });
+      views.push({ width, theme, ...state });
+    }
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await input.press("Enter");
+  assert.equal(await page.locator('[data-eaic-wave-arm]').evaluate(el => getComputedStyle(el).animationName), "none");
+  assert.match(await page.locator('[data-eaic-wave-status]').innerText(), /motion reduced/i);
+  const slowPage = await context.newPage();
+  let releaseImage;
+  const imageGate = new Promise(resolve => { releaseImage = resolve; });
+  await slowPage.route(/eaic-next-move-wireframe/, async route => { await imageGate; await route.continue(); });
+  await slowPage.goto(`${origin}/agentech-products/eaic`, { waitUntil: 'domcontentloaded' });
+  const earlyInput = slowPage.getByRole('textbox', { name: 'Robot action' });
+  await earlyInput.fill('wave');
+  await slowPage.waitForFunction(() => document.querySelector('[data-eaic-wave-status]').textContent.includes('Getting the robot ready'));
+  await new Promise(resolve => setTimeout(resolve, 450));
+  assert.equal(await slowPage.locator('[data-eaic-wave-demo]').getAttribute('data-wave-count'), '0');
+  releaseImage();
+  await slowPage.waitForFunction(() => document.querySelector('[data-eaic-wave-demo]').dataset.artReady === 'true');
+  await slowPage.waitForFunction(() => document.querySelector('[data-eaic-wave-demo]').dataset.waveCount === '1', null, { timeout: 4000 });
+  await slowPage.close();
+  assert.deepEqual(errors, []);
+  assert.deepEqual(writes, [], "An action-word demo must not call robot or account APIs");
+  console.log(JSON.stringify({ status: "passed", views, errors, writes }, null, 2));
+} finally { await context.close(); await browser.close(); }

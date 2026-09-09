@@ -37,13 +37,13 @@ export function resolveComingSoonFeature(feature?: string | string[]) {
 export const navigation: NavItem[] = [
   {
     label: "Platform",
-    href: "/agentech-products/eaic-hub",
-    menuTriggerHref: "/agentech-products/eaic-hub",
+    href: "/agentech-products/eaic",
+    menuTriggerHref: "/agentech-products/eaic",
     image: "/assets/logo/AGENTECH-products-grey191.png",
     activeImage: "/assets/logo/AGENTECH-products-solid.png",
     columns: [
-      { label: "EAIC", href: "/agentech-products/eaic-hub" },
-      { label: "EAIS", href: "/coming-soon?feature=eais" },
+      { label: "EAIC", href: "/agentech-products/eaic" },
+      { label: "EAIS", href: "/agentech-products/eais" },
       { label: "NAVI STORE", href: "/agentech-education/what-can-we-learn-from-navi" }
     ]
   },

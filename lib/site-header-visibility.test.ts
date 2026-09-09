@@ -73,7 +73,7 @@ test("orders and names the primary navigation for the platform-first hierarchy",
   assert.deepEqual(
     navigation.map(({ label, href }) => ({ label, href })),
     [
-      { label: "Platform", href: "/agentech-products/eaic-hub" },
+      { label: "Platform", href: "/agentech-products/eaic" },
       { label: "Service", href: "/agentech-robotic" },
       { label: "Education", href: "/agentech-education" },
       { label: "Talents", href: "/talents" }

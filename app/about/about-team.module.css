@@ -1,0 +1,198 @@
+.card[data-team-category="leadership"] {
+  --team-accent-light: #3f6078;
+  --team-accent-dark: #9bb9d2;
+  --team-wash-light: rgba(63, 96, 120, 0.12);
+  --team-wash-dark: rgba(155, 185, 210, 0.18);
+  --team-wash-soft-light: rgba(63, 96, 120, 0.04);
+  --team-wash-soft-dark: rgba(155, 185, 210, 0.07);
+  --team-border-light: rgba(63, 96, 120, 0.32);
+  --team-border-dark: rgba(155, 185, 210, 0.34);
+  --team-glow-light: rgba(63, 96, 120, 0.24);
+  --team-glow-dark: rgba(155, 185, 210, 0.42);
+}
+
+.card[data-team-category="operations"] {
+  --team-accent-light: #82560d;
+  --team-accent-dark: #e3b866;
+  --team-wash-light: rgba(130, 86, 13, 0.12);
+  --team-wash-dark: rgba(227, 184, 102, 0.18);
+  --team-wash-soft-light: rgba(130, 86, 13, 0.04);
+  --team-wash-soft-dark: rgba(227, 184, 102, 0.07);
+  --team-border-light: rgba(130, 86, 13, 0.32);
+  --team-border-dark: rgba(227, 184, 102, 0.34);
+  --team-glow-light: rgba(130, 86, 13, 0.24);
+  --team-glow-dark: rgba(227, 184, 102, 0.42);
+}
+
+.card[data-team-category="strategy"] {
+  --team-accent-light: #704f8f;
+  --team-accent-dark: #c6a5e3;
+  --team-wash-light: rgba(112, 79, 143, 0.12);
+  --team-wash-dark: rgba(198, 165, 227, 0.18);
+  --team-wash-soft-light: rgba(112, 79, 143, 0.04);
+  --team-wash-soft-dark: rgba(198, 165, 227, 0.07);
+  --team-border-light: rgba(112, 79, 143, 0.32);
+  --team-border-dark: rgba(198, 165, 227, 0.34);
+  --team-glow-light: rgba(112, 79, 143, 0.24);
+  --team-glow-dark: rgba(198, 165, 227, 0.42);
+}
+
+.card[data-team-category="hardware"] {
+  --team-accent-light: #1f7068;
+  --team-accent-dark: #77cabb;
+  --team-wash-light: rgba(31, 112, 104, 0.12);
+  --team-wash-dark: rgba(119, 202, 187, 0.18);
+  --team-wash-soft-light: rgba(31, 112, 104, 0.04);
+  --team-wash-soft-dark: rgba(119, 202, 187, 0.07);
+  --team-border-light: rgba(31, 112, 104, 0.32);
+  --team-border-dark: rgba(119, 202, 187, 0.34);
+  --team-glow-light: rgba(31, 112, 104, 0.24);
+  --team-glow-dark: rgba(119, 202, 187, 0.42);
+}
+
+.card[data-team-category="software"] {
+  --team-accent-light: #245f9f;
+  --team-accent-dark: #82baf2;
+  --team-wash-light: rgba(36, 95, 159, 0.12);
+  --team-wash-dark: rgba(130, 186, 242, 0.18);
+  --team-wash-soft-light: rgba(36, 95, 159, 0.04);
+  --team-wash-soft-dark: rgba(130, 186, 242, 0.07);
+  --team-border-light: rgba(36, 95, 159, 0.32);
+  --team-border-dark: rgba(130, 186, 242, 0.34);
+  --team-glow-light: rgba(36, 95, 159, 0.24);
+  --team-glow-dark: rgba(130, 186, 242, 0.42);
+}
+
+.card[data-team-category="robotics"] {
+  --team-accent-light: #914861;
+  --team-accent-dark: #e7a0b7;
+  --team-wash-light: rgba(145, 72, 97, 0.12);
+  --team-wash-dark: rgba(231, 160, 183, 0.18);
+  --team-wash-soft-light: rgba(145, 72, 97, 0.04);
+  --team-wash-soft-dark: rgba(231, 160, 183, 0.07);
+  --team-border-light: rgba(145, 72, 97, 0.32);
+  --team-border-dark: rgba(231, 160, 183, 0.34);
+  --team-glow-light: rgba(145, 72, 97, 0.24);
+  --team-glow-dark: rgba(231, 160, 183, 0.42);
+}
+
+.card[data-team-category="product"] {
+  --team-accent-light: #925033;
+  --team-accent-dark: #dca07c;
+  --team-wash-light: rgba(146, 80, 51, 0.12);
+  --team-wash-dark: rgba(220, 160, 124, 0.18);
+  --team-wash-soft-light: rgba(146, 80, 51, 0.04);
+  --team-wash-soft-dark: rgba(220, 160, 124, 0.07);
+  --team-border-light: rgba(146, 80, 51, 0.32);
+  --team-border-dark: rgba(220, 160, 124, 0.34);
+  --team-glow-light: rgba(146, 80, 51, 0.24);
+  --team-glow-dark: rgba(220, 160, 124, 0.42);
+}
+
+.card[data-team-card] {
+  --team-accent: var(--team-accent-dark);
+  --team-wash: var(--team-wash-dark);
+  --team-wash-soft: var(--team-wash-soft-dark);
+  --team-border: var(--team-border-dark);
+  --team-glow: var(--team-glow-dark);
+  background-color: #090d10;
+  background-image:
+    linear-gradient(
+      135deg,
+      var(--team-wash) 0%,
+      var(--team-wash-soft) 34%,
+      transparent 66%
+    );
+  border-color: var(--team-border);
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.28);
+}
+
+.card[data-team-card]:hover {
+  border-color: var(--team-accent);
+  box-shadow: 0 30px 110px rgba(0, 0, 0, 0.36);
+}
+
+.topLine {
+  background: linear-gradient(90deg, transparent, var(--team-accent), transparent);
+}
+
+.card[data-team-card] [data-team-group] {
+  color: var(--team-accent);
+}
+
+.card[data-team-card] [data-team-role] {
+  color: var(--team-accent);
+}
+
+.card[data-team-card] [data-team-role-marker] {
+  color: var(--team-accent);
+}
+
+.roleMarker {
+  margin-right: 0.1rem;
+}
+
+.card[data-team-card] [data-team-spark] {
+  background: var(--team-accent);
+  box-shadow: 0 0 18px var(--team-glow);
+}
+
+.card[data-team-card] [data-team-orbit] {
+  border-color: var(--team-border);
+  background: var(--team-wash-soft);
+}
+
+.card[data-team-card]:hover [data-team-orbit] {
+  border-color: var(--team-accent);
+}
+
+.card[data-team-card] [data-team-name] {
+  color: #f8fafc;
+}
+
+:global(:root[data-theme="light"]) :global(.about-theme-page) .card[data-team-card] {
+  --team-accent: var(--team-accent-light);
+  --team-wash: var(--team-wash-light);
+  --team-wash-soft: var(--team-wash-soft-light);
+  --team-border: var(--team-border-light);
+  --team-glow: var(--team-glow-light);
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(
+      135deg,
+      var(--team-wash) 0%,
+      var(--team-wash-soft) 38%,
+      transparent 68%
+    );
+  border-color: var(--team-border);
+  box-shadow: 0 12px 36px rgba(17, 17, 17, 0.06);
+}
+
+:global(:root[data-theme="light"]) :global(.about-theme-page) .card[data-team-card]:hover {
+  border-color: var(--team-accent);
+  box-shadow: 0 18px 42px rgba(17, 17, 17, 0.09);
+}
+
+:global(:root[data-theme="light"]) :global(.about-theme-page) .card[data-team-card] [data-team-group],
+:global(:root[data-theme="light"]) :global(.about-theme-page) .card[data-team-card] [data-team-role],
+:global(:root[data-theme="light"]) :global(.about-theme-page) .card[data-team-card] [data-team-role-marker] {
+  color: var(--team-accent);
+}
+
+:global(:root[data-theme="light"]) :global(.about-theme-page) .card[data-team-card] [data-team-spark] {
+  background: var(--team-accent);
+  box-shadow: 0 0 14px var(--team-glow);
+}
+
+:global(:root[data-theme="light"]) :global(.about-theme-page) .card[data-team-card] [data-team-orbit] {
+  border-color: var(--team-border);
+  background: var(--team-wash-soft);
+}
+
+:global(:root[data-theme="light"]) :global(.about-theme-page) .card[data-team-card]:hover [data-team-orbit] {
+  border-color: var(--team-accent);
+}
+
+:global(:root[data-theme="light"]) :global(.about-theme-page) .card[data-team-card] [data-team-name] {
+  color: #111827;
+}
