@@ -27,8 +27,10 @@ test("EAIC has a public product route while the Hub stays the explicit developer
 test("EAIC public metadata overrides the root canonical and Open Graph URL without dropping route identity", async () => {
   const page = await readWorkspaceFile("app/agentech-products/eaic/page.tsx");
 
+  assert.match(page, /export const metadata:\s*Metadata\s*=\s*\{\s*title:\s*"EAIC",/);
   assert.match(page, /alternates:\s*\{\s*canonical:\s*"\/agentech-products\/eaic"\s*\}/);
   assert.match(page, /openGraph:\s*\{[\s\S]*?url:\s*"\/agentech-products\/eaic"/);
+  assert.match(page, /openGraph:\s*\{\s*title:\s*"EAIC \| Agentech",/);
   for (const field of ["title", "description", "siteName", "type"]) {
     assert.match(page, new RegExp(`${field}:`), `EAIC Open Graph metadata must keep ${field}`);
   }

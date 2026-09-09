@@ -6,7 +6,7 @@ import { eaicHubPath } from "@/lib/eaic-hub";
 import "./eaic-public.css";
 
 export const metadata: Metadata = {
-  title: "EAIC | Agentech",
+  title: "EAIC",
   description: "Build, validate, and run robot capabilities through the EAIC developer workspace.",
   alternates: { canonical: "/agentech-products/eaic" },
   openGraph: {
