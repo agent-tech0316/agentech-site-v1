@@ -1,10 +1,10 @@
-.workshop {
+.player {
   position: relative;
   isolation: isolate;
   display: block;
   width: 100%;
   min-height: 12rem;
-  aspect-ratio: 520 / 250;
+  aspect-ratio: 2 / 1;
   padding: 0;
   overflow: hidden;
   border: 1px solid rgba(226, 232, 240, 0.18);
@@ -19,12 +19,12 @@
   transition: border-color 180ms ease, box-shadow 180ms ease;
 }
 
-.workshop:hover {
+.player:hover {
   border-color: rgba(203, 234, 246, 0.48);
   box-shadow: 0 20px 46px rgba(4, 9, 14, 0.24);
 }
 
-.workshop:focus-visible {
+.player:focus-visible {
   outline: 3px solid #a9e7ff;
   outline-offset: 4px;
 }
@@ -94,7 +94,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workshop {
+  .player {
     transition: none;
   }
 }

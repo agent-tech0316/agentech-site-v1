@@ -1,0 +1,65 @@
+{
+  "avatars": [
+    {
+      "name": "Bill Wang",
+      "slug": "bill-wang",
+      "objectFit": "cover",
+      "objectPosition": "50% 50%",
+      "width": 1374,
+      "height": 1145,
+      "bytes": 1670107,
+      "sha256": "4275127198c30b589fe8c8bc43a7b234a1bbac71364ebe94bf99dc02d5bcacb3"
+    },
+    {
+      "name": "Xin Gao",
+      "slug": "xin-gao",
+      "objectFit": "contain",
+      "objectPosition": "50% 50%",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1443602,
+      "sha256": "c567e96a12f22dce8076ada90d281edb15aac1d403b78d21d61ad4bbdf9c11c9"
+    },
+    {
+      "name": "Wesley Fan",
+      "slug": "wesley-fan",
+      "objectFit": "contain",
+      "objectPosition": "50% 50%",
+      "width": 1145,
+      "height": 1374,
+      "bytes": 1575673,
+      "sha256": "81ea66090478bcfd4fc3d7762493228a9b06df49f571e547a27107fa514ff669"
+    },
+    {
+      "name": "Victoria Chen",
+      "slug": "victoria-chen",
+      "objectFit": "contain",
+      "objectPosition": "50% 50%",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1646928,
+      "sha256": "a593bf637969d2a5c15c28ab6ac03578c318fa2cb7ef1c5fe0e751adbab838c9"
+    },
+    {
+      "name": "William Wang",
+      "slug": "william-wang",
+      "objectFit": "contain",
+      "objectPosition": "50% 50%",
+      "width": 1145,
+      "height": 1374,
+      "bytes": 1718530,
+      "sha256": "421283fbc9fc8ba0c124ca98ee0f1f2607edc698c003e034947a0bdc7ca5e2b4"
+    },
+    {
+      "name": "Shuangyi Lian",
+      "slug": "shuangyi-lian",
+      "objectFit": "contain",
+      "objectPosition": "50% 50%",
+      "width": 1086,
+      "height": 1448,
+      "bytes": 1664658,
+      "sha256": "87934d4b7d9bc04b39ae8931abcdf645bb42fe38bb204a808b727ce93269086e"
+    }
+  ],
+  "unpicturedMembers": ["Meryl Li", "Connie Sun", "George Huang"]
+}

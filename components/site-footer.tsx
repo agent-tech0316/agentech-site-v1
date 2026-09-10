@@ -22,7 +22,7 @@ export function SiteFooter() {
         data-site-footer-inner
         className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-5 text-[11px] font-medium uppercase tracking-[0.18em] text-slate sm:gap-5 sm:px-6 sm:py-8 sm:text-sm sm:tracking-[0.22em] lg:flex-row lg:items-center lg:justify-between lg:px-8"
       >
-        <p>Agentech, Inc.</p>
+        <p data-site-footer-company>Agentech, Inc.</p>
         <div
           data-site-footer-links
           className="flex gap-6 sm:flex-col sm:gap-5 lg:flex-row lg:items-center lg:gap-8"

@@ -32,8 +32,9 @@ test("the whole artwork is the only native control and no visible controls remai
   assert.match(stylesheet, /\.srOnly\s*{/);
 });
 
-test("playback is ready-gated, finite, repeatable, and resets outside its active context", () => {
+test("playback starts immediately from the first decoded action frame and resets outside its active context", () => {
   assert.match(workshop, /const FRAME_INTERVAL_MS = \d+/);
+  assert.match(workshop, /const FIRST_ACTIVE_FRAME_INDEX = Math\.min\(1, FINAL_FRAME_INDEX\)/);
   assert.match(workshop, /framesReady/);
   assert.match(workshop, /loadedFrameCount/);
   assert.match(workshop, /onLoad/);
@@ -50,6 +51,8 @@ test("playback is ready-gated, finite, repeatable, and resets outside its active
   assert.match(workshop, /playbackCycle/);
   assert.match(workshop, /setPlaybackCycle\(\(cycle\) => cycle \+ 1\)/);
   assert.match(workshop, /\[[^\]]*playbackCycle[^\]]*\]/);
+  assert.match(workshop, /setFrameIndex\(FIRST_ACTIVE_FRAME_INDEX\)/);
+  assert.match(workshop, /priority=\{index <= FIRST_ACTIVE_FRAME_INDEX\}/);
 
   const interval = Number(workshop.match(/const FRAME_INTERVAL_MS = (\d+)/)?.[1] ?? 0);
   const frameCount = (workshop.match(/\/assets\/about\/[^"']+\.(?:png|webp|jpe?g)/g) ?? []).length;
@@ -57,10 +60,15 @@ test("playback is ready-gated, finite, repeatable, and resets outside its active
   assert.ok(interval * Math.max(frameCount - 1, 0) < 5000, "the full sequence must finish in under five seconds");
 });
 
-test("cold-load hover waits for decoded frames and touch leave cannot cancel click playback", () => {
+test("cold-load playback waits only for its next decoded frame and exposes a non-control cue", () => {
   assert.match(workshop, /pendingPlayRef/);
+  assert.match(workshop, /pendingFrameRef/);
   assert.match(workshop, /pointerInsideRef/);
-  assert.match(workshop, /framesReady[\s\S]*pendingPlayRef\.current[\s\S]*playSequence/);
+  assert.match(workshop, /loadedFramesRef\.current\.has\(requiredStartFrameIndex\)/);
+  assert.match(workshop, /loadedFramesRef\.current\.has\(nextFrameIndex\)/);
+  assert.match(workshop, /setIsPlaybackPending\(true\)/);
+  assert.match(workshop, /data-idea-loading-cue/);
+  assert.match(stylesheet, /\.loadingCue\s*{/);
   assert.match(workshop, /\.decode\(\)/);
   assert.match(workshop, /pointerType === "touch"/);
   assert.match(workshop, /lastPointerWasTouchRef/);

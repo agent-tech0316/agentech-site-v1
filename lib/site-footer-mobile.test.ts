@@ -48,6 +48,7 @@ test("site footer keeps its company links in the phone right-bottom safe area", 
   assert.match(footer, /import "\.\/site-footer\.css";/);
   assert.match(footer, /data-site-footer-inner/);
   assert.match(footer, /data-site-footer-links/);
+  assert.equal((footer.match(/data-site-footer-company\b/g) ?? []).length, 1);
   assert.equal((footer.match(/data-site-footer-link\b/g) ?? []).length, 2);
 
   const phoneMedia = "(max-width: 639px)";
@@ -75,8 +76,14 @@ test("site footer keeps its company links in the phone right-bottom safe area", 
 });
 
 test("site footer company links match the complete static primary-navigation type state without button chrome", async () => {
-  const css = await readOptionalWorkspaceFile("components/site-footer.css");
+  const [footer, css] = await Promise.all([
+    readWorkspaceFile("components/site-footer.tsx"),
+    readOptionalWorkspaceFile("components/site-footer.css"),
+  ]);
   const link = declarationMap(css, "[data-site-footer-link]");
+  const company = declarationMap(css, "[data-site-footer-company]");
+
+  assert.match(footer, /<p data-site-footer-company>Agentech, Inc\.<\/p>/);
 
   assert.equal(link.color, "#fff");
   assert.equal(link["font-family"], "var(--font-sans)");
@@ -87,4 +94,9 @@ test("site footer company links match the complete static primary-navigation typ
   assert.equal(link.border, undefined);
   assert.equal(link["border-radius"], undefined);
   assert.equal(link.background, undefined);
+  assert.deepEqual(company, link);
+
+  const phoneCompany = declarationMap(css, "[data-site-footer-company]", "(max-width: 639px)");
+  assert.equal(phoneCompany.display, undefined);
+  assert.equal(phoneCompany["min-height"], undefined);
 });

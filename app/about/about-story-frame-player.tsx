@@ -3,24 +3,23 @@
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import styles from "./about-idea-workshop.module.css";
+import styles from "./about-story-frame-player.module.css";
 
-const ideaFrames = [
-  "/assets/about/idea-sketch-frames-v3/frame-0.webp",
-  "/assets/about/idea-sketch-frames-v3/frame-1.webp",
-  "/assets/about/idea-sketch-frames-v3/frame-2.webp",
-  "/assets/about/idea-sketch-frames-v3/frame-3.webp"
-] as const;
-
-const FRAME_INTERVAL_MS = 1000;
-const FINAL_FRAME_INDEX = ideaFrames.length - 1;
-const FIRST_ACTIVE_FRAME_INDEX = Math.min(1, FINAL_FRAME_INDEX);
-
-type IdeaWorkshopProps = {
-  active: boolean;
+type AboutStoryFramePlayerProps = {
+  story: "build" | "share";
+  label: string;
+  frames: readonly string[];
+  frameIntervalMs: number;
+  active?: boolean;
 };
 
-export function IdeaWorkshop({ active }: IdeaWorkshopProps) {
+export function AboutStoryFramePlayer({
+  story,
+  label,
+  frames,
+  frameIntervalMs,
+  active = true
+}: AboutStoryFramePlayerProps) {
   const rootRef = useRef<HTMLButtonElement>(null);
   const timerRef = useRef<number | null>(null);
   const pendingFrameRef = useRef<number | null>(null);
@@ -38,9 +37,11 @@ export function IdeaWorkshop({ active }: IdeaWorkshopProps) {
   const [loadedFrameCount, setLoadedFrameCount] = useState(0);
   const [failedFrameCount, setFailedFrameCount] = useState(0);
   const [isPlaybackPending, setIsPlaybackPending] = useState(false);
-  const framesReady = loadedFrameCount === ideaFrames.length;
+  const finalFrameIndex = Math.max(frames.length - 1, 0);
+  const firstActiveFrameIndex = Math.min(1, finalFrameIndex);
+  const requiredStartFrameIndex = prefersReducedMotion ? finalFrameIndex : firstActiveFrameIndex;
+  const framesReady = frames.length > 0 && loadedFrameCount === frames.length;
   const hasFrameError = failedFrameCount > 0;
-  const requiredStartFrameIndex = prefersReducedMotion ? FINAL_FRAME_INDEX : FIRST_ACTIVE_FRAME_INDEX;
 
   const clearTimer = useCallback(() => {
     if (timerRef.current === null) return;
@@ -75,18 +76,17 @@ export function IdeaWorkshop({ active }: IdeaWorkshopProps) {
 
     if (prefersReducedMotion) {
       setIsPlaying(false);
-      setFrameIndex(ideaFrames.length - 1);
+      setFrameIndex(finalFrameIndex);
       return;
     }
 
-    setFrameIndex(FIRST_ACTIVE_FRAME_INDEX);
-    setIsPlaying(FIRST_ACTIVE_FRAME_INDEX < FINAL_FRAME_INDEX);
-  }, [clearTimer, prefersReducedMotion]);
+    setFrameIndex(firstActiveFrameIndex);
+    setIsPlaying(firstActiveFrameIndex < finalFrameIndex);
+  }, [clearTimer, finalFrameIndex, firstActiveFrameIndex, prefersReducedMotion]);
 
   const requestPlayback = useCallback(
     (needsPointer: boolean) => {
-      if (!active || !isInViewport) return;
-      if (hasFrameError) return;
+      if (!active || !isInViewport || frames.length === 0 || hasFrameError) return;
 
       if (!loadedFramesRef.current.has(requiredStartFrameIndex)) {
         pendingPlayRef.current = true;
@@ -97,7 +97,7 @@ export function IdeaWorkshop({ active }: IdeaWorkshopProps) {
 
       beginSequence();
     },
-    [active, beginSequence, hasFrameError, isInViewport, requiredStartFrameIndex]
+    [active, beginSequence, frames.length, hasFrameError, isInViewport, requiredStartFrameIndex]
   );
 
   const playSequence = useCallback(() => {
@@ -203,15 +203,15 @@ export function IdeaWorkshop({ active }: IdeaWorkshopProps) {
     pendingFrameRef.current = null;
     setIsPlaybackPending(false);
     setFrameIndex(pendingFrameIndex);
-    if (pendingFrameIndex >= FINAL_FRAME_INDEX) setIsPlaying(false);
-  }, [isPlaying, loadedFrameCount]);
+    if (pendingFrameIndex >= finalFrameIndex) setIsPlaying(false);
+  }, [finalFrameIndex, isPlaying, loadedFrameCount]);
 
   useEffect(() => {
     if (!prefersReducedMotion || !isPlaying) return;
 
     clearTimer();
     pendingFrameRef.current = null;
-    if (!loadedFramesRef.current.has(FINAL_FRAME_INDEX)) {
+    if (!loadedFramesRef.current.has(finalFrameIndex)) {
       pendingPlayRef.current = true;
       pendingNeedsPointerRef.current = false;
       setIsPlaying(false);
@@ -221,14 +221,14 @@ export function IdeaWorkshop({ active }: IdeaWorkshopProps) {
 
     setIsPlaybackPending(false);
     setIsPlaying(false);
-    setFrameIndex(FINAL_FRAME_INDEX);
-  }, [clearTimer, isPlaying, prefersReducedMotion]);
+    setFrameIndex(finalFrameIndex);
+  }, [clearTimer, finalFrameIndex, isPlaying, prefersReducedMotion]);
 
   useEffect(() => {
     if (!isPlaying || isPlaybackPending) return;
 
     const nextFrameIndex = frameIndex + 1;
-    if (nextFrameIndex > FINAL_FRAME_INDEX) {
+    if (nextFrameIndex > finalFrameIndex) {
       setIsPlaying(false);
       return;
     }
@@ -243,31 +243,29 @@ export function IdeaWorkshop({ active }: IdeaWorkshopProps) {
       }
 
       setFrameIndex(nextFrameIndex);
-      if (nextFrameIndex >= FINAL_FRAME_INDEX) {
-        setIsPlaying(false);
-      }
-    }, FRAME_INTERVAL_MS);
+      if (nextFrameIndex >= finalFrameIndex) setIsPlaying(false);
+    }, frameIntervalMs);
 
     return clearTimer;
-  }, [clearTimer, frameIndex, isPlaybackPending, isPlaying, playbackCycle]);
+  }, [clearTimer, finalFrameIndex, frameIndex, frameIntervalMs, isPlaybackPending, isPlaying, playbackCycle]);
 
   const status = hasFrameError
-    ? "Idea sketch animation could not load."
+    ? `${label} story animation could not load.`
     : isPlaybackPending
-      ? "Preparing the next Idea sketch step."
+      ? `Preparing the next ${label} story step.`
       : !framesReady
-        ? "Idea sketch animation is loading."
+        ? `${label} story animation is loading.`
         : isPlaying
-          ? `Drawing step ${frameIndex + 1} of ${ideaFrames.length}.`
-          : frameIndex === FINAL_FRAME_INDEX
-            ? "Idea sketch complete."
-            : "Idea sketch ready. Activate to play.";
+          ? `${label} story step ${frameIndex + 1} of ${frames.length}.`
+          : frameIndex === finalFrameIndex && frames.length > 1
+            ? `${label} story complete.`
+            : `${label} story ready. Activate to play.`;
 
   return (
     <button
       ref={rootRef}
       type="button"
-      data-idea-workshop
+      data-about-story-player={story}
       data-active={active ? "true" : "false"}
       data-in-viewport={isInViewport ? "true" : "false"}
       data-frames-ready={framesReady ? "true" : "false"}
@@ -278,8 +276,8 @@ export function IdeaWorkshop({ active }: IdeaWorkshopProps) {
       data-playing={isPlaying ? "true" : "false"}
       data-playback-pending={isPlaybackPending ? "true" : "false"}
       data-playback-cycle={playbackCycle}
-      className={styles.workshop}
-      aria-label="Play the Idea sketch sequence"
+      className={styles.player}
+      aria-label={`Play the ${label} story`}
       onPointerEnter={handlePointerEnter}
       onPointerDown={handlePointerDown}
       onPointerLeave={handlePointerLeave}
@@ -287,26 +285,26 @@ export function IdeaWorkshop({ active }: IdeaWorkshopProps) {
       onBlur={handleBlur}
     >
       <span className={styles.visual} aria-hidden="true">
-        {ideaFrames.map((frame, index) => (
+        {frames.map((frame, index) => (
           <Image
-            key={frame}
+            key={`${story}-${frame}`}
             className={styles.frame}
-            data-idea-frame={index}
+            data-story-frame={index}
             data-active-frame={frameIndex === index ? "true" : "false"}
             src={frame}
             alt=""
             fill
-            priority={index <= FIRST_ACTIVE_FRAME_INDEX}
+            priority={index <= firstActiveFrameIndex}
             sizes="(max-width: 767px) calc(100vw - 2rem), (max-width: 1023px) min(31rem, calc(100vw - 3rem)), 36vw"
             onLoad={(event) => markFrameLoaded(index, event.currentTarget)}
           />
         ))}
         <span
-          data-idea-loading-cue
+          data-story-loading-cue
           data-visible={isPlaybackPending ? "true" : "false"}
           className={styles.loadingCue}
         >
-          Preparing sketch…
+          Preparing story…
         </span>
       </span>
 

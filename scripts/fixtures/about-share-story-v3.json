@@ -1,0 +1,15 @@
+{
+  "status": "ASSET_VERIFIED_READY_FOR_INTEGRATION",
+  "frozen": true,
+  "useForIntegration": true,
+  "productionPublished": false,
+  "frameCount": 36,
+  "frameIntervalMs": 80,
+  "totalDurationMs": 2880,
+  "width": 1000,
+  "height": 500,
+  "totalBytes": 5474876,
+  "orderedFramesSha256": "22db0219b0b4935fca15c89073fc5209ef3b519309ed35fe2b52e5fb1c9759dd",
+  "firstFrameSha256": "1556cfc1d188f0f0c26e0ac7a10e02230ff08e95eb1bae6c9b18d948fb8bf354",
+  "lastFrameSha256": "2e9714025e2e056f9cb4e6957927529e14467eefbec5c629881206f7bc95c029"
+}

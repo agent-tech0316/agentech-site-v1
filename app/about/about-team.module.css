@@ -116,6 +116,42 @@
   background: linear-gradient(90deg, transparent, var(--team-accent), transparent);
 }
 
+.avatarFrame {
+  position: absolute;
+  z-index: 1;
+  top: 1.25rem;
+  right: 1.25rem;
+  width: 4.25rem;
+  height: 4.25rem;
+  overflow: hidden;
+  border: 1px solid var(--team-border);
+  border-radius: 50%;
+  background: var(--team-wash-soft);
+  box-shadow: 0 0 24px var(--team-glow);
+  transition: border-color 300ms ease, box-shadow 300ms ease, transform 300ms ease;
+}
+
+.avatar {
+  object-fit: contain;
+  object-position: 50% 50%;
+  user-select: none;
+}
+
+.avatarFrame[data-team-avatar="bill-wang"] .avatar {
+  object-fit: cover;
+}
+
+.copyWithAvatar [data-team-group],
+.copyWithAvatar [data-team-name] {
+  max-width: calc(100% - 4.75rem);
+}
+
+.card[data-team-card]:hover .avatarFrame {
+  border-color: var(--team-accent);
+  box-shadow: 0 0 32px var(--team-glow);
+  transform: scale(1.06);
+}
+
 .card[data-team-card] [data-team-group] {
   color: var(--team-accent);
 }

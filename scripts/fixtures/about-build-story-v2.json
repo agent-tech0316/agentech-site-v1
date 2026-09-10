@@ -1,0 +1,40 @@
+{
+  "status": "FROZEN_KEYFRAMES_FOR_INDEPENDENT_REVIEW",
+  "frozen": true,
+  "productionApproved": false,
+  "frameIntervalMs": 350,
+  "timeToFinalFrameMs": 700,
+  "finalHoldMs": 1300,
+  "totalDurationMs": 2000,
+  "totalBytes": 9423974,
+  "frames": [
+    {
+      "filename": "frame-00.png",
+      "bytes": 2363218,
+      "width": 1774,
+      "height": 887,
+      "sha256": "6c0ba7b5bc1828661a1bd743a38b0ff95a268e4a6a53dd6fea79b823a5d0456a"
+    },
+    {
+      "filename": "frame-01.png",
+      "bytes": 2358370,
+      "width": 1774,
+      "height": 887,
+      "sha256": "fd98f5f3e973f6c61e5d6709f931db046463cc0360cd68e8a361ef3aeb9b0038"
+    },
+    {
+      "filename": "frame-01b.png",
+      "bytes": 2339550,
+      "width": 1774,
+      "height": 887,
+      "sha256": "757e612fda1ca19417cd467d1423a6b5956066b349232cf5240ef186db624954"
+    },
+    {
+      "filename": "frame-02.png",
+      "bytes": 2362836,
+      "width": 1774,
+      "height": 887,
+      "sha256": "91e6971e1ba249b9746fbf244dda9407d8e81eff3361d4150dcb88a972f4d0ec"
+    }
+  ]
+}

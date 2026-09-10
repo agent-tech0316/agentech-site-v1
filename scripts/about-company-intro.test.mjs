@@ -67,7 +67,7 @@ test("journey uses the approved responsive three-card editorial layout", () => {
   assert.match(stylesheet, /\.card\s*{[^}]*border-top:\s*1px solid var\(--journey-line\)/s);
   const cardRule = stylesheet.match(/\.card\s*{([^}]*)}/s)?.[1] ?? "";
   assert.doesNotMatch(cardRule, /box-shadow|border-radius|background:/);
-  assert.match(stylesheet, /\.scene\s*{[^}]*aspect-ratio:\s*520\s*\/\s*250/s);
+  assert.match(stylesheet, /\.scene\s*{[^}]*aspect-ratio:\s*2\s*\/\s*1/s);
   assert.match(stylesheet, /\.scene:focus-within\s*{[^}]*outline:\s*[23]px solid var\(--journey-blue\)[^}]*outline-offset:\s*[23]px/s);
   assert.match(stylesheet, /@media\s*\(min-width:\s*768px\)[\s\S]*?\.cardGrid\s*{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(stylesheet, /@media\s*\(min-width:\s*1100px\)[\s\S]*?\.cardGrid\s*{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);

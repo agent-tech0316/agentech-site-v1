@@ -1,4 +1,5 @@
 import type { Metadata, ResolvingMetadata } from "next";
+import Image from "next/image";
 import { AboutJourney } from "./about-journey";
 import teamStyles from "./about-team.module.css";
 
@@ -24,55 +25,64 @@ const teamMembers = [
     name: "Bill Wang",
     role: "Founder and CEO",
     group: "Leadership",
-    category: "leadership"
+    category: "leadership",
+    avatar: "bill-wang"
   },
   {
     name: "Meryl Li",
     role: "Co-founder and COO",
     group: "Operations",
-    category: "operations"
+    category: "operations",
+    avatar: null
   },
   {
     name: "Connie Sun",
     role: "Co-founder and Strategy Advisor",
     group: "Strategy",
-    category: "strategy"
+    category: "strategy",
+    avatar: null
   },
   {
     name: "Xin Gao",
     role: "CTO and Senior Hardware Engineer",
     group: "Hardware",
-    category: "hardware"
+    category: "hardware",
+    avatar: "xin-gao"
   },
   {
     name: "Wesley Fan",
     role: "Senior Software Engineer",
     group: "Software",
-    category: "software"
+    category: "software",
+    avatar: "wesley-fan"
   },
   {
     name: "Victoria Chen",
     role: "Senior Project Engineer",
     group: "Robotics",
-    category: "robotics"
+    category: "robotics",
+    avatar: "victoria-chen"
   },
   {
     name: "William Wang",
     role: "Software Engineer",
     group: "Software",
-    category: "software"
+    category: "software",
+    avatar: "william-wang"
   },
   {
     name: "George Huang",
     role: "Software Engineer",
     group: "Software",
-    category: "software"
+    category: "software",
+    avatar: null
   },
   {
     name: "Shuangyi Lian",
     role: "Product Manager",
     group: "Product",
-    category: "product"
+    category: "product",
+    avatar: "shuangyi-lian"
   }
 ] as const;
 
@@ -105,11 +115,29 @@ export default function AboutPage() {
               className={`${teamStyles.card} group relative min-h-[218px] overflow-hidden rounded-lg border p-7 transition duration-300 hover:-translate-y-1`}
             >
               <div className={`${teamStyles.topLine} absolute inset-x-0 top-0 h-px opacity-70`} />
-              <div data-team-orbit aria-hidden="true" className="absolute right-5 top-5 h-16 w-16 rounded-full border opacity-70 transition duration-300 group-hover:scale-110" />
-              <div data-team-spark aria-hidden="true" className="absolute right-10 top-10 h-2 w-2 rounded-full" />
+              {member.avatar ? (
+                <span
+                  data-team-avatar={member.avatar}
+                  aria-hidden="true"
+                  className={teamStyles.avatarFrame}
+                >
+                  <Image
+                    className={teamStyles.avatar}
+                    src={`/assets/about/team-avatars-v1/${member.avatar}.png`}
+                    alt=""
+                    fill
+                    sizes="68px"
+                  />
+                </span>
+              ) : (
+                <>
+                  <div data-team-orbit aria-hidden="true" className="absolute right-5 top-5 h-16 w-16 rounded-full border opacity-70 transition duration-300 group-hover:scale-110" />
+                  <div data-team-spark aria-hidden="true" className="absolute right-10 top-10 h-2 w-2 rounded-full" />
+                </>
+              )}
 
               <div className="relative flex h-full flex-col justify-between">
-                <div>
+                <div className={member.avatar ? teamStyles.copyWithAvatar : undefined}>
                   <div className="flex items-center justify-between gap-4">
                     <p data-team-group className="text-[11px] font-semibold uppercase tracking-[0.26em]">
                       {member.group}
