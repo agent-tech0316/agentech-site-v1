@@ -32,6 +32,7 @@
     "test:robotics-mobile-products": "node --experimental-strip-types --test lib/robotics-product-browser.test.ts",
     "test:login-bypass": "node --experimental-strip-types --test lib/login-bypass.test.ts",
     "test:auth-sign-in": "node --experimental-strip-types --test scripts/auth-sign-in.test.mjs",
+    "test:eais-persistence": "node --experimental-strip-types --test scripts/server-account-session.test.mjs scripts/auth-sign-in.test.mjs scripts/auth-account-lifecycle.test.mjs scripts/eais-projects.test.mjs scripts/eais-persistence-contract.test.mjs lib/my-works.test.ts lib/eais-public-showcase.test.ts lib/auth-return-path.test.ts lib/login-bypass.test.ts && node --test scripts/account-stable-identity-routes.test.mjs",
     "test:theme": "node --experimental-strip-types --test lib/theme.test.ts lib/theme-page-scopes.test.ts lib/about-news-themes.test.ts",
     "test:talents-page": "node --test scripts/talents-page.test.mjs",
     "test:master-motor-map": "node --test scripts/master-motor-map.test.mjs",

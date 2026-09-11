@@ -1,11 +1,12 @@
-import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
+import { scryptSync, timingSafeEqual } from "crypto";
 import { isAgentechCompanyEmail } from "@/lib/company-accounts";
 import { supabaseRequest } from "@/lib/supabase-server";
 
 export type StoredAccount = {
   email: string;
-  password_hash: string;
-  salt: string;
+  auth_user_id?: string | null;
+  password_hash: string | null;
+  salt: string | null;
   first_name: string;
   last_name: string;
   phone: string;
@@ -41,10 +42,9 @@ export function isValidPassword(password: unknown) {
 
 export async function readAccounts() {
   return supabaseRequest<StoredAccount[]>("agentech_accounts", {
-    query: "select=email,password_hash,salt,first_name,last_name,phone,credit_balance,paid_credit_balance,bonus_credit_balance,created_at,verified_at"
+    query: "select=email,auth_user_id,password_hash,salt,first_name,last_name,phone,credit_balance,paid_credit_balance,bonus_credit_balance,created_at,verified_at"
   });
 }
-
 export async function createAccount(account: StoredAccount) {
   await supabaseRequest<StoredAccount[]>("agentech_accounts", {
     method: "POST",
@@ -52,34 +52,15 @@ export async function createAccount(account: StoredAccount) {
   });
 }
 
-export async function updateAccountPassword(email: string, password: string) {
-  const { passwordHash, salt } = createPasswordHash(password);
-
-  await supabaseRequest<null>("agentech_accounts", {
-    method: "PATCH",
-    query: `email=eq.${encodeURIComponent(email)}`,
-    prefer: "return=minimal",
-    body: {
-      password_hash: passwordHash,
-      salt
-    }
-  });
-}
-
 export async function findAccount(email: string) {
   const accounts = await supabaseRequest<StoredAccount[]>("agentech_accounts", {
-    query: `email=eq.${encodeURIComponent(email)}&select=email,password_hash,salt,first_name,last_name,phone,credit_balance,paid_credit_balance,bonus_credit_balance,created_at,verified_at&limit=1`
+    query: `email=eq.${encodeURIComponent(email)}&select=email,auth_user_id,password_hash,salt,first_name,last_name,phone,credit_balance,paid_credit_balance,bonus_credit_balance,created_at,verified_at&limit=1`
   });
   return accounts[0] ?? null;
 }
 
-export function createPasswordHash(password: string) {
-  const salt = randomBytes(16).toString("hex");
-  const passwordHash = scryptSync(password, salt, 64).toString("hex");
-  return { passwordHash, salt };
-}
-
 export function verifyPassword(password: string, account: StoredAccount) {
+  if (!account.password_hash || !account.salt) return false;
   const candidate = scryptSync(password, account.salt, 64);
   const stored = Buffer.from(account.password_hash, "hex");
 

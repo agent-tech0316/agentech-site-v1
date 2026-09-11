@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { clearAccountSession, getAccountSession } from "@/lib/account-session";
+import { getAccountSession, signOutAccountSession } from "@/lib/account-session";
 import {
   AGENTECH_COMPANY_EMAIL_SUFFIX,
   isAgentechCompanyEmail,
@@ -195,6 +195,7 @@ export function AiGatewayAdminDashboard({ adminEmail = "" }: { adminEmail?: stri
   const [selectedSubmission, setSelectedSubmission] = useState<AdminCodeSubmissionDetail | null>(null);
   const [loadingSubmissionId, setLoadingSubmissionId] = useState("");
   const [submissionMessage, setSubmissionMessage] = useState("");
+  const [signingOut, setSigningOut] = useState(false);
 
   async function loadUsage(options: { announce?: boolean } = {}) {
     setLoading(true);
@@ -273,6 +274,19 @@ export function AiGatewayAdminDashboard({ adminEmail = "" }: { adminEmail?: stri
       setSubmissionMessage("Unable to load the selected code submission.");
     } finally {
       setLoadingSubmissionId("");
+    }
+  }
+
+  async function signOut() {
+    setSigningOut(true);
+    setMessage("");
+
+    try {
+      await signOutAccountSession();
+      window.location.href = "/login?next=/admin/ai-gateway";
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to sign out.");
+      setSigningOut(false);
     }
   }
 
@@ -414,13 +428,11 @@ export function AiGatewayAdminDashboard({ adminEmail = "" }: { adminEmail?: stri
               ) : null}
               <button
                 type="button"
-                onClick={() => {
-                  clearAccountSession();
-                  window.location.href = "/login?next=/admin/ai-gateway";
-                }}
+                onClick={() => void signOut()}
+                disabled={signingOut}
                 className="h-12 w-full rounded-xl border-2 border-red-800 bg-red-600 px-5 text-[15px] font-black text-white shadow-[0_8px_18px_rgba(220,38,38,0.22)] transition hover:bg-red-700"
               >
-                Sign Out
+                {signingOut ? "Signing Out..." : "Sign Out"}
               </button>
             </div>
           </div>

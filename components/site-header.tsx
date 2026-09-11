@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ServiceMenu } from "@/components/service-menu";
-import { accountSessionEvent, clearAccountSession, getAccountSession } from "@/lib/account-session";
+import { accountSessionEvent, getAccountSession, signOutAccountSession } from "@/lib/account-session";
 import { navigation } from "@/lib/site-data";
 import {
   shouldHideSiteHeader,
@@ -42,6 +42,8 @@ export function SiteHeader() {
   const [openCategoryMenu, setOpenCategoryMenu] = useState<string | null>(null);
   const [accountEmail, setAccountEmail] = useState("");
   const [showAuthControls, setShowAuthControls] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutFailed, setSignOutFailed] = useState(false);
 
   useEffect(() => {
     setShowAuthControls(
@@ -75,12 +77,20 @@ export function SiteHeader() {
     setOpenCategoryMenu((current) => open ? key : current === key ? null : current);
   }
 
-  function signOut() {
-    clearAccountSession();
-    setAccountEmail("");
-    closeMobileNav();
-    router.replace("/login?signedOut=1");
-    router.refresh();
+  async function signOut() {
+    setSigningOut(true);
+    setSignOutFailed(false);
+
+    try {
+      await signOutAccountSession();
+      setAccountEmail("");
+      closeMobileNav();
+      router.replace("/login?signedOut=1");
+      router.refresh();
+    } catch {
+      setSignOutFailed(true);
+      setSigningOut(false);
+    }
   }
 
   function getLoginHref() {
@@ -240,10 +250,12 @@ export function SiteHeader() {
           </Link>
           <button
             type="button"
-            onClick={signOut}
+            onClick={() => void signOut()}
+            disabled={signingOut}
+            title={signOutFailed ? "Sign out failed. Try again." : undefined}
             className="rounded-full border border-white/10 px-2 py-2 text-[11px] font-semibold leading-none text-slate transition hover:bg-white/5 hover:text-white"
           >
-            Sign Out
+            {signingOut ? "Signing Out..." : signOutFailed ? "Retry Sign Out" : "Sign Out"}
           </button>
         </div>
         ) : null}
@@ -307,8 +319,14 @@ export function SiteHeader() {
               <Link href="/account" onClick={closeMobileNav} className="rounded-xl px-4 py-4 text-sm font-semibold text-slate transition hover:bg-white/6 hover:text-white">
                 Account
               </Link>
-              <button type="button" onClick={signOut} className="rounded-xl px-4 py-4 text-left text-sm font-semibold text-slate transition hover:bg-white/6 hover:text-white">
-                Sign Out
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                disabled={signingOut}
+                title={signOutFailed ? "Sign out failed. Try again." : undefined}
+                className="rounded-xl px-4 py-4 text-left text-sm font-semibold text-slate transition hover:bg-white/6 hover:text-white"
+              >
+                {signingOut ? "Signing Out..." : signOutFailed ? "Retry Sign Out" : "Sign Out"}
               </button>
             </>
           ) : showAuthControls ? (

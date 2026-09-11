@@ -142,18 +142,26 @@ test("EAIS keeps visual styling page-scoped and touch-friendly across light, dar
   assert.match(css, /min-height:\s*44px/);
 });
 
-test("every quick preview offers a public project route with an honest development and evidence view", async () => {
-  const [showcase, route, detail] = await Promise.all([
+test("EAIS discovery and quick previews stay public while the full project route requires the shared account session", async () => {
+  const [showcase, route, detail, authForm, loginBypass] = await Promise.all([
     readWorkspaceFile("components/eais-showcase.tsx"),
     readWorkspaceFile("app/agentech-products/eais/projects/[slug]/page.tsx").catch(() => ""),
-    readWorkspaceFile("components/eais-project-detail.tsx").catch(() => "")
+    readWorkspaceFile("components/eais-project-detail.tsx").catch(() => ""),
+    readWorkspaceFile("components/universal-auth-form.tsx"),
+    readWorkspaceFile("lib/local-auth-bypass.ts")
   ]);
 
   assert.match(showcase, /href=\{`\/agentech-products\/eais\/projects\/\$\{selectedWork\.slug\}`\}/);
+  assert.match(showcase, /<dialog/);
+  assert.doesNotMatch(showcase, /getAccountSession|\/login\?next=/);
   assert.match(route, /findEaisProject/);
   assert.match(route, /notFound\(\)/);
   assert.match(route, /generateStaticParams/);
-  assert.doesNotMatch(route, /requireAccount|requireAuth|redirect\(["']\/login/);
+  assert.match(route, /export const dynamic = "force-dynamic"/);
+  assert.match(route, /getServerAccountIdentity\(undefined, \{ allowLegacyCookie: false \}\)/);
+  assert.match(route, /redirect\(buildLoginPath\(projectPath\)\)/);
+  assert.match(authForm, /resolveAuthReturnPath\(searchParams\.get\("next"\), ""\)/);
+  assert.match(loginBypass, /isProtectedAuthDestination\(destination\)/);
   for (const section of ["data-eais-project-page", "data-eais-project-build", "data-eais-project-evidence", "data-eais-project-resources", "data-eais-project-demo"]) {
     assert.match(detail, new RegExp(section));
   }

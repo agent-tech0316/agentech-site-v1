@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { accountSessionEvent, clearAccountSession, getAccountSession } from "@/lib/account-session";
+import { accountSessionEvent, getAccountSession, signOutAccountSession } from "@/lib/account-session";
 import { isAgentechCompanyEmail, isAgentechGatewayOwnerEmail } from "@/lib/company-accounts";
 import { getEaicHubTaskPath } from "@/lib/eaic-hub";
 import { normalizeAgentechRobotModel, robotModelOptions } from "@/lib/agentech-robot-model";
@@ -1024,6 +1024,29 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
   const [confirmDeleteSubmissionId, setConfirmDeleteSubmissionId] = useState("");
   const [codeReviewActionMessage, setCodeReviewActionMessage] = useState("");
   const [codeReviewActionTone, setCodeReviewActionTone] = useState<"success" | "error" | "info">("info");
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutMessage, setSignOutMessage] = useState("");
+
+  async function signOut() {
+    setSigningOut(true);
+    setSignOutMessage("");
+    setActionMessage("");
+    setAdminAiUsageMessage("");
+
+    try {
+      await signOutAccountSession();
+      setEmail("");
+      setData({});
+      router.replace("/login?signedOut=1");
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to sign out.";
+      setSignOutMessage(message);
+      setActionMessage(message);
+      setAdminAiUsageMessage(message);
+      setSigningOut(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -1872,16 +1895,11 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
             </button>
             <button
               type="button"
-              onClick={() => {
-                clearAccountSession();
-                setEmail("");
-                setData({});
-                router.replace("/login?signedOut=1");
-                router.refresh();
-              }}
+              onClick={() => void signOut()}
+              disabled={signingOut}
               className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-[#2f70c8] hover:text-[#2f70c8]"
             >
-              Sign Out
+              {signingOut ? "Signing Out..." : "Sign Out"}
             </button>
           </div>
         </div>
@@ -2034,25 +2052,31 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {!focusedRobotScheduling ? (
+            <Link data-account-my-works href="/account/my-works" className="inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-[#2f70c8]">
+              My Works <span aria-hidden="true">↗</span>
+            </Link>
+          ) : null}
           <div data-account-avatar aria-hidden="true" className={`grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br text-base font-bold ${selectedVisual?.avatar ?? accountAvatar}`}>
             {profileInitial}
           </div>
           <button
             data-account-local-signout
             type="button"
-            onClick={() => {
-              clearAccountSession();
-              setEmail("");
-              setData({});
-              router.replace("/login?signedOut=1");
-              router.refresh();
-            }}
+            onClick={() => void signOut()}
+            disabled={signingOut}
             className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-[#2f70c8] hover:text-[#2f70c8]"
           >
-            Sign Out
+            {signingOut ? "Signing Out..." : "Sign Out"}
           </button>
         </div>
       </div>
+
+      {signOutMessage ? (
+        <p data-account-signout-message role="alert" className="relative z-[1] mx-5 mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800 sm:mx-7 md:mx-8">
+          {signOutMessage}
+        </p>
+      ) : null}
 
       {!focusedRobotScheduling ? (
       <div data-account-tabs aria-label="Account sections" className="relative z-[1] overflow-x-auto border-b border-slate-200 px-5 sm:px-7 md:px-8">

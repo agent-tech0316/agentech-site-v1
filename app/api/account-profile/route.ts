@@ -9,7 +9,7 @@ import {
   normalizeProfileUsername,
   updateAccessProfile
 } from "@/lib/account-records";
-import { isValidEmail, normalizeEmail } from "@/lib/prototype-auth";
+import { getServerAccountIdentity } from "@/lib/server-account-session";
 
 type ProfilePayload = {
   id?: number | string;
@@ -56,8 +56,10 @@ function formatName(value: unknown) {
 }
 
 export async function POST(request: Request) {
+  const identity = await getServerAccountIdentity(request, { allowLegacyCookie: false });
+  if (!identity) return NextResponse.json({ error: "Sign in to create a profile." }, { status: 401 });
   const payload = (await request.json().catch(() => null)) as ProfilePayload | null;
-  const email = normalizeEmail(payload?.email);
+  const email = identity.email;
   const profileType = clean(payload?.profileType).toLowerCase();
   const username = normalizeProfileUsername(payload?.username);
   const displayName = clean(payload?.displayName);
@@ -69,10 +71,6 @@ export async function POST(request: Request) {
   const sex = clean(payload?.sex);
   const schoolInfo = clean(payload?.schoolInfo);
   const preferredLocation = clean(payload?.preferredLocation);
-
-  if (!isValidEmail(email)) {
-    return NextResponse.json({ error: "A valid account email is required." }, { status: 400 });
-  }
 
   if (!isAccessProfileType(profileType)) {
     return NextResponse.json({ error: "Choose developer, student, teacher, or talent." }, { status: 400 });
@@ -98,6 +96,7 @@ export async function POST(request: Request) {
 
   const profile = await createAccessProfile({
     accountEmail: email,
+    ownerUserId: identity.userId,
     profileType,
     username,
     displayName: displayName || [firstName, lastName].filter(Boolean).join(" ") || `${formatProfileLabel(profileType)} Profile`,
@@ -113,11 +112,12 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ ok: true, profile });
 }
-
 export async function PATCH(request: Request) {
+  const identity = await getServerAccountIdentity(request, { allowLegacyCookie: false });
+  if (!identity) return NextResponse.json({ error: "Sign in to update a profile." }, { status: 401 });
   const payload = (await request.json().catch(() => null)) as ProfilePayload | null;
   const id = toProfileId(payload?.id);
-  const email = normalizeEmail(payload?.email);
+  const email = identity.email;
   const profileType = clean(payload?.profileType).toLowerCase();
   const username = normalizeProfileUsername(payload?.username);
   const displayName = clean(payload?.displayName);
@@ -132,10 +132,6 @@ export async function PATCH(request: Request) {
 
   if (!id) {
     return NextResponse.json({ error: "Choose a profile to update." }, { status: 400 });
-  }
-
-  if (!isValidEmail(email)) {
-    return NextResponse.json({ error: "A valid account email is required." }, { status: 400 });
   }
 
   if (!isAccessProfileType(profileType)) {
@@ -156,7 +152,7 @@ export async function PATCH(request: Request) {
   }
 
   const existingProfile = await getAccessProfileById(id);
-  if (!existingProfile || existingProfile.account_email !== email) {
+  if (!existingProfile || existingProfile.account_email !== email || existingProfile.owner_user_id !== identity.userId) {
     return NextResponse.json({ error: "Profile not found for this account." }, { status: 404 });
   }
 
@@ -168,6 +164,7 @@ export async function PATCH(request: Request) {
   const profile = await updateAccessProfile({
     id,
     accountEmail: email,
+    ownerUserId: identity.userId,
     profileType,
     username,
     displayName: displayName || [firstName, lastName].filter(Boolean).join(" ") || `${formatProfileLabel(profileType)} Profile`,

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getChildrenEnrolled } from "@/lib/education-counter";
-import { replaceChildren, upsertProfile } from "@/lib/account-records";
+import { replaceChildren, upsertProfileForIdentity } from "@/lib/account-records";
 import { getEducationCourseByCode } from "@/lib/education-courses";
-import { isValidEmail, normalizeEmail } from "@/lib/prototype-auth";
+import { getServerAccountIdentity } from "@/lib/server-account-session";
 
 type ChildPayload = {
   firstName?: string;
@@ -40,7 +40,6 @@ function validate(payload: AccountPayload) {
   const accountType = payload.accountType;
   const limit = accountType === "group" ? 100 : 6;
   const children = Array.isArray(payload.children) ? payload.children : [];
-  const email = normalizeEmail(payload.email);
   const selectedCourseCode = clean(payload.selectedCourseCode).toUpperCase();
 
   if (accountType !== "individual" && accountType !== "group") {
@@ -51,8 +50,8 @@ function validate(payload: AccountPayload) {
     return "Choose a valid course.";
   }
 
-  if (!isValidEmail(email) || !clean(payload.firstName) || !clean(payload.lastName) || !clean(payload.phone)) {
-    return "Account email, first name, last name, and phone number are required.";
+  if (!clean(payload.firstName) || !clean(payload.lastName) || !clean(payload.phone)) {
+    return "First name, last name, and phone number are required.";
   }
 
   if (!children.length) {
@@ -73,6 +72,8 @@ function validate(payload: AccountPayload) {
 }
 
 export async function POST(request: Request) {
+  const identity = await getServerAccountIdentity(request, { allowLegacyCookie: false });
+  if (!identity) return NextResponse.json({ error: "Sign in to update this account." }, { status: 401 });
   let payload: AccountPayload;
 
   try {
@@ -87,12 +88,11 @@ export async function POST(request: Request) {
   }
 
   const children = Array.isArray(payload.children) ? payload.children : [];
-  const email = normalizeEmail(payload.email);
+  const email = identity.email;
   const selectedCourseCode = clean(payload.selectedCourseCode).toUpperCase();
   const selectedCourse = selectedCourseCode ? getEducationCourseByCode(selectedCourseCode) : null;
 
-  await upsertProfile({
-    email,
+  await upsertProfileForIdentity(identity, {
     first_name: formatName(payload.firstName),
     last_name: formatName(payload.lastName),
     phone: clean(payload.phone),

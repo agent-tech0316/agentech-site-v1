@@ -1,5 +1,6 @@
 export type AgentechAccountSession = {
   email: string;
+  userId?: string;
   signedInAt: string;
 };
 
@@ -38,9 +39,10 @@ export function getAccountSession() {
   return null;
 }
 
-export function setAccountSession(email: string) {
+export function setAccountSession(email: string, userId?: string) {
   const session: AgentechAccountSession = {
     email,
+    ...(userId ? { userId } : {}),
     signedInAt: new Date().toISOString()
   };
 
@@ -58,4 +60,17 @@ export function clearAccountSession() {
   }
   window.document.cookie = `${accountSessionCookieName}=; path=/; max-age=0; SameSite=Lax`;
   window.dispatchEvent(new Event(accountSessionEvent));
+}
+
+export async function signOutAccountSession() {
+  const response = await fetch("/api/auth/sign-out", {
+    method: "POST"
+  });
+  const result = await response.json().catch(() => null) as { error?: string } | null;
+
+  if (!response.ok) {
+    throw new Error(result?.error || "Unable to sign out.");
+  }
+
+  clearAccountSession();
 }

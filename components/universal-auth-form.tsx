@@ -2,7 +2,8 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { accountSessionEvent, clearAccountSession, getAccountSession, setAccountSession } from "@/lib/account-session";
+import { accountSessionEvent, getAccountSession, setAccountSession, signOutAccountSession } from "@/lib/account-session";
+import { resolveAuthReturnPath } from "@/lib/auth-return-path";
 
 type AuthMode = "signin" | "signup" | "forgot";
 type SignupStep = "email" | "verify";
@@ -11,6 +12,7 @@ type ResetStep = "email" | "verify";
 type ApiResult = {
   ok?: boolean;
   email?: string;
+  userId?: string;
   error?: string;
   devCode?: string;
   message?: string;
@@ -19,7 +21,7 @@ type ApiResult = {
 export function UniversalAuthForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const explicitNext = searchParams.get("next");
+  const explicitNext = resolveAuthReturnPath(searchParams.get("next"), "");
   const [mode, setMode] = useState<AuthMode>("signup");
   const [signupStep, setSignupStep] = useState<SignupStep>("email");
   const [resetStep, setResetStep] = useState<ResetStep>("email");
@@ -86,19 +88,26 @@ export function UniversalAuthForm() {
     return "/account";
   }
 
-  async function rememberAndContinue(accountEmail: string, isNewAccount: boolean) {
-    setAccountSession(accountEmail);
+  async function rememberAndContinue(accountEmail: string, userId: string, isNewAccount: boolean) {
+    setAccountSession(accountEmail, userId);
     router.push(getPostAuthDestination(isNewAccount));
   }
 
-  function signOut() {
-    clearAccountSession();
-    setSignedInEmail("");
-    setPassword("");
-    setStatus("idle");
+  async function signOut() {
+    setStatus("loading");
     setMessage("");
-    router.replace("/login?signedOut=1");
-    router.refresh();
+
+    try {
+      await signOutAccountSession();
+      setSignedInEmail("");
+      setPassword("");
+      setStatus("idle");
+      router.replace("/login?signedOut=1");
+      router.refresh();
+    } catch (error) {
+      setStatus("error");
+      setMessage(error instanceof Error ? error.message : "Unable to sign out.");
+    }
   }
 
   async function sendCode(event: FormEvent<HTMLFormElement>) {
@@ -138,14 +147,14 @@ export function UniversalAuthForm() {
     });
     const result = (await response.json()) as ApiResult;
 
-    if (!response.ok || !result.email) {
+    if (!response.ok || !result.email || !result.userId) {
       setStatus("error");
       setMessage(result.error || "Unable to create account.");
       return;
     }
 
     setStatus("success");
-    await rememberAndContinue(result.email, true);
+    await rememberAndContinue(result.email, result.userId, true);
   }
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
@@ -166,14 +175,14 @@ export function UniversalAuthForm() {
       const result = await response.json().catch(() => null) as ApiResult | null;
       if (controller.signal.aborted) throw new Error("Sign-in timed out.");
 
-      if (!response.ok || typeof result?.email !== "string" || !result.email) {
+      if (!response.ok || typeof result?.email !== "string" || !result.email || typeof result.userId !== "string" || !result.userId) {
         setStatus("error");
         setMessage(typeof result?.error === "string" ? result.error : "Sign-in is temporarily unavailable. Please try again shortly.");
         return;
       }
 
       setStatus("success");
-      await rememberAndContinue(result.email, false);
+      await rememberAndContinue(result.email, result.userId, false);
     } catch {
       setStatus("error");
       setMessage(controller.signal.aborted
@@ -221,7 +230,7 @@ export function UniversalAuthForm() {
     });
     const result = (await response.json()) as ApiResult;
 
-    if (!response.ok || !result.email) {
+    if (!response.ok || !result.email || !result.userId) {
       setStatus("error");
       setMessage(result.error || "Unable to reset password.");
       return;
@@ -229,7 +238,7 @@ export function UniversalAuthForm() {
 
     setStatus("success");
     setMessage("Password reset. Signing you in...");
-    await rememberAndContinue(result.email, false);
+    await rememberAndContinue(result.email, result.userId, false);
   }
 
   return (
@@ -254,8 +263,8 @@ export function UniversalAuthForm() {
             >
               Continue
             </button>
-            <button data-login-secondary-outline type="button" onClick={signOut} className="rounded-full border border-emerald-300 px-5 py-2.5 font-semibold text-emerald-950">
-              Sign Out
+            <button data-login-secondary-outline type="button" onClick={() => void signOut()} disabled={status === "loading"} className="rounded-full border border-emerald-300 px-5 py-2.5 font-semibold text-emerald-950">
+              {status === "loading" ? "Signing Out..." : "Sign Out"}
             </button>
           </div>
         </div>

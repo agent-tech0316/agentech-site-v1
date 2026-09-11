@@ -1,3 +1,5 @@
+import { isProtectedAuthDestination, resolveAuthReturnPath } from "./auth-return-path.ts";
+
 function normalizedHostname(host: string | null | undefined) {
   const firstHost = host?.split(",", 1)[0]?.trim().toLowerCase() ?? "";
 
@@ -19,19 +21,7 @@ export function isLocalRequest(headers: Pick<Headers, "get">) {
 }
 
 export function resolveLocalLoginDestination(next: string | string[] | undefined) {
-  const destination = Array.isArray(next) ? next[0] : next;
-
-  if (
-    !destination ||
-    !destination.startsWith("/") ||
-    destination.startsWith("//") ||
-    destination === "/login" ||
-    destination.startsWith("/login?")
-  ) {
-    return "/";
-  }
-
-  return destination;
+  return resolveAuthReturnPath(next, "/");
 }
 
 export function resolveLoginBypassDestination(
@@ -43,5 +33,10 @@ export function resolveLoginBypassDestination(
     return "/";
   }
 
-  return isLocalRequest(headers) ? resolveLocalLoginDestination(next) : null;
+  const destination = resolveLocalLoginDestination(next);
+  if (isProtectedAuthDestination(destination)) {
+    return null;
+  }
+
+  return isLocalRequest(headers) ? destination : null;
 }

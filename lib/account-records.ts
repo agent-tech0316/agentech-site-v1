@@ -1,4 +1,5 @@
 import { supabaseRequest } from "@/lib/supabase-server";
+import type { AccountIdentity } from "@/lib/account-identity";
 import { getUnpaidBalanceLines } from "@/lib/invoices";
 import { getBillingInvoicesForEmail, type BillingInvoice } from "@/lib/billing";
 import { normalizeEmail } from "@/lib/prototype-auth";
@@ -10,6 +11,7 @@ import {
 
 export type AccountRecord = {
   email: string;
+  auth_user_id?: string | null;
   first_name: string;
   last_name: string;
   phone: string;
@@ -30,6 +32,7 @@ export type AccessProfileType = "developer" | "student" | "teacher" | "talent";
 export type AccessProfile = {
   id: number;
   account_email: string;
+  owner_user_id?: string | null;
   profile_type: AccessProfileType;
   username: string;
   display_name: string;
@@ -58,6 +61,7 @@ export const profileRequiredFeatures = [
 
 export type AccountProfile = {
   email: string;
+  auth_user_id?: string | null;
   first_name: string;
   last_name: string;
   phone: string;
@@ -227,7 +231,7 @@ export async function getAccountRecord(email: string) {
 }
 
 export async function updateAccountRecord(input: {
-  email: string;
+  identity: AccountIdentity;
   firstName: string;
   lastName: string;
   phone: string;
@@ -235,7 +239,7 @@ export async function updateAccountRecord(input: {
 }) {
   const rows = await supabaseRequest<AccountRecord[]>("agentech_accounts", {
     method: "PATCH",
-    query: `email=eq.${encodeURIComponent(input.email)}`,
+    query: `auth_user_id=eq.${encodeURIComponent(input.identity.userId)}&email=eq.${encodeURIComponent(input.identity.email)}`,
     body: {
       first_name: input.firstName,
       last_name: input.lastName,
@@ -248,9 +252,8 @@ export async function updateAccountRecord(input: {
     return null;
   }
 
-  const existingProfile = await getProfile(input.email);
-  await upsertProfile({
-    email: input.email,
+  const existingProfile = await getProfileForIdentity(input.identity);
+  await upsertProfileForIdentity(input.identity, {
     first_name: input.firstName,
     last_name: input.lastName,
     phone: input.phone,
@@ -410,7 +413,7 @@ export async function hasPassedDeveloperCodeReview(email: string) {
 
 export async function getAccessProfiles(email: string) {
   return supabaseRequest<AccessProfile[]>("agentech_account_profiles", {
-    query: `account_email=eq.${encodeURIComponent(email)}&select=id,account_email,profile_type,username,display_name,first_name,last_name,dob,grade,sex,school_info,preferred_location,credit_limit,credits_used,monthly_credit_limit,monthly_credits_used,monthly_usage_period,created_at,updated_at&order=created_at.desc`
+    query: `account_email=eq.${encodeURIComponent(email)}&select=id,account_email,owner_user_id,profile_type,username,display_name,first_name,last_name,dob,grade,sex,school_info,preferred_location,credit_limit,credits_used,monthly_credit_limit,monthly_credits_used,monthly_usage_period,created_at,updated_at&order=created_at.desc`
   }).catch(() => []);
 }
 
@@ -421,7 +424,7 @@ export async function getAccessProfileByUsername(username: string) {
   }
 
   const rows = await supabaseRequest<AccessProfile[]>("agentech_account_profiles", {
-    query: `username=eq.${encodeURIComponent(normalizedUsername)}&select=id,account_email,profile_type,username,display_name,first_name,last_name,dob,grade,sex,school_info,preferred_location,credit_limit,credits_used,monthly_credit_limit,monthly_credits_used,monthly_usage_period,created_at,updated_at&limit=1`
+    query: `username=eq.${encodeURIComponent(normalizedUsername)}&select=id,account_email,owner_user_id,profile_type,username,display_name,first_name,last_name,dob,grade,sex,school_info,preferred_location,credit_limit,credits_used,monthly_credit_limit,monthly_credits_used,monthly_usage_period,created_at,updated_at&limit=1`
   });
 
   return rows[0] ?? null;
@@ -433,7 +436,7 @@ export async function getAccessProfileById(id: number) {
   }
 
   const rows = await supabaseRequest<AccessProfile[]>("agentech_account_profiles", {
-    query: `id=eq.${id}&select=id,account_email,profile_type,username,display_name,first_name,last_name,dob,grade,sex,school_info,preferred_location,credit_limit,credits_used,monthly_credit_limit,monthly_credits_used,monthly_usage_period,created_at,updated_at&limit=1`
+    query: `id=eq.${id}&select=id,account_email,owner_user_id,profile_type,username,display_name,first_name,last_name,dob,grade,sex,school_info,preferred_location,credit_limit,credits_used,monthly_credit_limit,monthly_credits_used,monthly_usage_period,created_at,updated_at&limit=1`
   });
 
   return rows[0] ?? null;
@@ -691,6 +694,7 @@ export async function spendProfileCredits(username: string, requestedCredits: nu
 
 export async function createAccessProfile(input: {
   accountEmail: string;
+  ownerUserId: string;
   profileType: AccessProfileType;
   username: string;
   displayName: string;
@@ -708,6 +712,7 @@ export async function createAccessProfile(input: {
     method: "POST",
     body: {
       account_email: input.accountEmail,
+      owner_user_id: input.ownerUserId,
       profile_type: input.profileType,
       username: input.username,
       display_name: input.displayName,
@@ -733,6 +738,7 @@ export async function createAccessProfile(input: {
 export async function updateAccessProfile(input: {
   id: number;
   accountEmail: string;
+  ownerUserId: string;
   profileType: AccessProfileType;
   username: string;
   displayName: string;
@@ -748,7 +754,7 @@ export async function updateAccessProfile(input: {
   const monthlyCreditLimit = Math.max(0, Math.floor(input.monthlyCreditLimit));
   const rows = await supabaseRequest<AccessProfile[]>("agentech_account_profiles", {
     method: "PATCH",
-    query: `id=eq.${input.id}&account_email=eq.${encodeURIComponent(input.accountEmail)}`,
+    query: `id=eq.${input.id}&account_email=eq.${encodeURIComponent(input.accountEmail)}&owner_user_id=eq.${encodeURIComponent(input.ownerUserId)}`,
     body: {
       profile_type: input.profileType,
       username: input.username,
@@ -791,6 +797,14 @@ export async function getProfile(email: string) {
   return rows[0] ?? null;
 }
 
+export async function getProfileForIdentity(identity: AccountIdentity) {
+  const rows = await supabaseRequest<AccountProfile[]>("agentech_profiles", {
+    query: `auth_user_id=eq.${encodeURIComponent(identity.userId)}&email=eq.${encodeURIComponent(identity.email)}&select=*&limit=1`
+  });
+
+  return rows[0] ?? null;
+}
+
 export async function upsertProfile(profile: AccountProfile) {
   const rows = await supabaseRequest<AccountProfile[]>("agentech_profiles", {
     method: "POST",
@@ -802,6 +816,32 @@ export async function upsertProfile(profile: AccountProfile) {
     }
   });
 
+  return rows[0] ?? null;
+}
+
+export async function upsertProfileForIdentity(
+  identity: AccountIdentity,
+  profile: Omit<AccountProfile, "email" | "auth_user_id">
+) {
+  const body = {
+    ...profile,
+    email: identity.email,
+    auth_user_id: identity.userId,
+    updated_at: new Date().toISOString()
+  };
+  const updated = await supabaseRequest<AccountProfile[]>("agentech_profiles", {
+    method: "PATCH",
+    query: `auth_user_id=eq.${encodeURIComponent(identity.userId)}&email=eq.${encodeURIComponent(identity.email)}`,
+    body
+  });
+  if (updated[0]) return updated[0];
+
+  const rows = await supabaseRequest<AccountProfile[]>("agentech_profiles", {
+    method: "POST",
+    query: "on_conflict=auth_user_id",
+    prefer: "resolution=merge-duplicates,return=representation",
+    body
+  });
   return rows[0] ?? null;
 }
 

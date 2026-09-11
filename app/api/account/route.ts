@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getAccountSummary, getProfile, updateAccountRecord } from "@/lib/account-records";
-import { isValidEmail, normalizeEmail } from "@/lib/prototype-auth";
+import { getAccountSummary, getProfileForIdentity, updateAccountRecord } from "@/lib/account-records";
+import { getServerAccountIdentity } from "@/lib/server-account-session";
 
 type AccountPatchPayload = {
   email?: string;
@@ -23,32 +23,25 @@ function formatName(value: unknown) {
 }
 
 export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const email = normalizeEmail(url.searchParams.get("email"));
+  const identity = await getServerAccountIdentity(request, { allowLegacyCookie: false });
+  if (!identity) return NextResponse.json({ error: "Sign in to view this account." }, { status: 401 });
 
-  if (!isValidEmail(email)) {
-    return NextResponse.json({ error: "A valid email is required." }, { status: 400 });
-  }
-
-  const summary = await getAccountSummary(email);
+  const summary = await getAccountSummary(identity.email);
   return NextResponse.json({ ok: true, ...summary });
 }
 
 export async function POST(request: Request) {
-  const payload = (await request.json().catch(() => null)) as { email?: string } | null;
-  const email = normalizeEmail(payload?.email);
+  const identity = await getServerAccountIdentity(request, { allowLegacyCookie: false });
+  if (!identity) return NextResponse.json({ error: "Sign in to view this account." }, { status: 401 });
 
-  if (!isValidEmail(email)) {
-    return NextResponse.json({ error: "A valid email is required." }, { status: 400 });
-  }
-
-  const profile = await getProfile(email);
+  const profile = await getProfileForIdentity(identity);
   return NextResponse.json({ ok: true, profile });
 }
 
 export async function PATCH(request: Request) {
+  const identity = await getServerAccountIdentity(request, { allowLegacyCookie: false });
+  if (!identity) return NextResponse.json({ error: "Sign in to update this account." }, { status: 401 });
   const payload = (await request.json().catch(() => null)) as AccountPatchPayload | null;
-  const email = normalizeEmail(payload?.email);
   const firstName = formatName(payload?.firstName);
   const lastName = formatName(payload?.lastName);
   const phone = clean(payload?.phone);
@@ -56,16 +49,12 @@ export async function PATCH(request: Request) {
   const addressLine2 = clean(payload?.addressLine2);
   const address = [addressLine1, addressLine2].filter(Boolean).join("\n") || clean(payload?.address);
 
-  if (!isValidEmail(email)) {
-    return NextResponse.json({ error: "A valid account email is required." }, { status: 400 });
-  }
-
   if (!firstName || !lastName || !phone) {
     return NextResponse.json({ error: "First name, last name, and phone number are required." }, { status: 400 });
   }
 
   const account = await updateAccountRecord({
-    email,
+    identity,
     firstName,
     lastName,
     phone,

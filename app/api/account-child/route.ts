@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isValidEmail, normalizeEmail } from "@/lib/prototype-auth";
+import { getServerAccountIdentity } from "@/lib/server-account-session";
 import { supabaseRequest } from "@/lib/supabase-server";
 
 type DeletePayload = {
@@ -8,11 +8,13 @@ type DeletePayload = {
 };
 
 export async function DELETE(request: Request) {
+  const identity = await getServerAccountIdentity(request, { allowLegacyCookie: false });
+  if (!identity) return NextResponse.json({ error: "Sign in to update this account." }, { status: 401 });
   const payload = (await request.json().catch(() => null)) as DeletePayload | null;
-  const email = normalizeEmail(payload?.email);
+  const email = identity.email;
   const childId = Number(payload?.childId);
 
-  if (!isValidEmail(email) || !Number.isInteger(childId) || childId <= 0) {
+  if (!Number.isInteger(childId) || childId <= 0) {
     return NextResponse.json({ error: "Choose a valid child to delete." }, { status: 400 });
   }
 
