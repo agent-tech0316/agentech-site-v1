@@ -3194,7 +3194,9 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
         throw new Error(`${payload.error ?? "Software Check failed."}${findings}`);
       }
       setIsInternalCompanyAccount(payload.internalAccount === true);
-      const creditMessage = payload.internalAccount
+      const creditMessage = payload.softwareReviewBypassed
+        ? "Paid AI review exempted for this test account. No AI review was performed and no review credits were charged."
+        : payload.internalAccount
         ? payload.creditsCharged > 0
           ? `${payload.creditsCharged} company account credit${payload.creditsCharged === 1 ? "" : "s"} used; internal access remains available for testing.`
           : "No company credits were available, so the internal test continued without a charge."

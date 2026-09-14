@@ -19,7 +19,7 @@ import { normalizeAgentechRobotModel } from "@/lib/agentech-robot-model";
 import { validateAgentechCode } from "@/lib/agentech-validation";
 import { getSoftwareCheckCreditPolicy, isAgentechCompanyEmail } from "@/lib/company-accounts";
 import { hasMasterLiveTestAccess } from "@/lib/master-live-test-access";
-import { isValidAccountIdentifier } from "@/lib/prototype-auth";
+import { hasPaidSoftwareReviewExemption, isValidAccountIdentifier } from "@/lib/prototype-auth";
 import { getReturnToHomeAccess, RETURN_TO_HOME_FEATURE_CODE } from "@/lib/premium-features";
 import { getServerAccountEmail } from "@/lib/server-account-session";
 
@@ -33,14 +33,6 @@ type SubmissionPayload = {
   reviewStage?: string;
   submissionId?: string;
 };
-
-const softwareReviewTestBypassEmails = new Set([
-  "victoria_c@agent-tech.ai"
-]);
-
-function shouldBypassPaidSoftwareReview(email: string) {
-  return softwareReviewTestBypassEmails.has(email.trim().toLowerCase());
-}
 
 function cleanText(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim() : fallback;
@@ -175,7 +167,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       internalAccount,
-      creditsRequired: internalAccount ? 0 : getAiReviewCreditCost(),
+      creditsRequired: internalAccount || hasPaidSoftwareReviewExemption(email) ? 0 : getAiReviewCreditCost(),
+      softwareReviewExempt: hasPaidSoftwareReviewExemption(email),
       creditCost: getAiReviewCreditCost(),
       masterLiveTestAccess: hasMasterLiveTestAccess(email),
       latestSubmission: submission
@@ -489,7 +482,7 @@ export async function POST(request: NextRequest) {
       creditsCharged: 0
     };
 
-    const bypassPaidSoftwareReview = shouldBypassPaidSoftwareReview(email);
+    const bypassPaidSoftwareReview = hasPaidSoftwareReviewExemption(email);
     const creditCost = getAiReviewCreditCost();
     if (!bypassPaidSoftwareReview) {
       const spendPreview = allocateCreditSpend(account, creditCost);
@@ -524,14 +517,14 @@ export async function POST(request: NextRequest) {
 
     if (bypassPaidSoftwareReview) {
       const reviewedAt = new Date().toISOString();
-      const summary = "Internal test-account bypass: marked passed without running the paid AI software review.";
+      const summary = "Test-account exemption: live-test approval granted after hardware validation. Paid AI software review was not performed; AI risk was not assessed.";
       await updateCodeSubmissionRecord(submission.id, {
         ai_security_status: "passed",
         ai_security_model: "internal-test-bypass",
         ai_security_summary: summary,
         ai_security_findings: [],
-        ai_security_risk_level: "low",
-        ai_security_reviewed_at: reviewedAt,
+        ai_security_risk_level: null,
+        ai_security_reviewed_at: null,
         credits_charged: 0
       });
       await markDeveloperReviewGateOnAccount({
@@ -545,8 +538,9 @@ export async function POST(request: NextRequest) {
         aiSecurityModel: "internal-test-bypass",
         aiSecuritySummary: summary,
         aiSecurityFindings: [],
-        aiSecurityRiskLevel: "low",
-        aiSecurityReviewedAt: reviewedAt,
+        aiSecurityRiskLevel: null,
+        aiSecurityReviewedAt: null,
+        softwareReviewExemptedAt: reviewedAt,
         creditsCharged: 0,
         softwareReviewBypassed: true
       });
@@ -559,7 +553,7 @@ export async function POST(request: NextRequest) {
         uploadedFileName: record.uploadedFileName,
         physicalSafetyStatus: "passed",
         aiSecurityStatus: "passed",
-        riskLevel: "low",
+        riskLevel: null,
         summary,
         findings: [],
         creditsCharged: 0,

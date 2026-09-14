@@ -36,6 +36,11 @@ export function isTestAccountUsername(value: string) {
   return /^skyrockettest00[1-8]$/.test(value);
 }
 
+export function hasPaidSoftwareReviewExemption(value: string) {
+  const identifier = normalizeEmail(value);
+  return identifier === "victoria_c@agent-tech.ai" || isTestAccountUsername(identifier);
+}
+
 export function isValidAccountIdentifier(value: string) {
   return isValidEmail(value) || isTestAccountUsername(value);
 }
