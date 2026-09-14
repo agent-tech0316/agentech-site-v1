@@ -638,7 +638,7 @@ function buildHardwareChecklist(status: "PASS" | "WARNING" | "FAIL", failureReas
     {
       name: "SDK-only usage check",
       status: blocked ? "FAIL" : "PASS",
-      detail: !blocked ? "Uploaded code uses the documented Agentech SDK interface." : failDetail
+      detail: !blocked ? "Submitted code uses the documented Agentech SDK interface." : failDetail
     },
     {
       name: "Logic safety check",
@@ -663,7 +663,7 @@ function buildHardwareChecklist(status: "PASS" | "WARNING" | "FAIL", failureReas
     {
       name: "Real robot translation check",
       status: blocked ? "FAIL" : "PASS",
-      detail: !blocked ? "Uploaded code can be treated as a real-robot command package without exposing translated code." : "Translation stays blocked until the uploaded code passes validation."
+      detail: !blocked ? "Submitted code can be treated as a real-robot command package without exposing translated code." : "Translation stays blocked until the submitted code passes validation."
     },
     {
       name: robotModel === "Navi" ? "Navi SDK compatibility check" : "MuJoCo simulation check",
@@ -2212,7 +2212,7 @@ function HardwareResultPanel({ result }: { result: HardwareResult }) {
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#1a73e8]">{isNavi ? "Navi SDK Hardware Preview" : "MuJoCo Simulation Video"}</p>
             <p className="mt-2 text-sm leading-6 text-[#334155]">
               {isNavi
-                ? "The app validates the uploaded commands against the latest reviewed Navi SDK. Navi execution uses the exact SDK calls after scheduling."
+                ? "The app validates the submitted commands against the latest reviewed Navi SDK. Navi execution uses the exact SDK calls after scheduling."
                 : "The app reads the uploaded Agentech commands and shows what the code does on the selected robot."}
             </p>
             {passed && activeClip ? (
@@ -2279,7 +2279,7 @@ function HardwareResultPanel({ result }: { result: HardwareResult }) {
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#1a73e8]">Code Validation</p>
               <div className="mt-4 divide-y divide-[#dce7f2] border border-[#dce7f2] text-sm">
                 <div className="grid grid-cols-[100px_minmax(0,1fr)] sm:grid-cols-[120px_minmax(0,1fr)]">
-                  <div className="bg-[#f8fbff] px-3 py-3 font-semibold text-[#526174]">Uploaded</div>
+                  <div className="bg-[#f8fbff] px-3 py-3 font-semibold text-[#526174]">Source</div>
                   <div className="min-w-0 break-words px-3 py-3 text-[#07142e] [overflow-wrap:anywhere]">{result.fileName}</div>
                 </div>
                 <div className="grid grid-cols-[100px_minmax(0,1fr)] sm:grid-cols-[120px_minmax(0,1fr)]">
@@ -3001,7 +3001,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
     }
     const reviewPlan = commandPlan(reviewCode, robotModel);
     if (!reviewCode.trim() || !reviewPlan.trace.length) {
-      const message = "Type or paste code containing at least one supported Agentech command, or upload a .py file.";
+      const message = "Add at least one supported Agentech command in the editor before running the check.";
       setPhysicalSubmissionId("");
       setPhysicalSafetyPassed(false);
       setSoftwareReviewStatus("locked");
@@ -3327,6 +3327,8 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                 </p>
               </div>
               <textarea
+                aria-invalid={Boolean(reviewInputError)}
+                aria-describedby={reviewInputError ? "code-editor-error" : undefined}
                 aria-label={masterLiveTestSelected ? "Master view-only test text" : "Python code submission editor"}
                 placeholder={masterLiveTestSelected ? "Type any view-only test text here..." : "Type or paste your Agentech Python code here..."}
                 value={code}
@@ -3335,6 +3337,11 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                 spellCheck={false}
                 className="min-h-[520px] w-full flex-1 resize-none border-0 bg-[#fdfcf9] p-5 font-mono text-sm leading-7 text-[#303134] outline-none selection:bg-[#d8e8fd] disabled:cursor-not-allowed disabled:bg-[#efede8] disabled:text-[#5f6368] lg:min-h-[760px]"
               />
+              {reviewInputError ? (
+                <div id="code-editor-error" data-code-review-alert="true" role="alert" className="border-t border-[#c93434] bg-[#fff1f1] px-5 py-3 text-xs leading-5 text-[#a51f1f]">
+                  {reviewInputError}
+                </div>
+              ) : null}
             </div>
             <div className="rounded-[22px] border border-black/8 bg-white/70 p-5 shadow-[0_28px_80px_rgba(17,17,17,0.08)]">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1a73e8]">{focusedReviewStep}</p>
@@ -3380,7 +3387,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                 ) : null}
                 <label
                   data-code-upload-zone="true"
-                  data-code-upload-state={isDraggingCodeFile ? "dragging" : reviewInputError ? "error" : "idle"}
+                  data-code-upload-state={isDraggingCodeFile ? "dragging" : "idle"}
                   onDragEnter={(event) => {
                     event.preventDefault();
                     setIsDraggingCodeFile(true);
@@ -3399,12 +3406,10 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                   className={`block rounded-[14px] border border-dashed p-3 transition ${
                     isDraggingCodeFile
                       ? "border-[#008a7a] bg-[#e8f7f3]"
-                      : reviewInputError
-                        ? "border-[#c93434] bg-[#fff8f8]"
-                        : "border-black/10 bg-[#faf9f6] hover:border-[#1a73e8]"
+                      : "border-black/10 bg-[#faf9f6] hover:border-[#1a73e8]"
                   }`}
                 >
-                  <span data-code-upload-label="true" className="text-xs uppercase tracking-[0.14em] text-[#5f6368]">Upload code file</span>
+                  <span data-code-upload-label="true" className="text-xs uppercase tracking-[0.14em] text-[#5f6368]">Upload code file (optional)</span>
                   <span data-code-upload-primary="true" className="mt-2 block text-sm font-semibold text-[#111111]">
                     {isDraggingCodeFile ? "Drop the file here" : "Drag a .py or .txt file here, or choose a file"}
                   </span>
@@ -3420,14 +3425,9 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                     className="mt-3 w-full rounded-[10px] border border-black/10 bg-white px-3 py-2 text-sm text-[#303134] outline-none file:mr-3 file:rounded-full file:border-0 file:bg-[#eaf2fd] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-[#1a73e8] focus:border-[#1a73e8]"
                   />
                   <span data-code-upload-helper="true" className="mt-2 block text-xs leading-5 text-[#526174]">
-                    {uploadedFileName ? `${uploadedFileName} loaded into the editor.` : "Upload a .py file or paste code directly into the editor."}
+                    {uploadedFileName ? `${uploadedFileName} loaded into the editor.` : "Already typed code on the left? Run Hardware Safety below. No file needed."}
                   </span>
                 </label>
-                {reviewInputError ? (
-                  <div data-code-review-alert="true" role="alert" className="rounded-[12px] border border-[#c93434] bg-[#fff1f1] px-3 py-2 text-xs leading-5 text-[#a51f1f]">
-                    {reviewInputError}
-                  </div>
-                ) : null}
                 <div className={`rounded-[14px] border p-3 ${step3PanelClass}`}>
                   <div className="flex items-start justify-between gap-3">
                     <p className="text-xs uppercase tracking-[0.14em] text-[#526174]">{masterLiveTestSelected ? "Stage 1 - View-Only Access" : "Stage 1 - Hardware Safety"}</p>
@@ -3473,8 +3473,8 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                       <p className="mt-1 text-xs leading-5 text-[#526174]">
                         {masterLiveTestSelected
                           ? "This text is saved for the view-only test audit and is not executable."
-                          : approvedCodeFile.editedOnWebsite
-                          ? "This is the version edited in the website editor and passed Step 3."
+                          : approvedCodeFile.source === "editor" || approvedCodeFile.editedOnWebsite
+                          ? "This code from the website editor passed Step 3. No file upload was needed."
                           : "This is the exact uploaded version that passed Step 3."}
                       </p>
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">

@@ -88,12 +88,14 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
   const [captureHistory, setCaptureHistory] = useState<DisplayCapture[]>([]);
   const [hasActiveSession, setHasActiveSession] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const [teachingViewer, setTeachingViewer] = useState(false);
   const [activeRobotModel, setActiveRobotModel] = useState<LiveRobotModel | null>(null);
   const [localMasterPreview, setLocalMasterPreview] = useState(false);
   const [masterSelection, setMasterSelection] = useState<MasterViewSelection>({ mode: "wall" });
   const [masterTracksByName, setMasterTracksByName] = useState<Map<string, RemoteVideoTrack>>(new Map());
   const localCaptureIdRef = useRef("");
-  const manuallyStoppedSessionIdRef = useRef<number | null>(null);
+  const manuallyStoppedSessionIdRef = useRef<number | "teaching-viewer" | null>(null);
+  const viewingKey = activeSessionId ?? (teachingViewer ? "teaching-viewer" : null);
   const isNaviSession = hasActiveSession && activeRobotModel === "Navi";
   const showLiveCapturePreview = hasActiveSession && activeRobotModel === "Aegies";
   const masterPreview = process.env.NODE_ENV === "development"
@@ -195,6 +197,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
         const response = await fetch("/api/agentech-live-session", { cache: "no-store" });
         const payload = (await response.json()) as {
           active?: boolean;
+          teachingViewer?: boolean;
           session?: { id?: number; robotModel?: string } | null;
         };
         if (!active) return;
@@ -204,7 +207,8 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
           && payload.active === true
           && Number.isInteger(sessionId)
           && Boolean(model);
-        setHasActiveSession(sessionIsActive);
+        setTeachingViewer(response.ok && payload.teachingViewer === true);
+        setHasActiveSession(sessionIsActive || (response.ok && payload.teachingViewer === true));
         setActiveSessionId(sessionIsActive ? sessionId : null);
         setActiveRobotModel(sessionIsActive ? model : null);
       } catch {
@@ -223,7 +227,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
 
   useEffect(() => {
     if (!livekitUrl) return;
-    if (!hasActiveSession || activeSessionId === null) {
+    if (!hasActiveSession || viewingKey === null) {
       manuallyStoppedSessionIdRef.current = null;
       if (isViewing) {
         setIsViewing(false);
@@ -231,14 +235,14 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
       }
       return;
     }
-    if (isViewing || manuallyStoppedSessionIdRef.current === activeSessionId) return;
+    if (isViewing || manuallyStoppedSessionIdRef.current === viewingKey) return;
 
     const timer = window.setTimeout(() => {
-      setStatus("Scheduled session is active. Connecting automatically...");
+      setStatus(teachingViewer ? "Teaching account viewer access enabled. Connecting..." : "Scheduled session is active. Connecting automatically...");
       setIsViewing(true);
     }, 3000);
     return () => window.clearTimeout(timer);
-  }, [activeSessionId, hasActiveSession, isViewing]);
+  }, [viewingKey, teachingViewer, hasActiveSession, isViewing]);
 
   useEffect(() => {
     if (!livekitUrl || !isViewing) {
@@ -472,7 +476,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
   }
 
   function stopViewing() {
-    manuallyStoppedSessionIdRef.current = activeSessionId;
+    manuallyStoppedSessionIdRef.current = viewingKey;
     setIsViewing(false);
     setStatus("Live view stopped.");
   }

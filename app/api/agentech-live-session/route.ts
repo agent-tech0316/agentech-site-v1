@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActiveRobotViewingSession } from "@/lib/agentech-live-session";
-import { isValidAccountIdentifier } from "@/lib/prototype-auth";
+import { isTestAccountUsername, isValidAccountIdentifier } from "@/lib/prototype-auth";
 import { getServerAccountEmail } from "@/lib/server-account-session";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
   const session = await getActiveRobotViewingSession(email);
   if (!session) {
-    return NextResponse.json({ active: false, session: null });
+    return NextResponse.json({ active: false, session: null, teachingViewer: isTestAccountUsername(email) });
   }
 
   return NextResponse.json({

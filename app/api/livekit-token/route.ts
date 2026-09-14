@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAccountRecord } from "@/lib/account-records";
 import { getActiveRobotViewingSession } from "@/lib/agentech-live-session";
 import { isAgentechCompanyEmail } from "@/lib/company-accounts";
-import { isValidAccountIdentifier } from "@/lib/prototype-auth";
+import { isTestAccountUsername, isValidAccountIdentifier } from "@/lib/prototype-auth";
 import { getServerAccountEmail } from "@/lib/server-account-session";
 
 export const dynamic = "force-dynamic";
@@ -28,12 +28,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Account not found." }, { status: 404 });
   }
 
-  if (!isAgentechCompanyEmail(email) && Number(account.credit_balance ?? 0) <= 0) {
+  const teachingViewer = isTestAccountUsername(email);
+  if (!teachingViewer && !isAgentechCompanyEmail(email) && Number(account.credit_balance ?? 0) <= 0) {
     return NextResponse.json({ error: "Live robot viewing requires account credits." }, { status: 402 });
   }
 
   const activeSession = await getActiveRobotViewingSession(email);
-  if (!activeSession) {
+  if (!activeSession && !teachingViewer) {
     return NextResponse.json(
       { error: "Schedule a robot viewing time before opening the live camera." },
       { status: 403 }
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url);
-  const roomName = searchParams.get("room") || defaultRoomName;
+  const roomName = teachingViewer ? defaultRoomName : searchParams.get("room") || defaultRoomName;
   const viewerId = `website-viewer-${email.replace(/[^a-z0-9_-]/gi, "-")}-${crypto.randomUUID()}`;
 
   const token = new AccessToken(apiKey, apiSecret, {
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     token: await token.toJwt(),
     roomName,
-    sessionId: activeSession.id,
-    robotModel: activeSession.robotModel
+    sessionId: activeSession?.id ?? null,
+    robotModel: activeSession?.robotModel ?? null
   });
 }

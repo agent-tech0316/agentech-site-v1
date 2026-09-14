@@ -223,7 +223,7 @@ export async function POST(request: NextRequest) {
     if (!code || !commands.length) {
       return NextResponse.json(
         {
-          error: "Upload a .py file or paste code containing at least one Agentech command before running the check.",
+          error: "Add at least one supported Agentech command in the editor before running the check.",
           errorCode: "CODE_REQUIRED"
         },
         { status: 400 }

@@ -72,6 +72,59 @@ test('paid AI review exemption is restricted to Victoria and exactly eight teach
  for(const id of ['skyrockettest000','skyrockettest009','skyrockettest01','info@agent-tech.ai','student@example.com'])assert.equal(authPolicy.hasPaidSoftwareReviewExemption(id),false);
 });
 const codeSubmit=await import('../app/api/agentech-code-submit/route.ts');
+
+test('missing commands asks for editor code without asking for an upload',async()=>{
+ const res=await codeSubmit.POST(new NextRequest('https://site.invalid/api/agentech-code-submit',{method:'POST',headers:{authorization:`Bearer ${createSignedAccountSession('skyrockettest001')}`,'Content-Type':'application/json'},body:JSON.stringify({code:'from agentech import Agentech',robotModel:'Navi',reviewStage:'physical'})}));
+ assert.equal(res.status,400);
+ const body=await res.json();
+ assert.equal(body.errorCode,'CODE_REQUIRED');
+ assert.doesNotMatch(body.error,/upload/i);
+ assert.match(body.error,/editor/i);
+});
+
+test('typed code passes the physical submission route with no uploaded file',async t=>{
+ const {mkdtemp,readdir,unlink,rmdir}=await import('node:fs/promises');
+ const {tmpdir}=await import('node:os');
+ const {join}=await import('node:path');
+ const dir=await mkdtemp(join(tmpdir(),'agentech-editor-test-'));
+ process.env.AGENTECH_SUBMISSION_DIR=dir;
+ process.env.NODE_ENV='production';
+ t.after(async()=>{delete process.env.AGENTECH_SUBMISSION_DIR;for(const file of await readdir(dir))await unlink(join(dir,file));await rmdir(dir);});
+ const writes=[];
+ t.mock.method(globalThis,'fetch',async(url,init)=>{
+  assert.equal(new URL(url).hostname,'teaching-test.invalid');
+  if(init.method!=='GET')writes.push(JSON.parse(init.body));
+  return Response.json(new URL(url).pathname.endsWith('/agentech_accounts')?[{email:'skyrockettest001',credit_balance:100}]:[]);
+ });
+ const code='from agentech import Agentech\nAgentech.stop()';
+ const res=await codeSubmit.POST(new NextRequest('https://site.invalid/api/agentech-code-submit',{method:'POST',headers:{authorization:`Bearer ${createSignedAccountSession('skyrockettest001')}`,'Content-Type':'application/json'},body:JSON.stringify({code,robotModel:'Navi',reviewStage:'physical'})}));
+ const body=await res.json();
+ assert.equal(res.status,200,JSON.stringify(body));
+ assert.equal(body.source,'pasted_code');
+ assert.equal(body.uploadedFileName,null);
+ assert.ok(writes.some(w=>w.code===code && w.source==='pasted_code'));
+});
+
+for(let i=1;i<=8;i++) test(`teaching viewer ${i} watches without a reservation or credits`,async t=>{
+ const email=`skyrockettest${String(i).padStart(3,'0')}`;
+ t.mock.method(globalThis,'fetch',async(url,init)=>{
+  assert.equal(init.method,'GET');
+  return Response.json(new URL(url).pathname.endsWith('/agentech_accounts')?[{email,credit_balance:0}]:[]);
+ });
+ for(const [name,route] of routes.filter(([name])=>name!=='account/code-submissions')){
+  const res=await route.GET(new NextRequest(`https://site.invalid/api/${name}`,{headers:{authorization:`Bearer ${createSignedAccountSession(email)}`}}));
+  const body=await res.json();
+  assert.equal(res.status,200,JSON.stringify(body));
+  if(name==='agentech-live-session') {assert.equal(body.teachingViewer,true);assert.equal(body.session,null);}
+  else {const jwt=JSON.parse(Buffer.from(body.token.split('.')[1],'base64url'));assert.equal(jwt.video.canPublish,false);assert.equal(jwt.video.canPublishData,false);assert.equal(jwt.video.canSubscribe,true);assert.equal(body.sessionId,null);}
+ }
+});
+test('ordinary accounts still require a reservation to view the stream',async t=>{
+ t.mock.method(globalThis,'fetch',async url=>Response.json(new URL(url).pathname.endsWith('/agentech_accounts')?[{email:'student@example.com',credit_balance:100}]:[]));
+ const route=routes.find(([name])=>name==='livekit-token')[1];
+ const res=await route.GET(new NextRequest('https://site.invalid/api/livekit-token',{headers:{authorization:`Bearer ${createSignedAccountSession('student@example.com')}`}}));
+ assert.equal(res.status,403);
+});
 test('teaching exemption approves only hardware-passed code without AI calls or fabricated risk',async t=>{
  const {mkdtemp,unlink,rmdir}=await import('node:fs/promises');
  const {tmpdir}=await import('node:os');
