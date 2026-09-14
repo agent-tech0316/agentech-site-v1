@@ -396,7 +396,9 @@ export function UniversalAuthForm() {
             <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1f2937]">Email</span>
             <input
               data-login-input
-              type="email"
+              type="text"
+              autoComplete="username"
+              autoCapitalize="none"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               className="mt-2 w-full rounded-xl border border-[#cbd5e1] bg-white px-4 py-3 text-sm text-[#0b1220] outline-none focus:border-[#0b1220] focus:ring-4 focus:ring-[#dbe4ef]"

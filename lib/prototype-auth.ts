@@ -31,6 +31,15 @@ export function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+// Only these eight pre-provisioned accounts may use a bare username.
+export function isTestAccountUsername(value: string) {
+  return /^skyrockettest00[1-8]$/.test(value);
+}
+
+export function isValidAccountIdentifier(value: string) {
+  return isValidEmail(value) || isTestAccountUsername(value);
+}
+
 export function isInternalAccountEmail(email: unknown) {
   return isAgentechCompanyEmail(typeof email === "string" ? email : "");
 }

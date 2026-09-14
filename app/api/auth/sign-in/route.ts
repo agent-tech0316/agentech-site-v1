@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createAccount, createPasswordHash, findAccount, isValidEmail, normalizeEmail, verifyPassword } from "@/lib/prototype-auth";
+import { createAccount, createPasswordHash, findAccount, isValidAccountIdentifier, isTestAccountUsername, normalizeEmail, verifyPassword } from "@/lib/prototype-auth";
 import { setSignedAccountSessionCookie } from "@/lib/server-account-session";
 import { ensureSupabaseAuthUser, verifySupabasePassword } from "@/lib/supabase-auth-admin";
 
@@ -8,13 +8,21 @@ export async function POST(request: Request) {
   const email = normalizeEmail(payload?.email);
   const password = typeof payload?.password === "string" ? payload.password : "";
 
-  if (!isValidEmail(email) || !password) {
+  if (!isValidAccountIdentifier(email) || !password) {
     return NextResponse.json({ error: "Enter your email and password." }, { status: 400 });
   }
 
   let step = "account lookup";
   try {
     const account = await findAccount(email);
+    if (isTestAccountUsername(email)) {
+      if (!account || !verifyPassword(password, account)) {
+        return NextResponse.json({ error: "Username or password is incorrect." }, { status: 401 });
+      }
+      const response = NextResponse.json({ ok: true, email, authProvider: "account" });
+      setSignedAccountSessionCookie(response, email);
+      return response;
+    }
     step = "password verification";
     const supabasePasswordValid = await verifySupabasePassword(email, password);
     const legacyPasswordValid = Boolean(account && verifyPassword(password, account));

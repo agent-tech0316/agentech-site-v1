@@ -186,3 +186,33 @@ test("password verification passes an abort signal so upstream timeouts fail clo
   });
   await assert.rejects(verifySupabasePassword(email, password), { name: "TimeoutError" });
 });
+
+for (let i = 1; i <= 8; i++) {
+  const username = `skyrockettest${String(i).padStart(3, "0")}`;
+  test(`only provisioned ${username} can sign in without email`, async (t) => {
+    t.mock.method(globalThis, "fetch", async (url) => {
+      assert.equal(new URL(url).pathname, "/rest/v1/agentech_accounts");
+      return Response.json([{ ...account, email: username, password_hash: scryptSync(username, salt, 64).toString("hex") }]);
+    });
+    const response = await POST(request({ email: username, password: username }));
+    assert.equal(response.status, 200);
+    const { verifySignedAccountSession } = await import("../lib/server-account-session.ts");
+    const token = response.cookies.get("agentech_account_session").value;
+    assert.equal(verifySignedAccountSession(token), username);
+    const denied = await POST(request({ email: username, password: "wrong-password" }));
+    assert.equal(denied.status, 401);
+    assert.equal(denied.headers.get("set-cookie"), null);
+  });
+}
+for (const username of ["skyrockettest000", "skyrockettest009", "skyrockettest01", "skyrocket", "otheruser"]) {
+  test(`rejects unapproved username ${username}`, async () => {
+    assert.equal((await POST(request({ email: username, password }))).status, 400);
+  });
+}
+test("missing test account cannot sign in or auto-provision", async (t) => {
+  t.mock.method(globalThis, "fetch", async (_url, init) => {
+    assert.equal(init.method, "GET");
+    return Response.json([]);
+  });
+  assert.equal((await POST(request({ email: "skyrockettest001", password: "skyrockettest001" }))).status, 401);
+});

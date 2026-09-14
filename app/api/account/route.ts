@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAccountSummary, getProfile, updateAccountRecord } from "@/lib/account-records";
-import { isValidEmail, normalizeEmail } from "@/lib/prototype-auth";
+import { isValidAccountIdentifier, normalizeEmail } from "@/lib/prototype-auth";
 
 type AccountPatchPayload = {
   email?: string;
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const email = normalizeEmail(url.searchParams.get("email"));
 
-  if (!isValidEmail(email)) {
+  if (!isValidAccountIdentifier(email)) {
     return NextResponse.json({ error: "A valid email is required." }, { status: 400 });
   }
 
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   const payload = (await request.json().catch(() => null)) as { email?: string } | null;
   const email = normalizeEmail(payload?.email);
 
-  if (!isValidEmail(email)) {
+  if (!isValidAccountIdentifier(email)) {
     return NextResponse.json({ error: "A valid email is required." }, { status: 400 });
   }
 
@@ -56,7 +56,7 @@ export async function PATCH(request: Request) {
   const addressLine2 = clean(payload?.addressLine2);
   const address = [addressLine1, addressLine2].filter(Boolean).join("\n") || clean(payload?.address);
 
-  if (!isValidEmail(email)) {
+  if (!isValidAccountIdentifier(email)) {
     return NextResponse.json({ error: "A valid account email is required." }, { status: 400 });
   }
 

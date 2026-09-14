@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { accountSessionCookieName } from "@/lib/account-session";
-import { isValidEmail, normalizeEmail } from "@/lib/prototype-auth";
+import { isValidAccountIdentifier, isValidEmail, normalizeEmail } from "@/lib/prototype-auth";
 
 export const signedAccountSessionCookieName = "agentech_account_session";
 
@@ -30,7 +30,7 @@ function signPayload(payload: string) {
 
 export function createSignedAccountSession(email: string, maxAgeSeconds = sessionMaxAgeSeconds) {
   const normalizedEmail = normalizeEmail(email);
-  if (!isValidEmail(normalizedEmail)) {
+  if (!isValidAccountIdentifier(normalizedEmail)) {
     throw new Error("Cannot create a signed session for an invalid email.");
   }
 
@@ -59,7 +59,7 @@ export function verifySignedAccountSession(value: unknown) {
   try {
     const parsed = JSON.parse(base64UrlDecode(payload)) as { email?: unknown; expiresAt?: unknown };
     const email = normalizeEmail(parsed.email);
-    if (!isValidEmail(email) || typeof parsed.expiresAt !== "number" || Date.now() > parsed.expiresAt) {
+    if (!isValidAccountIdentifier(email) || typeof parsed.expiresAt !== "number" || Date.now() > parsed.expiresAt) {
       return "";
     }
     return email;
