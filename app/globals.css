@@ -867,6 +867,10 @@ select {
   color: #7cc4ff !important;
 }
 
+:root[data-theme="dark"] .eaic-task-theme [data-sdk-profile-placeholder="true"] {
+  color: #c4b5fd !important;
+}
+
 :root[data-theme="dark"] .eaic-task-theme [class*="border-black/8"],
 :root[data-theme="dark"] .eaic-task-theme [class*="border-black/10"],
 :root[data-theme="dark"] .eaic-task-theme [class*="border-[#dce7f2]"],

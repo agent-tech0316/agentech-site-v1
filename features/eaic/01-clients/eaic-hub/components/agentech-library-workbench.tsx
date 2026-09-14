@@ -2,13 +2,18 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { aegisFunctions, aegisStarterCode, type AgentechFunction } from "@/features/eaic/02-unified-api/projects-validation/aegis-sdk-reference";
 import { naviFunctions, naviSafetyLimits, naviStarterCode } from "@/features/eaic/02-unified-api/projects-validation/navi-sdk-reference";
-import { masterFunctions, masterReferenceCategories, masterSafetyLimits, masterStarterCode } from "@/features/eaic/02-unified-api/projects-validation/master-sdk-reference";
+import { masterReferenceCategories, masterSafetyLimits } from "@/features/eaic/02-unified-api/projects-validation/master-sdk-reference";
 import { masterSimulationPreviews, resolveMasterSimulationVariant } from "@/lib/master-simulation-previews";
 import { agentechLibraryTasks, getAgentechLibraryTask, type AgentechLibraryTaskSlug } from "@/features/eaic/01-clients/eaic-hub/contracts/agentech-library-tasks";
 import { eaicHubPath, getEaicHubTaskPath } from "@/features/eaic/01-clients/eaic-hub/contracts/eaic-hub";
+import {
+  masterDocumentationFunctions,
+  masterDocumentationStarterCode,
+  masterJointGroupStarts
+} from "@/features/eaic/01-clients/eaic-hub/contracts/master-sdk-documentation";
 import { evaluateAgentechMovementSafety, type AgentechMovementSafety } from "@/lib/agentech-motion-safety";
 import { normalizeAgentechRobotModel, robotModelOptions, type AgentechRobotModel } from "@/features/eaic/02-unified-api/resources-runs/agentech-robot-model";
 import { LiveRobotCamera } from "@/features/eaic/05-delivery/live-results/components/live-robot-camera";
@@ -138,11 +143,11 @@ function PremiumFeaturePanel({ item }: { item: AgentechFunction }) {
     <div className="mt-3 border border-[#7c5ce7] bg-[#f5f1ff] p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#5b35c8]">Premium function</p>
+          <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[#5b35c8]">Premium function</p>
           <p className="mt-1 text-xs leading-5 text-[#3c2875]">
             Included with an active monthly subscription. Non-subscribers can purchase a lifetime unlock for this function only.
           </p>
-          <p className="mt-2 text-xs font-semibold text-[#3c2875]">
+          <p className="mt-2 text-xs font-medium text-[#3c2875]">
             {status?.access?.allowed
               ? status.access.source === "subscription"
                 ? "Unlocked by monthly subscription"
@@ -157,7 +162,7 @@ function PremiumFeaturePanel({ item }: { item: AgentechFunction }) {
             type="button"
             disabled={busy || status?.priceCents == null}
             onClick={purchase}
-            className="border border-[#5b35c8] bg-[#5b35c8] px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="border border-[#5b35c8] bg-[#5b35c8] px-3 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? "Opening checkout…" : price ? `Unlock for ${price}` : "Price coming soon"}
           </button>
@@ -191,6 +196,32 @@ const localPreviewAssets: Record<string, string> = {
 };
 const commandsWithoutReferencePreview = new Set(["stay", "squat_forward", "squat_backward", "squat_lateral", "squat_diagonal", "squat_turn", "get_battery_status", "get_body_state", "capture_image"]);
 type SdkRobot = "aegis" | "navi" | "master";
+
+const masterPresentationOrder = new Map<AgentechFunction["category"], number>([
+  ["Joint Adjustments", 0],
+  ["Sensing", 1],
+  ["Actions", 2]
+]);
+const masterPresentationCategories = [...masterReferenceCategories].sort(
+  (left, right) => (masterPresentationOrder.get(left) ?? Number.MAX_SAFE_INTEGER) - (masterPresentationOrder.get(right) ?? Number.MAX_SAFE_INTEGER)
+);
+const masterPresentationTitles: Partial<Record<AgentechFunction["category"], string>> = {
+  Sensing: "Posture Commands",
+  "Joint Adjustments": "Joint Adjustment Commands",
+  Actions: "Action Commands"
+};
+
+function sdkCategorySummaryLabel(category: AgentechFunction["category"], selectedRobot: SdkRobot) {
+  return selectedRobot === "master" ? masterPresentationTitles[category] ?? category : category;
+}
+
+function sdkCategoryHeading(category: AgentechFunction["category"], selectedRobot: SdkRobot) {
+  if (selectedRobot === "master" && masterPresentationTitles[category]) {
+    return masterPresentationTitles[category];
+  }
+
+  return `${category === "Actions" ? "Action" : category === "Joint Adjustments" ? "Joint Adjustment" : category} Commands`;
+}
 
 function shouldHideReferencePreview(item: AgentechFunction, selectedRobot: SdkRobot) {
   const hasMasterPreview = selectedRobot === "master" && Boolean(masterSimulationPreviews[item.name]);
@@ -394,7 +425,7 @@ function previewDirection(args: string) {
 function profileSyntaxWithPlaceholders(syntax: string) {
   return syntax.split(/(\bx\b|[-+]?(?:\d+(?:\.\d*)?|\.\d+))/g).map((part, index) =>
     /^(?:x|[-+]?(?:\d+(?:\.\d*)?|\.\d+))$/.test(part)
-      ? <span key={`${part}-${index}`} className="font-normal text-[#4c1d95]">x</span>
+      ? <span key={`${part}-${index}`} data-sdk-profile-placeholder="true" className="font-normal text-[#4c1d95]">x</span>
       : part
   );
 }
@@ -990,7 +1021,7 @@ function NaviSimulationPreview({ command }: { command: string }) {
         <button
           type="button"
           onClick={replay}
-          className="border border-[#005bd6] bg-[#eef6ff] px-3 py-2 text-xs font-semibold text-[#0053bd] transition hover:bg-[#005bd6] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#005bd6] focus-visible:ring-offset-2"
+          className="border border-[#005bd6] bg-[#eef6ff] px-3 py-2 text-xs font-medium text-[#0053bd] transition hover:bg-[#005bd6] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#005bd6] focus-visible:ring-offset-2"
         >
           Replay simulation
         </button>
@@ -1048,7 +1079,7 @@ function MasterSimulationPreviewPanel({ command }: { command: string }) {
                 type="button"
                 aria-pressed={selected}
                 onClick={() => setSelectedVariant(variantOption.value)}
-                className={`min-w-20 px-3 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#005bd6] ${selected ? "bg-[#005bd6] text-white" : "bg-white text-[#17436f] hover:bg-[#e5f1ff]"}`}
+                className={`min-w-20 px-3 py-2 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#005bd6] ${selected ? "bg-[#005bd6] text-white" : "bg-white text-[#17436f] hover:bg-[#e5f1ff]"}`}
               >
                 {variantOption.label}
               </button>
@@ -1676,14 +1707,14 @@ print(Agentech.get_battery_status())`
 
         <div className="mt-6 rounded-[22px] border border-black/8 bg-white/70 p-5 shadow-[0_20px_55px_rgba(17,17,17,0.06)]">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#1a73e8]">Starter Rules</p>
-          <div className="mt-4 grid gap-px overflow-hidden rounded-[14px] border border-black/8 bg-black/8 md:grid-cols-4">
+          <div data-eaic-starter-rules="true" className="mt-4 grid gap-px overflow-hidden rounded-[14px] border border-black/8 bg-black/8 md:grid-cols-4">
             {[
               "Use stand before motion",
               "Keep motion under 10 seconds",
               "Preview before review",
               "Stop at the end"
             ].map((rule) => (
-              <div key={rule} className="bg-[#faf9f6] p-4 text-sm font-semibold leading-6 text-[#303134]">
+              <div key={rule} data-eaic-starter-rule="true" className="grid min-w-0 place-items-center bg-[#faf9f6] p-4 text-center text-sm font-semibold leading-6 text-[#303134]">
                 {rule}
               </div>
             ))}
@@ -1725,7 +1756,7 @@ function FocusedBrowseFunctionsSection() {
     "set_jump_angle"
   ]);
   const selectedFunctions = selectedRobot === "master"
-    ? masterFunctions
+    ? masterDocumentationFunctions
     : selectedRobot === "navi"
       ? naviFunctions.map((item) => ({
           ...item,
@@ -1735,13 +1766,13 @@ function FocusedBrowseFunctionsSection() {
         }))
       : aegisFunctions;
   const selectedStarterCode = selectedRobot === "master"
-    ? masterStarterCode
+    ? masterDocumentationStarterCode
     : selectedRobot === "navi"
       ? naviStarterCode
       : aegisStarterCode;
   const selectedRobotLabel = selectedRobot === "master" ? "Master" : selectedRobot === "navi" ? "Navi" : "Aegis";
   const referenceCategories: AgentechFunction["category"][] = selectedRobot === "master"
-    ? masterReferenceCategories
+    ? masterPresentationCategories
     : selectedRobot === "navi"
       ? naviReferenceCategories
       : categories.filter((category): category is Exclude<Category, "All"> => category !== "All");
@@ -1896,25 +1927,34 @@ function FocusedBrowseFunctionsSection() {
           </>
         ) : null}
 
-        <div
-          data-sdk-overview-grid="true"
-          data-sdk-overview-count={groupedFunctions.length}
-          className={`mt-6 grid gap-px overflow-hidden rounded-[22px] border border-black/8 bg-black/8 shadow-[0_20px_55px_rgba(17,17,17,0.06)] ${selectedRobot === "master" ? "md:grid-cols-3" : "md:grid-cols-4"}`}
-        >
+        <div data-sdk-documentation-region="true" className="font-interface">
+          <div
+            data-sdk-overview-grid="true"
+            data-sdk-overview-count={groupedFunctions.length}
+            className={`mt-6 grid gap-px overflow-hidden rounded-[22px] border border-black/8 bg-black/8 shadow-[0_20px_55px_rgba(17,17,17,0.06)] ${selectedRobot === "master" ? "md:grid-cols-3" : "md:grid-cols-4"}`}
+          >
           {groupedFunctions.map((group) => (
-            <a key={group.category} href={`#function-${group.category.toLowerCase().replaceAll(" ", "-")}`} className="bg-white/75 p-4 transition hover:bg-white">
-              <p className="text-xs uppercase tracking-[0.14em] text-[#5f6368]">{group.category}</p>
-              <p className="mt-2 text-3xl font-semibold text-[#111111]">{group.items.length}</p>
+            <a
+              key={group.category}
+              data-sdk-overview-category={group.category}
+              data-sdk-function-count={group.items.length}
+              href={`#function-${group.category.toLowerCase().replaceAll(" ", "-")}`}
+              className="bg-white/75 p-4 transition hover:bg-white"
+            >
+              <p className="text-xs uppercase tracking-[0.14em] text-[#5f6368]">{sdkCategorySummaryLabel(group.category, selectedRobot)}</p>
+              <p data-sdk-typeface="interface" className="mt-2 text-3xl font-medium text-[#111111]">{group.items.length}</p>
               <p className="mt-1 text-xs leading-5 text-[#5f6368]">commands</p>
             </a>
           ))}
-        </div>
+          </div>
 
-        <div className="mt-6 space-y-4">
+          <div className="mt-6 space-y-4">
           {groupedFunctions.map((group) => (
             <details
               key={group.category}
               id={`function-${group.category.toLowerCase().replaceAll(" ", "-")}`}
+              data-sdk-category={group.category}
+              data-sdk-function-count={group.items.length}
               className="group/category min-w-0 scroll-mt-6 overflow-hidden rounded-[22px] border border-black/8 bg-white/70 shadow-[0_20px_55px_rgba(17,17,17,0.06)]"
             >
               <summary
@@ -1929,8 +1969,11 @@ function FocusedBrowseFunctionsSection() {
                   ▶
                 </span>
                 <div data-sdk-category-copy="true" className="min-w-0">
-                  <p className="text-xs uppercase tracking-[0.14em] text-[#1a73e8]">{group.category}</p>
-                  <h2 className="mt-1 text-2xl font-semibold tracking-tight text-[#111111]">{group.category === "Actions" ? "Action" : group.category === "Joint Adjustments" ? "Joint Adjustment" : group.category} Commands</h2>
+                  <p className="text-xs uppercase tracking-[0.14em] text-[#1a73e8]">{sdkCategorySummaryLabel(group.category, selectedRobot)}</p>
+                  <h2 data-sdk-typeface="interface" className="mt-1 text-2xl font-medium tracking-tight text-[#111111]">{sdkCategoryHeading(group.category, selectedRobot)}</h2>
+                  {group.category === "Sensing" && selectedRobot === "master" ? (
+                    <p className="mt-2 text-sm leading-6 text-[#526174]">Commands for entering and restoring supported standing modes.</p>
+                  ) : null}
                   {group.category === "Movement" ? (
                     <p className="mt-2 text-sm leading-6 text-[#526174]">All commands in this section move the robot by moving its four feet.</p>
                   ) : null}
@@ -1947,12 +1990,16 @@ function FocusedBrowseFunctionsSection() {
                   {group.category === "Actions" ? (
                     <p className="mt-2 text-sm leading-6 text-[#526174]">
                       {selectedRobot === "master"
-                        ? "Master's supported standing gestures and fixed standing poses."
+                        ? "Predefined and coordinated arm, pose, and movement commands for Master."
                         : "Expressive gestures and coordinated body motions. Timed actions return to standing automatically."}
                     </p>
                   ) : null}
                   {group.category === "Joint Adjustments" ? (
-                    <p className="mt-2 text-sm leading-6 text-[#526174]">Fine standing adjustments for Master&apos;s qualified right wrist, elbow, and shoulder joints.</p>
+                    <p className="mt-2 text-sm leading-6 text-[#526174]">
+                      {selectedRobot === "master"
+                        ? "Fine control of Master’s shoulders, elbows, wrists, waist, and upper-body joints."
+                        : "Fine standing joint adjustments."}
+                    </p>
                   ) : null}
                   {group.category === "Configuration" ? (
                     <p className="mt-2 text-sm leading-6 text-[#526174]">Range-checked gait, foot, floor-grip, jump, and collision settings. Physical calibration remains under development.</p>
@@ -1962,30 +2009,85 @@ function FocusedBrowseFunctionsSection() {
                   ) : null}
                 </div>
                 <div className="col-start-2 flex w-full shrink-0 items-center justify-between gap-3 sm:col-start-3 sm:row-start-1 sm:w-auto sm:justify-start">
-                  <span className="font-mono text-sm text-[#1a73e8]">{group.items.length} functions</span>
+                  <span data-sdk-typeface="interface" className="font-interface text-sm font-medium text-[#1a73e8]">{group.items.length} functions</span>
                   <span className="font-interface rounded-full border border-black/10 px-3 py-1 text-xs text-[#5f6368] group-open/category:hidden">View functions</span>
                   <span className="font-interface hidden rounded-full border border-[#1a73e8]/35 bg-[#eaf2fd] px-3 py-1 text-xs text-[#1a73e8] group-open/category:inline">Hide functions</span>
                 </div>
               </summary>
               <div className="divide-y divide-black/8">
-                {group.items.map((item) => (
-                  <details key={item.name} className="group min-w-0 bg-white/55">
-                    <summary className="grid min-w-0 cursor-pointer list-none items-center gap-3 px-4 py-4 outline-none transition hover:bg-white/70 focus-visible:ring-2 focus-visible:ring-[#1a73e8]/25 md:grid-cols-[minmax(220px,0.8fr)_minmax(0,1fr)_260px]">
+                {group.items.map((item) => {
+                  const useMovementTrailingDescriptionLayout = group.category === "Movement"
+                    && (selectedRobot === "aegis" || selectedRobot === "navi");
+                  const useTrailingDescriptionLayout = selectedRobot === "master"
+                    || selectedRobot === "aegis"
+                    || selectedRobot === "navi";
+                  const useCompactFunctionLayout = useTrailingDescriptionLayout;
+
+                  return (
+                    <Fragment key={item.name}>
+                    {selectedRobot === "master" && group.category === "Joint Adjustments" && masterJointGroupStarts[item.name] ? (
+                      <div
+                        data-master-joint-group={masterJointGroupStarts[item.name]}
+                        className="bg-[#efede8] px-4 py-3 text-xs font-medium uppercase tracking-[0.16em] text-[#5f6368]"
+                      >
+                        {masterJointGroupStarts[item.name]}
+                      </div>
+                    ) : null}
+                  <details data-sdk-function-name={item.name} className="group min-w-0 bg-white/55">
+                    <summary
+                      data-sdk-function-summary-layout={useCompactFunctionLayout ? "compact-leading" : "default"}
+                      data-sdk-description-layout={useTrailingDescriptionLayout ? "trailing-column" : undefined}
+                      data-sdk-master-description-layout={selectedRobot === "master" ? "trailing-column" : undefined}
+                      data-sdk-movement-description-layout={useMovementTrailingDescriptionLayout ? "trailing-column" : undefined}
+                      className={`grid min-w-0 cursor-pointer list-none items-center gap-3 px-4 py-4 outline-none transition hover:bg-white/70 focus-visible:ring-2 focus-visible:ring-[#1a73e8]/25 ${useTrailingDescriptionLayout
+                        ? "grid-cols-[24px_minmax(0,1fr)] [&::-webkit-details-marker]:hidden sm:grid-cols-[24px_minmax(0,1fr)_auto] xl:grid-cols-[24px_max-content_auto_minmax(32px,1fr)_minmax(360px,40%)]"
+                        : useCompactFunctionLayout
+                          ? "grid-cols-[24px_minmax(0,1fr)] [&::-webkit-details-marker]:hidden sm:grid-cols-[24px_max-content_auto_minmax(0,1fr)]"
+                        : "md:grid-cols-[minmax(220px,0.8fr)_minmax(0,1fr)_260px]"
+                      }`}
+                    >
+                      {useCompactFunctionLayout ? (
+                        <span
+                          data-sdk-function-arrow="true"
+                          aria-hidden="true"
+                          className="col-start-1 row-start-1 grid h-6 w-6 place-items-center self-start text-xs text-[#111111] transition-transform group-open:rotate-90 sm:self-center"
+                        >
+                          ▶
+                        </span>
+                      ) : null}
                       <p
                         data-sdk-function-signature="true"
-                        className="min-w-0 justify-self-start break-words text-left font-mono text-xs leading-5 text-[#1a73e8] [overflow-wrap:anywhere]"
+                        data-sdk-typeface="code"
+                        className={`min-w-0 justify-self-start break-words text-left font-mono text-xs leading-5 text-[#1a73e8] [overflow-wrap:anywhere] ${useCompactFunctionLayout ? "col-start-2 row-start-1" : ""}`}
                       >
                         {compactFunctionSignature(item.signature)}
                       </p>
-                      <p className="min-w-0 text-sm leading-6 text-[#303134]">{item.summary}</p>
-                      <div className="flex flex-wrap items-center gap-2 justify-self-start md:justify-self-end">
+                      <p
+                        data-sdk-function-description="true"
+                        data-sdk-typeface="interface"
+                        className={`min-w-0 text-sm leading-6 text-[#303134] ${useTrailingDescriptionLayout
+                          ? "col-start-2 row-start-3 sm:col-span-2 sm:row-start-2 xl:col-start-5 xl:col-span-1 xl:row-start-1"
+                          : useCompactFunctionLayout
+                            ? "col-start-2 row-start-3 sm:col-start-4 sm:row-start-1"
+                            : ""
+                        }`}
+                      >
+                        {item.summary}
+                      </p>
+                      <div
+                        data-sdk-function-controls="true"
+                        className={`flex flex-wrap items-center gap-2 justify-self-start ${useCompactFunctionLayout
+                          ? "col-start-2 row-start-2 sm:col-start-3 sm:row-start-1"
+                          : "md:justify-self-end"
+                        }`}
+                      >
                         {item.status === "development" || item.params.some((param) => param.status === "development") ? (
-                          <span className="border border-[#d99a00] bg-[#fff8df] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#8a5b00]">Under development</span>
+                          <span className="border border-[#d99a00] bg-[#fff8df] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-[#8a5b00]">Under development</span>
                         ) : null}
                         {item.creditUsage === "high" ? (
-                          <span className="border border-[#d97706] bg-[#fff7e6] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#9a4d00]">High credit usage</span>
+                          <span className="border border-[#d97706] bg-[#fff7e6] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-[#9a4d00]">High credit usage</span>
                         ) : null}
-                        <span className="font-interface rounded-full border border-black/10 px-3 py-1 text-xs text-[#1a73e8] group-open:border-[#1a73e8]/35">details</span>
+                        <span data-sdk-typeface="interface" className="font-interface rounded-full border border-black/10 px-3 py-1 text-xs text-[#1a73e8] group-open:border-[#1a73e8]/35">details</span>
                       </div>
                     </summary>
                     <div className={`grid gap-px border-t border-black/8 bg-black/8 ${shouldHideReferencePreview(item, selectedRobot) ? "" : "lg:grid-cols-[minmax(0,1fr)_360px]"}`}>
@@ -1994,13 +2096,13 @@ function FocusedBrowseFunctionsSection() {
                         <p className="mt-2 text-sm leading-6 text-[#303134]">{item.summary}</p>
                         {item.verification ? (
                           <div className="mt-3 border border-[#9cc9be] bg-[#e8f7f3] p-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#006a5c]">Verification</p>
+                            <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#006a5c]">Verification</p>
                             <p className="mt-1 text-xs leading-5 text-[#174b42]">{item.verification}</p>
                           </div>
                         ) : null}
                         {item.platformNote ? (
                           <div className="mt-3 border border-[#e1ad32] bg-[#fff8df] p-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#8a5b00]">{item.platformNoteLabel ?? "Platform note"}</p>
+                            <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[#8a5b00]">{item.platformNoteLabel ?? "Platform note"}</p>
                             <p className="mt-1 text-xs leading-5 text-[#704b00]">{item.platformNote}</p>
                           </div>
                         ) : null}
@@ -2009,20 +2111,20 @@ function FocusedBrowseFunctionsSection() {
                           <div className="mt-4">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <p className="text-xs uppercase tracking-[0.14em] text-[#334155]">Parameter profiles</p>
-                              <span className="border border-[#c9d8e8] bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#526174]">Choose one profile only</span>
+                              <span className="border border-[#c9d8e8] bg-white px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-[#526174]">Choose one profile only</span>
                             </div>
                             <div className="mt-2 grid gap-2">
                               {item.profiles.map((profile, profileIndex) => (
                                 <div key={profile.name} className={`border p-3 ${profile.status === "development" ? "border-[#e1ad32] bg-[#fffaf0]" : "border-[#dce7f2] bg-white"}`}>
                                   <div className="flex flex-wrap items-center gap-2">
-                                    <span className="grid h-5 w-5 place-items-center rounded-[6px] bg-[#eaf2fd] font-mono text-[10px] font-bold text-[#1a73e8]">{profile.number ?? profileIndex + 1}</span>
-                                    <span className="text-xs font-semibold text-[#111111]">{profile.name}</span>
-                                    {profile.status === "development" ? <span className="border border-[#d99a00] bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#8a5b00]">Under Development</span> : null}
+                                    <span data-sdk-typeface="interface" className="grid h-5 w-5 place-items-center rounded-[6px] bg-[#eaf2fd] font-interface text-[10px] font-medium text-[#1a73e8]">{profile.number ?? profileIndex + 1}</span>
+                                    <span className="text-xs font-medium text-[#111111]">{profile.name}</span>
+                                    {profile.status === "development" ? <span className="border border-[#d99a00] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#8a5b00]">Under Development</span> : null}
                                   </div>
-                                  <p className="mt-2 whitespace-pre-wrap overflow-x-auto font-mono text-xs leading-5 text-[#006a5c]">{profileSyntaxWithPlaceholders(profile.syntax)}</p>
+                                  <p data-sdk-typeface="code" className="mt-2 whitespace-pre-wrap overflow-x-auto font-mono text-xs leading-5 text-[#006a5c]">{profileSyntaxWithPlaceholders(profile.syntax)}</p>
                                   {profile.note ? (
                                     <p className="mt-3 border border-[#e1ad32] bg-[#fff8df] p-3 text-xs leading-5 text-[#704b00]">
-                                      <span className="font-semibold">{profile.noteLabel ?? "Distance note"}:</span> {profile.note}
+                                      <span className="font-medium">{profile.noteLabel ?? "Distance note"}:</span> {profile.note}
                                     </p>
                                   ) : null}
                                 </div>
@@ -2037,15 +2139,15 @@ function FocusedBrowseFunctionsSection() {
                             item.params.map((param) => (
                               <details key={param.name} className={`group/param border ${param.status === "development" ? "border-[#e1ad32] bg-[#fffaf0]" : param.status === "unsupported" ? "border-[#d88b8b] bg-[#fff5f5]" : "border-[#dce7f2] bg-white"}`}>
                                 <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 p-3 outline-none transition hover:bg-[#f8fbff] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#005bd6]/25">
-                                  <span className="font-mono text-xs text-[#006a5c]">{param.name}</span>
-                                  <span className="font-mono text-xs text-[#1a73e8]">{param.type}</span>
-                                  {param.defaultValue ? <span className="font-mono text-xs text-[#a35d00]">default {param.defaultValue}</span> : null}
+                                  <span data-sdk-typeface="code" className="font-mono text-xs text-[#006a5c]">{param.name}</span>
+                                  <span data-sdk-typeface="code" className="font-mono text-xs text-[#1a73e8]">{param.type}</span>
+                                  {param.defaultValue ? <span data-sdk-typeface="code" className="font-mono text-xs text-[#a35d00]">default {param.defaultValue}</span> : null}
                                   {param.status === "development" ? (
-                                    <span className="border border-[#d99a00] bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#8a5b00]">Under Development</span>
+                                    <span className="border border-[#d99a00] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#8a5b00]">Under Development</span>
                                   ) : param.status === "unsupported" ? (
-                                    <span className="border border-[#c93434] bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#a51f1f]">Not Supported</span>
+                                    <span className="border border-[#c93434] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#a51f1f]">Not Supported</span>
                                   ) : (
-                                    <span className="border border-[#008a7a] bg-[#e8f7f3] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-[#006a5c]">Available</span>
+                                    <span className="border border-[#008a7a] bg-[#e8f7f3] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#006a5c]">Available</span>
                                   )}
                                   <span className="font-interface ml-auto border border-[#c9d8e8] bg-white px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[#005bd6] group-open/param:border-[#008a7a] group-open/param:text-[#006a5c]">
                                     <span className="group-open/param:hidden">Details</span>
@@ -2066,15 +2168,16 @@ function FocusedBrowseFunctionsSection() {
                             <p className="mt-4 text-xs uppercase tracking-[0.14em] text-[#334155]">Example</p>
                             <div className="relative mt-2 rounded-[12px] border border-black/8 bg-white/70">
                               <CopyCodeButton value={item.example} className="absolute right-2 top-2 z-10" />
-                              <pre className="min-h-14 overflow-x-auto p-3 pr-16 font-mono text-xs leading-6 text-[#303134]">{item.example}</pre>
+                              <pre data-sdk-typeface="code" className="min-h-14 overflow-x-auto p-3 pr-16 font-mono text-xs leading-6 text-[#303134]">{item.example}</pre>
                             </div>
                           </>
                         )}
                       </div>
                       {shouldHideReferencePreview(item, selectedRobot) ? null : (
                         <div className="min-w-0 bg-white/70 p-4">
-                          <p className="mb-3 font-mono text-xs uppercase tracking-[0.12em] text-[#1a73e8]">
-                            {selectedRobot === "navi" && item.name === "lateral" ? "lateral_left" : item.name} {selectedRobot === "navi" ? "on Navi" : "preview"}
+                          <p data-sdk-typeface="interface" className="mb-3 font-interface text-xs uppercase tracking-[0.12em] text-[#1a73e8]">
+                            <code data-sdk-typeface="code" className="font-mono">{selectedRobot === "navi" && item.name === "lateral" ? "lateral_left" : item.name}</code>{" "}
+                            <span>{selectedRobot === "navi" ? "on Navi" : "preview"}</span>
                           </p>
                           {selectedRobot === "master" ? (
                             <MasterSimulationPreviewPanel command={item.name} />
@@ -2093,10 +2196,13 @@ function FocusedBrowseFunctionsSection() {
                       )}
                     </div>
                   </details>
-                ))}
+                    </Fragment>
+                  );
+                })}
               </div>
             </details>
           ))}
+          </div>
         </div>
       </div>
     </section>

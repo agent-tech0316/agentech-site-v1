@@ -85,7 +85,7 @@ export function EaicWaveDemo() {
             <filter id={`${id}-linework`} x="0" y="0" width="100%" height="100%" colorInterpolationFilters="sRGB">
               <feColorMatrix type="luminanceToAlpha" />
               <feComponentTransfer result="lineAlpha"><feFuncA type="linear" slope="1.16" intercept="-0.08" /></feComponentTransfer>
-              <feFlood floodColor="currentColor" />
+              <feFlood floodColor="#e5d9bb" />
               <feComposite operator="in" in2="lineAlpha" />
             </filter>
             <clipPath id={`${id}-body`} clipPathUnits="objectBoundingBox"><path clipRule="evenodd" transform={artworkScale} d={`M0 0H1254V1254H0Z ${armPath}`} /></clipPath>

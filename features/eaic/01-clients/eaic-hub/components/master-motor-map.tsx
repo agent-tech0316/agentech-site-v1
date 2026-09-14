@@ -8,6 +8,10 @@ function formatRange(minimum: number, maximum: number, unit: string) {
   return `${minimum > 0 ? "+" : ""}${minimum}${unit} to ${maximum > 0 ? "+" : ""}${maximum}${unit}`;
 }
 
+function visibleSdkControlText(value: string) {
+  return value.replaceAll(".teach", "");
+}
+
 type RobotJointViewProps = {
   view: MasterMotorView;
   label: string;
@@ -81,8 +85,8 @@ function RobotJointView({
               {activeMarker.sdkControl ? (
                 <>
                   <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#c3cad1]">{activeMarker.sdkControl.label}</p>
-                  <p className="mt-1 font-mono text-[10px] font-bold text-[#62b0ff]">{activeMarker.sdkControl.functionName}</p>
-                  <code className="mt-1 block whitespace-normal break-words text-[9px] leading-4 text-white">{activeMarker.sdkControl.example}</code>
+                  <p data-master-sdk-function-visible="true" className="mt-1 font-mono text-[10px] font-bold text-[#62b0ff]">{visibleSdkControlText(activeMarker.sdkControl.functionName)}</p>
+                  <code data-master-sdk-example-visible="true" className="mt-1 block whitespace-normal break-words text-[9px] leading-4 text-white">{visibleSdkControlText(activeMarker.sdkControl.example)}</code>
                 </>
               ) : (
                 <>

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import test from "node:test";
 import postcss from "postcss";
@@ -12,6 +13,15 @@ const taskRoutes = [
   ["Code Certification", "/agentech-products/eaic-hub/software-check"],
   ["Live Stream", "/agentech-products/eaic-hub/watch-live-run"],
 ];
+
+const workbenchSource = readFileSync(
+  new URL("../features/eaic/01-clients/eaic-hub/components/agentech-library-workbench.tsx", import.meta.url),
+  "utf8",
+);
+const naviReferenceSource = readFileSync(
+  new URL("../features/eaic/02-unified-api/projects-validation/navi-sdk-reference.ts", import.meta.url),
+  "utf8",
+);
 
 let baseUrl = process.env.EAIC_THEME_TEST_BASE_URL ?? "";
 let serverProcess;
@@ -177,11 +187,225 @@ test("left-aligns every SDK function signature at the start of its command row",
   }
 });
 
+test("keeps every robot's SDK controls together after a custom disclosure arrow", () => {
+  const html = pages.get("/agentech-products/eaic-hub/view-sdk") ?? "";
+  const compactMasterRows = [...html.matchAll(/data-sdk-function-name="([^"]+)"[^>]*><summary data-sdk-function-summary-layout="compact-leading"/g)]
+    .map((match) => match[1]);
+
+  assert.equal(compactMasterRows.length, 39, "every Master command row should use the leading compact layout");
+  assert.match(
+    workbenchSource,
+    /const useTrailingDescriptionLayout = selectedRobot === "master"[\s\S]*?\|\| selectedRobot === "aegis"[\s\S]*?\|\| selectedRobot === "navi"/,
+  );
+  assert.match(workbenchSource, /data-sdk-function-summary-layout=\{useCompactFunctionLayout/);
+  assert.match(workbenchSource, /data-sdk-description-layout=\{useTrailingDescriptionLayout \? "trailing-column"/);
+  assert.match(workbenchSource, /data-sdk-function-arrow="true"/);
+  assert.match(workbenchSource, /data-sdk-function-controls="true"/);
+  assert.match(workbenchSource, /xl:grid-cols-\[24px_max-content_auto_minmax\(32px,1fr\)_minmax\(360px,40%\)\]/);
+});
+
+test("keeps the six Navi Athletics commands while using the unified SDK row renderer", () => {
+  const athleticsFunctions = [...naviReferenceSource.matchAll(
+    /\{\s*name: "([^"]+)",\s*category: "Athletics"/g,
+  )].map((match) => match[1]);
+
+  assert.deepEqual(athleticsFunctions, [
+    "jump",
+    "jump_round",
+    "jump_forward",
+    "frontflip",
+    "sideflip",
+    "kick",
+  ]);
+  assert.match(workbenchSource, /const useCompactFunctionLayout = useTrailingDescriptionLayout/);
+});
+
 test("lays out the three Master SDK summary metrics in one equal-width desktop row", () => {
   const html = pages.get("/agentech-products/eaic-hub/view-sdk") ?? "";
   assert.match(
     html,
     /data-sdk-overview-grid="true"[^>]*data-sdk-overview-count="3"[^>]*md:grid-cols-3/,
+  );
+});
+
+test("presents Master SDK groups as joint adjustment, posture, then action commands", () => {
+  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "").replaceAll("<!-- -->", "");
+  const expectedGroups = [
+    ["joint-adjustments", "Joint Adjustment Commands"],
+    ["sensing", "Posture Commands"],
+    ["actions", "Action Commands"],
+  ];
+  const overviewOffset = html.indexOf('data-sdk-overview-grid="true"');
+  const firstSummaryOffset = html.indexOf('data-sdk-category-summary="true"');
+  let summaryOffset = overviewOffset;
+
+  assert.ok(overviewOffset >= 0 && firstSummaryOffset > overviewOffset, "the Master SDK summary and detail regions should render");
+  for (const [anchor, title] of expectedGroups) {
+    const hrefOffset = html.indexOf(`href="#function-${anchor}"`, summaryOffset);
+    const titleOffset = html.indexOf(`>${title}<`, hrefOffset);
+    assert.ok(hrefOffset >= summaryOffset && hrefOffset < firstSummaryOffset, `${title} should appear in the Master summary region`);
+    assert.ok(titleOffset > hrefOffset && titleOffset < firstSummaryOffset, `${title} should label its Master summary card`);
+    summaryOffset = titleOffset;
+  }
+
+  let detailOffset = overviewOffset;
+  for (const [anchor, title] of expectedGroups) {
+    const groupOffset = html.indexOf(`id="function-${anchor}"`, detailOffset);
+    const titleOffset = html.indexOf(`>${title}</h2>`, groupOffset);
+    assert.ok(groupOffset >= detailOffset, `${title} should render as a detailed Master group`);
+    assert.ok(titleOffset > groupOffset, `${title} should be the detailed Master group heading`);
+    detailOffset = titleOffset;
+  }
+});
+
+test("documents the latest Master command set once per API without changing the three-group layout", () => {
+  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "").replaceAll("<!-- -->", "");
+  const decodedHtml = html.replaceAll("&quot;", '"').replaceAll("&#x27;", "'");
+  const groupStarts = [
+    html.indexOf('id="function-joint-adjustments"'),
+    html.indexOf('id="function-sensing"'),
+    html.indexOf('id="function-actions"'),
+  ];
+
+  assert.ok(groupStarts[0] >= 0 && groupStarts[0] < groupStarts[1] && groupStarts[1] < groupStarts[2]);
+  const jointHtml = html.slice(groupStarts[0], groupStarts[1]);
+  const postureHtml = html.slice(groupStarts[1], groupStarts[2]);
+  const actionHtml = html.slice(groupStarts[2]);
+  const functionNames = (fragment) => [...fragment.matchAll(/data-sdk-function-name="([^"]+)"/g)].map((match) => match[1]);
+  const postureNames = functionNames(postureHtml);
+  const jointNames = functionNames(jointHtml);
+  const actionNames = functionNames(actionHtml);
+
+  assert.deepEqual(postureNames, [
+    "enter_stand_hand_guide",
+    "restore_stand_hand_guide",
+    "restore_stand_default",
+    "status",
+  ]);
+  assert.deepEqual(jointNames, [
+    "adjust_right_elbow",
+    "adjust_left_elbow",
+    "adjust_both_elbows",
+    "adjust_elbow",
+    "move_elbows_to",
+    "adjust_right_shoulder",
+    "adjust_left_shoulder",
+    "adjust_right_wrist",
+    "adjust_left_wrist",
+    "adjust_wrist",
+    "adjust_waist",
+    "return_waist_to_neutral",
+    "adjust_upper_body",
+  ]);
+  assert.equal(actionNames.length, 22, "the existing 18 actions plus four new unique APIs should render once each");
+  for (const name of ["move_arms_to", "mirror_arm_pose", "move_mirrored_arms_to", "movement_b", "stay"]) {
+    assert.equal(actionNames.filter((candidate) => candidate === name).length, 1, `${name} should render as one command card`);
+  }
+  assert.equal(new Set([...postureNames, ...jointNames, ...actionNames]).size, 39, "all Master documentation cards should have unique API names");
+  assert.deepEqual(
+    [...jointHtml.matchAll(/data-master-joint-group="([^"]+)"/g)].map((match) => match[1]),
+    ["Elbows", "Shoulders", "Wrists", "Waist", "Upper Body"],
+  );
+  assert.match(postureHtml, /Commands for entering and restoring supported standing modes\./);
+  assert.match(jointHtml, /Fine control of Master’s shoulders, elbows, wrists, waist, and upper-body joints\./);
+  assert.match(actionHtml, /Predefined and coordinated arm, pose, and movement commands for Master\./);
+  assert.match(html, /from agentech import Agentech, master/);
+  assert.match(html, /ssh_password=&quot;YOUR_PASSWORD&quot;/);
+  assert.doesNotMatch(html, /ssh_password=&quot;1&quot;/);
+  assert.doesNotMatch(html, /data-sdk-function-name="standing_actions\.teach"/);
+  assert.doesNotMatch(html, /data-sdk-function-name="action_catalog"/);
+  assert.match(html, /data-sdk-overview-category="Sensing"[^>]*data-sdk-function-count="4"/);
+
+  for (const example of [
+    'Agentech.enter_stand_hand_guide("right")',
+    'Agentech.enter_stand_hand_guide("both")',
+    "Agentech.restore_stand_hand_guide()",
+    "Agentech.restore_stand_default()",
+    "Agentech.adjust_right_elbow(+5, duration_seconds=1.0)",
+    "Agentech.adjust_left_elbow(+5, duration_seconds=1.0)",
+    "Agentech.adjust_both_elbows(+30, duration_seconds=3.0)",
+    'Agentech.adjust_elbow("right", +5, duration_seconds=1.0)',
+    'Agentech.adjust_elbow("left", +5, duration_seconds=1.0)',
+    "Agentech.move_elbows_to(50, duration_seconds=8.0)",
+    'Agentech.adjust_right_shoulder("pitch", +5, duration_seconds=1.0)',
+    'Agentech.adjust_right_shoulder("roll", +5, duration_seconds=1.0)',
+    'Agentech.adjust_right_shoulder("yaw", +5, duration_seconds=1.0)',
+    'Agentech.adjust_left_shoulder("pitch", +5, duration_seconds=1.0)',
+    'Agentech.adjust_left_shoulder("roll", +5, duration_seconds=1.0)',
+    'Agentech.adjust_left_shoulder("yaw", +5, duration_seconds=1.0)',
+    'Agentech.adjust_right_wrist("roll", +5)',
+    'Agentech.adjust_right_wrist("pitch", +5)',
+    'Agentech.adjust_right_wrist("yaw", +5)',
+    "Agentech.adjust_right_wrist(roll=+5, pitch=-3, yaw=+2)",
+    "Agentech.adjust_right_wrist(+10)",
+    'Agentech.adjust_left_wrist("roll", +5)',
+    'Agentech.adjust_left_wrist("pitch", +5)',
+    'Agentech.adjust_left_wrist("yaw", +5)',
+    "Agentech.adjust_left_wrist(roll=+5, pitch=-3, yaw=+2)",
+    "Agentech.adjust_left_wrist(+10)",
+    "Agentech.adjust_wrist(roll=+5, pitch=-3, yaw=+2)",
+    'Agentech.adjust_waist("yaw", +10)',
+    'Agentech.adjust_waist("pitch", +10)',
+    'Agentech.adjust_waist("roll", +10)',
+    "Agentech.stay(1.0)",
+  ]) {
+    assert.ok(decodedHtml.includes(example), `${example} should be present as a Master usage example`);
+  }
+  for (const multilineExampleFragment of [
+    "max_duration_seconds=8.0",
+    'waist={"yaw": +10}',
+    '"shoulder_pitch": -19.45',
+    'source_side="right"',
+    'source_side="left"',
+    "duration_seconds=20.0",
+    "maximum_degrees_per_second=60.0",
+  ]) {
+    assert.ok(decodedHtml.includes(multilineExampleFragment), `${multilineExampleFragment} should be present in the engineering examples`);
+  }
+});
+
+test("renders the engineering Master usage variants as numbered parameter profiles", () => {
+  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "").replaceAll("<!-- -->", "");
+  const expectedProfiles = new Map([
+    ["enter_stand_hand_guide", ["Right-arm hand guidance", "Both-arm hand guidance"]],
+    ["restore_stand_hand_guide", ["Restore hand-guidance mode"]],
+    ["restore_stand_default", ["Restore default standing mode"]],
+    ["adjust_right_elbow", ["Right elbow relative angle"]],
+    ["adjust_left_elbow", ["Left elbow relative angle"]],
+    ["adjust_both_elbows", ["Both elbows relative angle"]],
+    ["adjust_elbow", ["Select right elbow", "Select left elbow"]],
+    ["move_elbows_to", ["Both elbows target angle"]],
+    ["adjust_right_shoulder", ["Pitch axis", "Roll axis", "Yaw axis"]],
+    ["adjust_left_shoulder", ["Pitch axis", "Roll axis", "Yaw axis"]],
+    ["adjust_right_wrist", ["Roll axis", "Pitch axis", "Yaw axis", "Combined axes", "Single-value form"]],
+    ["adjust_left_wrist", ["Roll axis", "Pitch axis", "Yaw axis", "Combined axes", "Single-value form"]],
+    ["adjust_wrist", ["Combined wrist axes"]],
+    ["adjust_waist", ["Yaw axis", "Pitch axis", "Roll axis", "Combined waist axes"]],
+    ["return_waist_to_neutral", ["Return to neutral"]],
+    ["adjust_upper_body", ["Waist + both elbows"]],
+    ["move_arms_to", ["Right + left arm targets"]],
+    ["mirror_arm_pose", ["Mirror from right arm", "Mirror from left arm"]],
+    ["move_mirrored_arms_to", ["Mirrored arm target"]],
+    ["movement_b", ["Maximum joint speed"]],
+    ["stay", ["Hold duration"]],
+  ]);
+
+  for (const [command, profileNames] of expectedProfiles) {
+    const commandOffset = html.indexOf(`data-sdk-function-name="${command}"`);
+    const nextCommandOffset = html.indexOf('data-sdk-function-name="', commandOffset + 1);
+    const commandHtml = html.slice(commandOffset, nextCommandOffset >= 0 ? nextCommandOffset : undefined);
+
+    assert.ok(commandOffset >= 0, `${command} should remain one Master command card`);
+    assert.match(commandHtml, /Parameter profiles/, `${command} should render the shared profile cards`);
+    for (const profileName of profileNames) {
+      assert.ok(commandHtml.includes(`>${profileName}<`), `${command} should render the ${profileName} profile`);
+    }
+  }
+
+  assert.equal(
+    [...expectedProfiles.values()].reduce((total, profiles) => total + profiles.length, 0),
+    39,
+    "the engineering examples should produce 39 profiles without creating more API cards",
   );
 });
 
@@ -321,6 +545,55 @@ test("renders Start Coding with the regenerated transparent Aegis blueprint", ()
   assert.match(html, /dog-blueprint-transparent-v4\.png/);
   assert.doesNotMatch(html, /dog-blueprint\.png/);
   assert.match(html, /<link rel="preload" as="image"[^>]*dog-blueprint-transparent-v4\.png/, "the above-the-fold robot image should be preloaded");
+});
+
+test("distributes the four Starter Rules evenly and centers every label", () => {
+  const html = pages.get(taskRoutes[0][1]) ?? "";
+  const strip = html.match(/<div\b[^>]*data-eaic-starter-rules="true"[^>]*>/)?.[0] ?? "";
+  const rules = html.match(/<div\b[^>]*data-eaic-starter-rule="true"[^>]*>/g) ?? [];
+
+  assert.match(strip, /\bgrid\b/);
+  assert.match(strip, /\bmd:grid-cols-4\b/, "tablet and desktop should keep four equal grid tracks");
+  assert.equal(rules.length, 4);
+  for (const rule of rules) {
+    assert.match(rule, /\bmin-w-0\b/);
+    assert.match(rule, /\bplace-items-center\b/);
+    assert.match(rule, /\btext-center\b/);
+  }
+});
+
+test("uses only the approved interface and code typefaces in the View SDK documentation region", () => {
+  const html = pages.get(taskRoutes[1][1]) ?? "";
+  const region = html.match(/<div\b[^>]*data-sdk-documentation-region="true"[^>]*>/)?.[0] ?? "";
+  const sourceStart = workbenchSource.indexOf('data-sdk-documentation-region="true"');
+  const sourceEnd = workbenchSource.indexOf("function HardwareSimulationMedia", sourceStart);
+  const documentationSource = sourceStart >= 0 && sourceEnd > sourceStart
+    ? workbenchSource.slice(sourceStart, sourceEnd)
+    : "";
+
+  assert.match(region, /\bfont-interface\b/, "the command documentation needs a local Manrope scope");
+  assert.notEqual(documentationSource, "", "the scoped documentation source should be found");
+  assert.doesNotMatch(documentationSource, /\bfont-display\b/, "the region must not introduce a third display face");
+  assert.match(documentationSource, /data-sdk-typeface="interface"/);
+  assert.match(documentationSource, /data-sdk-typeface="code"/);
+  assert.doesNotMatch(
+    documentationSource,
+    /font-mono[^>]*>\{group\.items\.length\} functions/,
+    "function counts are interface text, not code",
+  );
+  assert.doesNotMatch(
+    documentationSource,
+    /place-items-center[^>]*font-mono[^>]*>\{profile\.number/,
+    "profile ordinals are counts, not code",
+  );
+  assert.equal(
+    (documentationSource.match(/Choose one profile only/g) ?? []).length,
+    1,
+    "the renderer copy must remain intact and appear once in source",
+  );
+  for (const label of ["Definition", "Parameters", "Example"]) {
+    assert.match(documentationSource, new RegExp(`>${label}<`), `${label} must remain in the expanded card`);
+  }
 });
 
 test("cleans Start Coding blueprint ink only in dark mode", async () => {

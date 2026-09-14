@@ -149,3 +149,23 @@ test("Master motor boxes identify the SDK function for each controllable joint",
   assert.match(marker("left_wrist_roll_joint").sdkControl.example, /"left"/);
   assert.equal(marker("head_yaw_joint").sdkControl, null);
 });
+
+test("Master motor tooltips hide the teach suffix without changing the SDK mapping", () => {
+  const component = fs.readFileSync(
+    path.join(repositoryRoot, "features/eaic/01-clients/eaic-hub/components/master-motor-map.tsx"),
+    "utf8"
+  );
+
+  assert.match(component, /function visibleSdkControlText\(/);
+  assert.match(component, /replaceAll\("\.teach", ""\)/);
+  assert.equal(
+    component.match(/visibleSdkControlText\(activeMarker\.sdkControl\.(?:functionName|example)\)/g)?.length,
+    2,
+    "both the function label and example must use the suffix-free display value"
+  );
+  assert.equal(
+    motorMap.MASTER_MOTOR_MARKERS.find((candidate) => candidate.runtimeJoint === "left_wrist_roll_joint").sdkControl.functionName,
+    "standing_actions.teach",
+    "the underlying SDK mapping must remain accurate"
+  );
+});

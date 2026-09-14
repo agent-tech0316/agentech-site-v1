@@ -95,10 +95,11 @@ test("EAIC public presentation keeps page-scoped light, dark, responsive, and re
 });
 
 test("EAIC presents the generated motion-study artwork consistently in both themes", async () => {
-  const [page, css, demo] = await Promise.all([
+  const [page, css, demo, demoCss] = await Promise.all([
     readWorkspaceFile("app/agentech-products/eaic/page.tsx"),
     readWorkspaceFile("app/agentech-products/eaic/eaic-public.css"),
-    readWorkspaceFile("components/eaic-wave-demo.tsx")
+    readWorkspaceFile("components/eaic-wave-demo.tsx"),
+    readWorkspaceFile("components/eaic-wave-demo.module.css")
   ]);
 
   assert.match(page, /<EaicWaveDemo \/>/);
@@ -108,4 +109,11 @@ test("EAIC presents the generated motion-study artwork consistently in both them
   assert.match(css, /\.eaic-public-hero-art\s*\{[^}]*mix-blend-mode:\s*screen/);
   assert.match(css, /:root\[data-theme="light"\][^{]*\.eaic-public-hero-art\s*\{[^}]*mix-blend-mode:\s*multiply/);
   assert.match(css, /filter: invert\(1\) grayscale\(1\) contrast\(1\.16\)/);
+  assert.match(demo, /<feFlood floodColor="#e5d9bb" \/>/, "dark linework color must not depend on inherited SVG currentColor");
+  assert.doesNotMatch(demo, /<feFlood floodColor="currentColor" \/>/, "Safari can cache or drop inherited feFlood colors across theme changes");
+  assert.match(
+    demoCss,
+    /:global\(:root\[data-theme="light"\]\) \.demo \.art\.art\s*\{[^}]*filter:\s*brightness\(0\)/,
+    "light mode must derive stable black linework from the explicit dark-theme flood"
+  );
 });

@@ -1,8 +1,9 @@
 .demo { min-width: 0; width: 100%; max-width: 520px; justify-self: end; }
-.art.art { position: relative; width: 100%; aspect-ratio: 1; margin: 0; color: #e5d9bb; filter: none; mix-blend-mode: normal; }
+.art.art { position: relative; width: 100%; aspect-ratio: 1; margin: 0; filter: none; mix-blend-mode: normal; }
 /* The original bitmap supplies line opacity; empty pixels are truly transparent.
-   Keep theme color separate from the moving/stationary layer composition. */
-:global(:root[data-theme="light"]) .demo .art.art { color: #000; filter: none; mix-blend-mode: normal; }
+   Use an explicit light flood for Safari, then darken only the composed result in
+   light mode so neither theme depends on inherited SVG filter color caching. */
+:global(:root[data-theme="light"]) .demo .art.art { filter: brightness(0); mix-blend-mode: normal; }
 .definitions { position: absolute; pointer-events: none; }
 .layer { position: absolute; inset: 0; }
 .arm {
