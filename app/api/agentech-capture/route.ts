@@ -3,7 +3,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getAccountRecord, spendAccountCredits } from "@/lib/account-records";
 import { isAgentechCompanyEmail } from "@/lib/company-accounts";
-import { isValidEmail, normalizeEmail } from "@/lib/prototype-auth";
+import { isValidAccountIdentifier, normalizeEmail } from "@/lib/prototype-auth";
 import { getServerAccountEmail } from "@/lib/server-account-session";
 
 export const dynamic = "force-dynamic";
@@ -115,7 +115,7 @@ function authorized(request: Request) {
 
 export async function GET(request: NextRequest) {
   const email = await getServerAccountEmail(request, { allowLegacyCookie: true });
-  if (!isValidEmail(email)) {
+  if (!isValidAccountIdentifier(email)) {
     return NextResponse.json({ error: "Sign in to view saved robot captures." }, { status: 401 });
   }
   const file = new URL(request.url).searchParams.get("file");
@@ -153,7 +153,7 @@ export async function POST(request: Request) {
   }
 
   const accountEmail = normalizeEmail(request.headers.get("x-agentech-account-email"));
-  if (!isValidEmail(accountEmail)) {
+  if (!isValidAccountIdentifier(accountEmail)) {
     return NextResponse.json({ error: "The code runner did not provide a valid customer account." }, { status: 400 });
   }
   if (!isAgentechCompanyEmail(accountEmail)) {

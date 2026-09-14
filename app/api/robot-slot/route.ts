@@ -1,5 +1,4 @@
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 import {
   addAccountCredits,
   allocateCreditSpend,
@@ -11,11 +10,11 @@ import {
   getRobotSessionsInWindow,
   spendAccountCredits
 } from "@/lib/account-records";
-import { accountSessionCookieName } from "@/lib/account-session";
+import { getServerAccountEmail } from "@/lib/server-account-session";
 import { normalizeAgentechRobotModel } from "@/lib/agentech-robot-model";
 import { isAgentechCompanyEmail } from "@/lib/company-accounts";
 import { sendEmail } from "@/lib/email";
-import { isValidEmail, normalizeEmail } from "@/lib/prototype-auth";
+import { isValidAccountIdentifier, isValidEmail, normalizeEmail } from "@/lib/prototype-auth";
 import {
   externalRobotViewingMaximumMinutes,
   externalRobotViewingMinimumMinutes,
@@ -48,11 +47,6 @@ function clean(value: unknown) {
 function toProfileId(value: unknown) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-async function getSignedInEmail() {
-  const cookieStore = await cookies();
-  return normalizeEmail(cookieStore.get(accountSessionCookieName)?.value);
 }
 
 function getDurationMinutes(value: unknown) {
@@ -223,10 +217,10 @@ export async function GET(request: Request) {
   return NextResponse.json({ ok: true, bookedSlots });
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const payload = (await request.json().catch(() => null)) as RobotSlotPayload | null;
   const email = normalizeEmail(payload?.email);
-  const signedInEmail = await getSignedInEmail();
+  const signedInEmail = await getServerAccountEmail(request);
   const profileId = toProfileId(payload?.profileId);
   const scheduledStartRaw = clean(payload?.scheduledStart);
   const requestedScheduledStart = new Date(scheduledStartRaw);
@@ -235,11 +229,11 @@ export async function POST(request: Request) {
   const durationMinutes = getDurationMinutes(payload?.durationMinutes);
   const robotModel = normalizeAgentechRobotModel(payload?.robotModel ?? "Aegies");
 
-  if (!isValidEmail(signedInEmail)) {
+  if (!isValidAccountIdentifier(signedInEmail)) {
     return NextResponse.json({ error: "Sign in before scheduling a robot viewing session." }, { status: 401 });
   }
 
-  if (!isValidEmail(email)) {
+  if (!isValidAccountIdentifier(email)) {
     return NextResponse.json({ error: "A valid account email is required." }, { status: 400 });
   }
 
@@ -389,7 +383,7 @@ export async function POST(request: Request) {
   }
 
   const accountName = [account.first_name, account.last_name].filter(Boolean).join(" ");
-  const emailResult = await sendRobotSlotConfirmation({
+  const emailResult = isValidEmail(email) ? await sendRobotSlotConfirmation({
     email,
     accountName,
     profileUsername: selectedProfile.username,
@@ -399,7 +393,7 @@ export async function POST(request: Request) {
     scheduledStart,
     scheduledEnd,
     timeZone
-  }).catch(() => ({ sent: false }));
+  }).catch(() => ({ sent: false })) : { sent: false };
 
   return NextResponse.json({ ok: true, session, emailSent: emailResult.sent, creditsCharged: creditsRequired });
 }

@@ -5,7 +5,7 @@ import {
   setSignedAccountSessionCookie,
   verifySignedAccountSession
 } from "@/lib/server-account-session";
-import { isValidEmail } from "@/lib/prototype-auth";
+import { isValidAccountIdentifier } from "@/lib/prototype-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ function siteOrigin(request: NextRequest) {
 // Exchange the CLI's Supabase bearer token for a very short-lived browser handoff.
 export async function POST(request: NextRequest) {
   const email = await getServerAccountEmail(request);
-  if (!isValidEmail(email)) {
+  if (!isValidAccountIdentifier(email)) {
     return NextResponse.json({ error: "Sign in to the EAIC CLI before watching." }, { status: 401 });
   }
 
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 // The browser consumes the handoff and immediately redirects, removing it from the address bar.
 export async function GET(request: NextRequest) {
   const email = verifySignedAccountSession(request.nextUrl.searchParams.get("handoff"));
-  if (!isValidEmail(email)) {
+  if (!isValidAccountIdentifier(email)) {
     return NextResponse.redirect(new URL(`${livePath}?cliHandoff=expired`, siteOrigin(request)));
   }
 

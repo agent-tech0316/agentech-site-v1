@@ -1,4 +1,4 @@
-import { isInternalAccountEmail, normalizeEmail } from "@/lib/prototype-auth";
+import { isInternalAccountEmail, isTestAccountUsername, normalizeEmail } from "@/lib/prototype-auth";
 import { resolveReturnToHomeAccess } from "@/lib/return-to-home-access-policy";
 import { supabaseRequest } from "@/lib/supabase-server";
 
@@ -43,8 +43,8 @@ export async function getReturnToHomeAccess(emailValue: string) {
     return resolveReturnToHomeAccess({ internal: false });
   }
 
-  // Company accounts retain operational access for testing and support.
-  if (isInternalAccountEmail(email)) {
+  // Company and the eight teaching accounts have this SDK feature for testing.
+  if (isInternalAccountEmail(email) || isTestAccountUsername(email)) {
     return resolveReturnToHomeAccess({ internal: true });
   }
 

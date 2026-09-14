@@ -7,7 +7,7 @@ import {
   RETURN_TO_HOME_FEATURE_CODE,
   returnToHomeFeature
 } from "@/lib/premium-features";
-import { isValidEmail, normalizeEmail } from "@/lib/prototype-auth";
+import { isValidAccountIdentifier, normalizeEmail } from "@/lib/prototype-auth";
 import { getServerAccountEmail } from "@/lib/server-account-session";
 import { siteUrl } from "@/lib/site-config";
 
@@ -17,7 +17,7 @@ async function signedInEmail(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const email = await signedInEmail(request);
-  if (!isValidEmail(email)) {
+  if (!isValidAccountIdentifier(email)) {
     return NextResponse.json({ error: "Sign in to check premium feature access." }, { status: 401 });
   }
 
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const email = await signedInEmail(request);
-  if (!isValidEmail(email)) {
+  if (!isValidAccountIdentifier(email)) {
     return NextResponse.json({ error: "Sign in before purchasing this feature." }, { status: 401 });
   }
   if (!(await getAccountRecord(email))) {

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAccountRecord } from "@/lib/account-records";
 import { getActiveRobotViewingSession } from "@/lib/agentech-live-session";
 import { isAgentechCompanyEmail } from "@/lib/company-accounts";
-import { isValidEmail } from "@/lib/prototype-auth";
+import { isValidAccountIdentifier } from "@/lib/prototype-auth";
 import { getServerAccountEmail } from "@/lib/server-account-session";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   }
 
   const email = await getServerAccountEmail(request, { allowLegacyCookie: true });
-  if (!isValidEmail(email)) {
+  if (!isValidAccountIdentifier(email)) {
     return NextResponse.json({ error: "Sign in before viewing the live robot session." }, { status: 401 });
   }
 

@@ -19,7 +19,7 @@ import { normalizeAgentechRobotModel } from "@/lib/agentech-robot-model";
 import { validateAgentechCode } from "@/lib/agentech-validation";
 import { getSoftwareCheckCreditPolicy, isAgentechCompanyEmail } from "@/lib/company-accounts";
 import { hasMasterLiveTestAccess } from "@/lib/master-live-test-access";
-import { isValidEmail } from "@/lib/prototype-auth";
+import { isValidAccountIdentifier } from "@/lib/prototype-auth";
 import { getReturnToHomeAccess, RETURN_TO_HOME_FEATURE_CODE } from "@/lib/premium-features";
 import { getServerAccountEmail } from "@/lib/server-account-session";
 
@@ -100,9 +100,9 @@ export async function GET(request: NextRequest) {
   try {
     const submittedEmail = await getServerAccountEmail(request);
     const isLocalPreview = process.env.NODE_ENV !== "production";
-    const email = isValidEmail(submittedEmail) ? submittedEmail : isLocalPreview ? "developer.preview@agentech.local" : submittedEmail;
+    const email = isValidAccountIdentifier(submittedEmail) ? submittedEmail : isLocalPreview ? "developer.preview@agentech.local" : submittedEmail;
 
-    if (!isValidEmail(email)) {
+    if (!isValidAccountIdentifier(email)) {
       return NextResponse.json(
         { error: "Your account session could not be verified. Sign in again, then retry the check.", errorCode: "AUTH_REQUIRED" },
         { status: 401 }
@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
     const payload = (await request.json()) as SubmissionPayload;
     const submittedEmail = await getServerAccountEmail(request);
     const isLocalPreview = process.env.NODE_ENV !== "production";
-    const email = isValidEmail(submittedEmail) ? submittedEmail : isLocalPreview ? "developer.preview@agentech.local" : submittedEmail;
+    const email = isValidAccountIdentifier(submittedEmail) ? submittedEmail : isLocalPreview ? "developer.preview@agentech.local" : submittedEmail;
     const developerName = cleanText(payload.developerName, isLocalPreview ? "Local preview" : "Agentech developer") || "Agentech developer";
     const robotModel = normalizeAgentechRobotModel(payload.robotModel ?? "Aegies");
     const runMode = cleanText(payload.runMode, "Software check");
@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!isValidEmail(email)) {
+    if (!isValidAccountIdentifier(email)) {
       return NextResponse.json(
         { error: "Your account session could not be verified. Sign in again, then retry the check.", errorCode: "AUTH_REQUIRED" },
         { status: 401 }

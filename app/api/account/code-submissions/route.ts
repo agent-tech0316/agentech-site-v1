@@ -9,13 +9,13 @@ import {
   getCodeSubmissionRecords,
   syncDeveloperReviewGateOnAccount
 } from "@/lib/account-records";
-import { isValidEmail } from "@/lib/prototype-auth";
+import { isValidAccountIdentifier } from "@/lib/prototype-auth";
 import { getServerAccountEmail } from "@/lib/server-account-session";
 
 export async function GET(request: NextRequest) {
   try {
     const email = await getServerAccountEmail(request);
-    if (!isValidEmail(email)) {
+    if (!isValidAccountIdentifier(email)) {
       return NextResponse.json(
         { error: "Sign in again to view your reviewed code files." },
         { status: 401 }
@@ -48,7 +48,7 @@ async function deleteLocalSubmissionMirror(id: string) {
 export async function DELETE(request: NextRequest) {
   try {
     const email = await getServerAccountEmail(request);
-    if (!isValidEmail(email)) {
+    if (!isValidAccountIdentifier(email)) {
       return NextResponse.json({ error: "Sign in again before deleting a reviewed code file." }, { status: 401 });
     }
 

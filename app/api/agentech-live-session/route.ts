@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActiveRobotViewingSession } from "@/lib/agentech-live-session";
-import { isValidEmail } from "@/lib/prototype-auth";
+import { isValidAccountIdentifier } from "@/lib/prototype-auth";
 import { getServerAccountEmail } from "@/lib/server-account-session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const email = await getServerAccountEmail(request, { allowLegacyCookie: true });
-  if (!isValidEmail(email)) {
+  if (!isValidAccountIdentifier(email)) {
     return NextResponse.json({ error: "Sign in to view a robot session." }, { status: 401 });
   }
 
