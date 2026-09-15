@@ -1,9 +1,10 @@
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
 import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import OBSWebSocket from "obs-websocket-js";
+import { ensureStreamWithRecovery } from "./obs-stream-recovery.mjs";
 import {
   endSessionCleanupPolicy,
   finalSessionDatabaseStatus,
@@ -32,6 +33,7 @@ const deviceResultsSerializer = join(here, "aegis-device-results.py");
 const gatewaySpec = join(here, "aegis_gateway_spec.py");
 const runnerResultSerializer = join(here, "aegis-runner-result.py");
 const trustedNaviRunner = join(here, "trusted-navi-runner.py");
+const obsHiddenLauncher = join(here, "ensure-obs-running-hidden.vbs");
 const captureUploadUrl = process.env.AGENTECH_CAPTURE_UPLOAD_URL || "https://www.agent-tech.ai/api/agentech-capture";
 const supabaseUrl = process.env.SUPABASE_URL.replace(/\/$/, "").replace(/\/rest\/v1$/, "");
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -57,6 +59,8 @@ mkdirSync(runtimeDir, { recursive: true });
 let state = { sessions: {} };
 try { state = JSON.parse(readFileSync(stateFile, "utf8")); } catch {}
 let obs;
+const obsRecoveryState = { lastAttemptAt: 0 };
+const obsRecoveryCooldownMs = 5 * 60 * 1000;
 
 async function obsCall(requestType, requestData) {
   let lastError;
@@ -141,8 +145,26 @@ async function reviewedSubmission(session) {
 }
 
 async function startObs() {
-  const status = await obsCall("GetStreamStatus");
-  if (!status.outputActive) await obsCall("StartStream");
+  await ensureStreamWithRecovery({
+    getStatus: () => obsCall("GetStreamStatus"),
+    startStream: () => obsCall("StartStream"),
+    recover: async () => {
+      const wscript = join(process.env.SystemRoot || "C:\\Windows", "System32", "wscript.exe");
+      const result = spawnSync(wscript, ["//B", "//Nologo", obsHiddenLauncher, "repair-nvenc"], {
+        encoding: "utf8",
+        timeout: 120000,
+        windowsHide: true,
+      });
+      if (result.error) throw result.error;
+      if (result.status !== 10) return false;
+      try { await obs?.disconnect(); } catch {}
+      obs = undefined;
+      return true;
+    },
+    recoveryState: obsRecoveryState,
+    recoveryCooldownMs: obsRecoveryCooldownMs,
+    nowMs: Date.now(),
+  });
   const verified = await obsCall("GetStreamStatus");
   if (!verified.outputActive) throw new Error("OBS did not enter the streaming state");
 }
