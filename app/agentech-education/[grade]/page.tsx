@@ -1,3 +1,4 @@
+import type { ResolvingMetadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -8,6 +9,7 @@ import { getEducationCoursesByGrade } from "@/lib/education-courses";
 import { educationGradePages, getEducationGradePage } from "@/lib/education-grade-pages";
 import { eaiImmersionSlug } from "@/lib/program-journey-data";
 import { formatUsd } from "@/lib/pricing";
+import { resolvePublicPageMetadata } from "@/lib/public-page-metadata";
 
 type GradePageProps = {
   params: Promise<{
@@ -21,7 +23,7 @@ export function generateStaticParams() {
   }));
 }
 
-export async function generateMetadata({ params }: GradePageProps) {
+export async function generateMetadata({ params }: GradePageProps, parent: ResolvingMetadata) {
   const { grade } = await params;
   const page = getEducationGradePage(grade);
 
@@ -30,17 +32,17 @@ export async function generateMetadata({ params }: GradePageProps) {
   }
 
   if (page.slug === eaiImmersionSlug) {
-    return {
+    return resolvePublicPageMetadata(`/agentech-education/${page.slug}`, parent, {
       title: "EAI Robotics Future Founder Immersion Program | Agentech Education",
       description:
         "Two standalone 5-day sessions where high school students build AI robotics ventures and products inside a real robotics company."
-    };
+    });
   }
 
-  return {
+  return resolvePublicPageMetadata(`/agentech-education/${page.slug}`, parent, {
     title: `${page.grade} | Agentech Education`,
     description: page.subtitle
-  };
+  });
 }
 
 export default async function EducationGradePage({ params }: GradePageProps) {

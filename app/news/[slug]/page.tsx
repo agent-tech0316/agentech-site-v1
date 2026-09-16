@@ -5,7 +5,7 @@ import { NewsArticleContent } from "@/components/news-article-content";
 import { NewsSlideshow } from "@/components/news-slideshow";
 import { accountSessionCookieName } from "@/lib/account-session";
 import { getNewsEntry } from "@/lib/news";
-import { canViewNewsEntry } from "@/lib/news-access";
+import { canViewNewsEntry, isCompanyNewsEntry } from "@/lib/news-access";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: NewsArticlePageProps) {
     return {};
   }
 
-  return {
+  const metadata = {
     title: entry.title,
     description: entry.excerpt,
     openGraph: {
@@ -31,6 +31,18 @@ export async function generateMetadata({ params }: NewsArticlePageProps) {
       description: entry.excerpt,
       images: [entry.coverImage]
     }
+  };
+
+  if (isCompanyNewsEntry(entry)) {
+    return metadata;
+  }
+
+  const canonicalPath = `/news/${entry.slug}`;
+
+  return {
+    ...metadata,
+    alternates: { canonical: canonicalPath },
+    openGraph: { ...metadata.openGraph, url: canonicalPath }
   };
 }
 

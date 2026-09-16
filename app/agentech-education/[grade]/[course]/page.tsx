@@ -1,3 +1,4 @@
+import type { ResolvingMetadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { EducationCourseButton } from "@/components/education-course-button";
@@ -5,6 +6,7 @@ import { HistoryBackButton } from "@/components/history-back-button";
 import { educationGradePages, getEducationGradePage } from "@/lib/education-grade-pages";
 import { educationCourses, getEducationCourse } from "@/lib/education-courses";
 import { formatUsd } from "@/lib/pricing";
+import { resolvePublicPageMetadata } from "@/lib/public-page-metadata";
 
 type CoursePageProps = {
   params: Promise<{
@@ -20,7 +22,7 @@ export function generateStaticParams() {
   }));
 }
 
-export async function generateMetadata({ params }: CoursePageProps) {
+export async function generateMetadata({ params }: CoursePageProps, parent: ResolvingMetadata) {
   const { grade, course } = await params;
   const courseData = getEducationCourse(grade, course);
 
@@ -28,10 +30,10 @@ export async function generateMetadata({ params }: CoursePageProps) {
     return {};
   }
 
-  return {
+  return resolvePublicPageMetadata(`/agentech-education/${courseData.gradeSlug}/${courseData.slug}`, parent, {
     title: `${courseData.title} | Agentech Education`,
     description: courseData.description
-  };
+  });
 }
 
 export default async function EducationCoursePage({ params }: CoursePageProps) {
