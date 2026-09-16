@@ -15,7 +15,7 @@ const validObservation: MasterHeartbeatObservation = {
   gatewayId: "agentech01",
   observedAt: now.toISOString(),
   master: {
-    host: "192.168.4.136",
+    host: "192.168.4.152",
     controllerResponsive: true,
     connection: "connected",
     posture: "standard",
@@ -56,7 +56,7 @@ test("rejects unknown fields at every object boundary", () => {
   );
 });
 
-test("requires the known gateway and Master host", () => {
+test("requires the known gateway and current Master host", () => {
   assert.throws(
     () => parseMasterHeartbeatObservation({ ...validObservation, gatewayId: "laptop" }, now),
     /gatewayId/i,

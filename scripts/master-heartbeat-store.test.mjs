@@ -17,7 +17,7 @@ const record = {
     schemaVersion: 1,
     gatewayId: "agentech01",
     observedAt: "2026-09-01T12:00:00.000Z",
-    master: { host: "192.168.4.136", controllerResponsive: true, connection: "connected", posture: "standard", action: null, state: null },
+    master: { host: "192.168.4.152", controllerResponsive: true, connection: "connected", posture: "standard", action: null, state: null },
     battery: { available: true, percent: 89, voltage: 52.67, charging: false, sourceTopic: "/aima/hal/pmu/state" },
   },
   receivedAt: "2026-09-01T12:00:01.000Z",

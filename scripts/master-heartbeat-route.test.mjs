@@ -22,7 +22,7 @@ function observation(overrides = {}) {
     gatewayId: "agentech01",
     observedAt: new Date().toISOString(),
     master: {
-      host: "192.168.4.136",
+      host: "192.168.4.152",
       controllerResponsive: true,
       connection: "connected",
       posture: "standard",
@@ -102,7 +102,7 @@ test("GET returns the latest accepted observation with server-derived freshness"
   assert.equal(payload.gatewayId, "agentech01");
   assert.equal(payload.condition, "online");
   assert.equal(payload.fresh, true);
-  assert.equal(payload.master.host, "192.168.4.136");
+  assert.equal(payload.master.host, "192.168.4.152");
   assert.equal(payload.battery.available, false);
   assert.equal(typeof payload.ageMs, "number");
 });

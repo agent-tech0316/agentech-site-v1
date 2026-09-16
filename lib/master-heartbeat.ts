@@ -7,7 +7,7 @@ export type BatteryTelemetry = {
 };
 
 export type MasterControllerTelemetry = {
-  host: "192.168.4.136";
+  host: "192.168.4.152";
   controllerResponsive: boolean;
   connection: string | null;
   posture: string | null;
@@ -118,11 +118,11 @@ function requireNullableFiniteNumber(
 function parseMaster(value: unknown): MasterControllerTelemetry {
   const master = requireRecord(value, "master");
   rejectUnknownFields(master, MASTER_KEYS, "master");
-  if (master.host !== "192.168.4.136") {
-    throw new TypeError("master.host must be 192.168.4.136");
+  if (master.host !== "192.168.4.152") {
+    throw new TypeError("master.host must be 192.168.4.152");
   }
   return {
-    host: "192.168.4.136",
+    host: "192.168.4.152",
     controllerResponsive: requireBoolean(master.controllerResponsive, "master.controllerResponsive"),
     connection: requireNullableString(master.connection, "master.connection"),
     posture: requireNullableString(master.posture, "master.posture"),
