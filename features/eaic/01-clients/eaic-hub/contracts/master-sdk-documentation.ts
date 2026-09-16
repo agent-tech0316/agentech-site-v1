@@ -9,7 +9,14 @@ const param = (name: string, type: string, description: string): AgentechParam =
   description,
   status: "available"
 });
-const profile = (name: string, syntax: string): NonNullable<AgentechFunction["profiles"]>[number] => ({ name, syntax });
+const DURATION_USAGE_POLICY = "Adjustable by authorized users only. Other users should omit duration_seconds and use the SDK default.";
+const profile = (name: string, syntax: string): NonNullable<AgentechFunction["profiles"]>[number] => ({
+  name,
+  syntax,
+  ...(/\bduration_seconds\s*=/.test(syntax)
+    ? { noteLabel: "Usage policy", note: DURATION_USAGE_POLICY }
+    : {})
+});
 
 const postureFunctions: AgentechFunction[] = [
   {
@@ -124,7 +131,7 @@ const shoulderFunctions: AgentechFunction[] = [
       profile("Yaw axis", 'Agentech.adjust_right_shoulder("yaw", +5, duration_seconds=1.0)')
     ],
     params: [
-      param("axis", "string", "Selects the shoulder axis shown in the engineering examples."),
+      param("axis", 'string ("roll", "pitch", "yaw")', "Selects the shoulder axis shown in the engineering examples."),
       param("degrees", "number", "Signed relative shoulder adjustment in degrees."),
       param("duration_seconds", "number", "Movement duration in seconds, as shown in the engineering examples.")
     ]
@@ -141,7 +148,7 @@ const shoulderFunctions: AgentechFunction[] = [
       profile("Yaw axis", 'Agentech.adjust_left_shoulder("yaw", +5, duration_seconds=1.0)')
     ],
     params: [
-      param("axis", "string", "Selects the shoulder axis shown in the engineering examples."),
+      param("axis", 'string ("roll", "pitch", "yaw")', "Selects the shoulder axis shown in the engineering examples."),
       param("degrees", "number", "Signed relative shoulder adjustment in degrees."),
       param("duration_seconds", "number", "Movement duration in seconds, as shown in the engineering examples.")
     ]
@@ -163,7 +170,7 @@ const wristFunctions: AgentechFunction[] = [
       profile("Single-value form", "Agentech.adjust_right_wrist(+10)")
     ],
     params: [
-      param("axis", "string or number", "Selects one wrist axis, or supplies the one-value form shown in the examples."),
+      param("axis", 'string ("roll", "pitch", "yaw") or number', "Selects one wrist axis, or supplies the one-value form shown in the examples."),
       param("degrees", "number", "Signed relative adjustment for the selected axis."),
       param("roll", "number", "Signed roll adjustment in degrees."),
       param("pitch", "number", "Signed pitch adjustment in degrees."),
@@ -184,7 +191,7 @@ const wristFunctions: AgentechFunction[] = [
       profile("Single-value form", "Agentech.adjust_left_wrist(+10)")
     ],
     params: [
-      param("axis", "string or number", "Selects one wrist axis, or supplies the one-value form shown in the examples."),
+      param("axis", 'string ("roll", "pitch", "yaw") or number', "Selects one wrist axis, or supplies the one-value form shown in the examples."),
       param("degrees", "number", "Signed relative adjustment for the selected axis."),
       param("roll", "number", "Signed roll adjustment in degrees."),
       param("pitch", "number", "Signed pitch adjustment in degrees."),
@@ -212,7 +219,7 @@ const waistFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.adjust_waist()",
     summary: "Adjust one or more of Master's waist yaw, pitch, and roll axes.",
-    example: 'Agentech.adjust_waist("yaw", +10)\nAgentech.adjust_waist("pitch", +10)\nAgentech.adjust_waist("roll", +10)\nAgentech.adjust_waist(\n    yaw=+5,\n    pitch=-5,\n    roll=+5,\n    max_duration_seconds=8.0\n)',
+    example: 'Agentech.adjust_waist("yaw", +10)',
     profiles: [
       profile("Yaw axis", 'Agentech.adjust_waist("yaw", +10)'),
       profile("Pitch axis", 'Agentech.adjust_waist("pitch", +10)'),
@@ -220,8 +227,8 @@ const waistFunctions: AgentechFunction[] = [
       profile("Combined waist axes", "Agentech.adjust_waist(\n    yaw=+5,\n    pitch=-5,\n    roll=+5,\n    max_duration_seconds=8.0\n)")
     ],
     params: [
-      param("axis", "string", "Selects the waist axis shown in the engineering examples."),
-      param("degrees", "number", "Signed relative adjustment for the selected axis."),
+      param("axis", 'string ("roll", "pitch", "yaw")', "Selects one supported waist axis."),
+      param("degrees", "number · dynamic limit", "Signed relative adjustment for the selected axis. The accepted range depends on that axis's calibrated limits and current native headroom."),
       param("yaw", "number", "Signed yaw adjustment in degrees."),
       param("pitch", "number", "Signed pitch adjustment in degrees."),
       param("roll", "number", "Signed roll adjustment in degrees."),

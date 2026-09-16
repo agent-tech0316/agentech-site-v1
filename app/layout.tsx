@@ -4,7 +4,7 @@ import Script from "next/script";
 import { AgentCursor } from "@/components/agent-cursor";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { gaMeasurementId, siteUrl } from "@/lib/site-config";
+import { canonicalSiteUrl, gaMeasurementId } from "@/lib/site-config";
 import { themeBootScript } from "@/lib/theme";
 import "./globals.css";
 
@@ -26,7 +26,7 @@ const oxanium = Oxanium({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: new URL(canonicalSiteUrl),
   title: {
     default: "Agentech",
     template: "%s | Agentech"
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Agentech",
     description: "Agentech is an AI-native robotics and intelligent systems company.",
-    url: siteUrl,
+    url: canonicalSiteUrl,
     siteName: "Agentech",
     type: "website"
   },

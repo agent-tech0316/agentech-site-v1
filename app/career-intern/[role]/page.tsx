@@ -1,8 +1,10 @@
+import type { ResolvingMetadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { HistoryBackButton } from "@/components/history-back-button";
 import { InternshipRoleDetail } from "@/components/internship-role-detail";
 import { getInternshipRole, internshipRoles } from "@/lib/internship-roles";
+import { resolvePublicPageMetadata } from "@/lib/public-page-metadata";
 
 type InternshipRolePageProps = {
   params: Promise<{
@@ -37,7 +39,7 @@ export function generateStaticParams() {
   }));
 }
 
-export async function generateMetadata({ params }: InternshipRolePageProps) {
+export async function generateMetadata({ params }: InternshipRolePageProps, parent: ResolvingMetadata) {
   const { role: roleSlug } = await params;
   const role = getInternshipRole(roleSlug);
 
@@ -45,10 +47,10 @@ export async function generateMetadata({ params }: InternshipRolePageProps) {
     return {};
   }
 
-  return {
+  return resolvePublicPageMetadata(`/career-intern/${role.slug}`, parent, {
     title: `${role.title} | Agentech Internship`,
     description: role.summary
-  };
+  });
 }
 
 export default async function InternshipRolePage({ params }: InternshipRolePageProps) {

@@ -1,4 +1,10 @@
+import type { Metadata, ResolvingMetadata } from "next";
 import Image from "next/image";
+import { resolvePublicPageMetadata } from "@/lib/public-page-metadata";
+
+export function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
+  return resolvePublicPageMetadata("/agentech-bots", parent);
+}
 
 const agentechBotsImages = [
   {

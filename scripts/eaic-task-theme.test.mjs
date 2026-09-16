@@ -345,8 +345,6 @@ test("documents the latest Master command set once per API without changing the 
     "Agentech.adjust_left_wrist(+10)",
     "Agentech.adjust_wrist(roll=+5, pitch=-3, yaw=+2)",
     'Agentech.adjust_waist("yaw", +10)',
-    'Agentech.adjust_waist("pitch", +10)',
-    'Agentech.adjust_waist("roll", +10)',
     "Agentech.stay(1.0)",
   ]) {
     assert.ok(decodedHtml.includes(example), `${example} should be present as a Master usage example`);
@@ -362,6 +360,60 @@ test("documents the latest Master command set once per API without changing the 
   ]) {
     assert.ok(decodedHtml.includes(multilineExampleFragment), `${multilineExampleFragment} should be present in the engineering examples`);
   }
+});
+
+test("presents adjust_waist overloads with one axis example and accurate parameter types", () => {
+  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
+    .replaceAll("<!-- -->", "")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#x27;", "'");
+  const waistStart = html.indexOf('data-sdk-function-name="adjust_waist"');
+  const waistEnd = html.indexOf('data-sdk-function-name="return_waist_to_neutral"', waistStart);
+
+  assert.ok(waistStart >= 0 && waistEnd > waistStart, "the adjust_waist card should render before return_waist_to_neutral");
+  const waistHtml = html.slice(waistStart, waistEnd);
+  assert.match(waistHtml, />axis<\/span><span[^>]*>string \("roll", "pitch", "yaw"\)<\/span>/);
+  assert.match(waistHtml, />degrees<\/span><span[^>]*>number · dynamic limit<\/span>/);
+  for (const numericAxis of ["yaw", "pitch", "roll"]) {
+    assert.match(
+      waistHtml,
+      new RegExp(`>${numericAxis}<\\/span><span[^>]*>number<\\/span>`),
+      `${numericAxis} should remain a numeric keyword argument`,
+    );
+  }
+
+  const exampleStart = waistHtml.lastIndexOf(">Example<");
+  const exampleEnd = waistHtml.indexOf("</pre>", exampleStart);
+  assert.ok(exampleStart >= 0 && exampleEnd > exampleStart, "the adjust_waist card should render a primary Example block");
+  const exampleHtml = waistHtml.slice(exampleStart, exampleEnd);
+  assert.match(exampleHtml, /Agentech\.adjust_waist\("yaw", \+10\)/);
+  assert.doesNotMatch(exampleHtml, /"pitch"|"roll"|max_duration_seconds/);
+});
+
+test("documents Master three-axis selectors and duration as an unenforced usage policy", () => {
+  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
+    .replaceAll("<!-- -->", "")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#x27;", "'");
+  const cards = [...html.matchAll(/data-sdk-function-name="([^"]+)"/g)];
+  const cardHtml = (name) => {
+    const cardIndex = cards.findIndex((match) => match[1] === name);
+    assert.ok(cardIndex >= 0, `${name} should render as a Master command card`);
+    const start = cards[cardIndex].index;
+    const end = cards[cardIndex + 1]?.index ?? html.length;
+    return html.slice(start, end);
+  };
+
+  for (const shoulder of ["adjust_right_shoulder", "adjust_left_shoulder"]) {
+    assert.match(cardHtml(shoulder), />axis<\/span><span[^>]*>string \("roll", "pitch", "yaw"\)<\/span>/);
+  }
+  for (const wrist of ["adjust_right_wrist", "adjust_left_wrist"]) {
+    assert.match(cardHtml(wrist), />axis<\/span><span[^>]*>string \("roll", "pitch", "yaw"\) or number<\/span>/);
+  }
+
+  const shoulderHtml = cardHtml("adjust_right_shoulder");
+  assert.match(shoulderHtml, />Usage policy:<\/span> Adjustable by authorized users only\. Other users should omit duration_seconds and use the SDK default\./);
+  assert.doesNotMatch(cardHtml("adjust_waist"), /Adjustable by authorized users only/);
 });
 
 test("renders the engineering Master usage variants as numbered parameter profiles", () => {

@@ -1,6 +1,12 @@
+import type { Metadata, ResolvingMetadata } from "next";
 import Image from "next/image";
 import { HistoryBackButton } from "@/components/history-back-button";
 import { TechEducationForm } from "@/components/tech-education-form";
+import { resolvePublicPageMetadata } from "@/lib/public-page-metadata";
+
+export function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
+  return resolvePublicPageMetadata("/tech-education", parent);
+}
 
 export default function TechEducationPage() {
   return (

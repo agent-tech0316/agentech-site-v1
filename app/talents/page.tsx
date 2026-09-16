@@ -1,14 +1,17 @@
-import type { Metadata } from "next";
+import type { Metadata, ResolvingMetadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
+import { resolvePublicPageMetadata } from "@/lib/public-page-metadata";
 import { company } from "@/lib/site-data";
 
-export const metadata: Metadata = {
-  title: "Agentech Talents",
-  description:
-    "Explore Agentech pathways for students, emerging builders, and professionals working in AI and robotics."
-};
+export function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
+  return resolvePublicPageMetadata("/talents", parent, {
+    title: "Agentech Talents",
+    description:
+      "Explore Agentech pathways for students, emerging builders, and professionals working in AI and robotics."
+  });
+}
 
 const talentPrograms = [
   {

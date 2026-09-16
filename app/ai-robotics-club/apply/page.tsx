@@ -1,9 +1,15 @@
+import type { Metadata, ResolvingMetadata } from "next";
 import Image from "next/image";
 import { HistoryBackButton } from "@/components/history-back-button";
 import { SummerSchoolForm } from "@/components/summer-school-form";
+import { resolvePublicPageMetadata } from "@/lib/public-page-metadata";
 import { SUMMER_SCHOOL_GRADES, type SummerSchoolGrade } from "@/lib/summer-school";
 
 type ApplyPageSearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+export function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
+  return resolvePublicPageMetadata("/ai-robotics-club/apply", parent);
+}
 
 function firstSearchValue(value: string | string[] | undefined) {
   return (Array.isArray(value) ? value[0] : value ?? "").trim();

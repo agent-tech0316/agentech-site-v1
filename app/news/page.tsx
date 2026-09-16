@@ -1,11 +1,17 @@
+import type { Metadata, ResolvingMetadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { accountSessionCookieName } from "@/lib/account-session";
 import { canViewNewsEntry } from "@/lib/news-access";
 import { newsEntries } from "@/lib/news";
+import { resolvePublicPageMetadata } from "@/lib/public-page-metadata";
 
 export const dynamic = "force-dynamic";
+
+export function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
+  return resolvePublicPageMetadata("/news", parent);
+}
 
 export default async function NewsPage() {
   const cookieStore = await cookies();

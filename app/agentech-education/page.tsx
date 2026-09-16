@@ -1,14 +1,20 @@
+import type { Metadata, ResolvingMetadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { EducationProgramTabs } from "@/components/education-program-tabs";
 import { getChildrenEnrolled } from "@/lib/education-counter";
 import { educationGradePages, resolveEducationPathway } from "@/lib/education-grade-pages";
+import { resolvePublicPageMetadata } from "@/lib/public-page-metadata";
 
 type AgentechEducationPageProps = {
   searchParams: Promise<{
     pathway?: string | string[];
   }>;
 };
+
+export function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
+  return resolvePublicPageMetadata("/agentech-education", parent);
+}
 
 export default async function AgentechEducationPage({ searchParams }: AgentechEducationPageProps) {
   const childrenEnrolled = await getChildrenEnrolled();

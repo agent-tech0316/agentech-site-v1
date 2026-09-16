@@ -1,12 +1,16 @@
+import type { Metadata, ResolvingMetadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { HistoryBackButton } from "@/components/history-back-button";
 import { internshipRoles } from "@/lib/internship-roles";
+import { resolvePublicPageMetadata } from "@/lib/public-page-metadata";
 
-export const metadata = {
-  title: "Internship | Agentech Talents",
-  description: "Explore Agentech internship openings in intelligent hardware, robotics software, AI engineering, algorithms, and research."
-};
+export function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
+  return resolvePublicPageMetadata("/career-intern", parent, {
+    title: "Internship | Agentech Talents",
+    description: "Explore Agentech internship openings in intelligent hardware, robotics software, AI engineering, algorithms, and research."
+  });
+}
 
 export default function CareerInternPage() {
   return (

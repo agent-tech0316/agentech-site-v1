@@ -1,11 +1,15 @@
+import type { Metadata, ResolvingMetadata } from "next";
 import Image from "next/image";
 import { HistoryBackButton } from "@/components/history-back-button";
 import { InternshipForm } from "@/components/internship-form";
+import { resolvePublicPageMetadata } from "@/lib/public-page-metadata";
 
-export const metadata = {
-  title: "Apply for Internship | Agentech Talents",
-  description: "Submit an Agentech internship application."
-};
+export function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
+  return resolvePublicPageMetadata("/career-intern/apply", parent, {
+    title: "Apply for Internship | Agentech Talents",
+    description: "Submit an Agentech internship application."
+  });
+}
 
 export default function CareerInternApplyPage() {
   return (

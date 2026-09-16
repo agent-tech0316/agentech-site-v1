@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { siteUrl } from "@/lib/site-config";
+import { canonicalSiteUrl } from "@/lib/site-config";
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -10,6 +10,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: "/field-interest/"
       }
     ],
-    sitemap: `${siteUrl}/sitemap.xml`
+    sitemap: `${canonicalSiteUrl}/sitemap.xml`
   };
 }

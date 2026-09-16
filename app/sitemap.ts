@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { siteUrl } from "@/lib/site-config";
+import { canonicalSiteUrl } from "@/lib/site-config";
 import { internshipRoles } from "@/lib/internship-roles";
 
 const routes = [
@@ -23,6 +23,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const roleRoutes = internshipRoles.map((role) => `/career-intern/${role.slug}`);
 
   return [...routes, ...roleRoutes].map((route) => ({
-    url: `${siteUrl}${route}`
+    url: `${canonicalSiteUrl}${route}`
   }));
 }

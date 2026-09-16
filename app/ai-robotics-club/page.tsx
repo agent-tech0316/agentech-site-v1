@@ -1,3 +1,4 @@
+import type { Metadata, ResolvingMetadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -8,6 +9,11 @@ import {
   ClubSectionNavigation,
 } from "@/components/ai-robotics-club-experience";
 import { HistoryBackButton } from "@/components/history-back-button";
+import { resolvePublicPageMetadata } from "@/lib/public-page-metadata";
+
+export function generateMetadata(_props: unknown, parent: ResolvingMetadata): Promise<Metadata> {
+  return resolvePublicPageMetadata("/ai-robotics-club", parent);
+}
 
 const clubImages = [
   "/assets/talents/club/club-1.png",

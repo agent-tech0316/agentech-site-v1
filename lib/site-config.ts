@@ -1,6 +1,8 @@
 const fallbackSiteUrl = "http://localhost:3000";
 const fallbackGaMeasurementId = "G-C32SXD74ZX";
 
+export const canonicalSiteUrl = "https://www.agent-tech.ai";
+
 export function getSiteUrl() {
   const rawSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
 
