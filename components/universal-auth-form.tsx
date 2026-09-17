@@ -31,6 +31,7 @@ export function UniversalAuthForm() {
   const [addressLine2, setAddressLine2] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [devCode, setDevCode] = useState("");
@@ -95,6 +96,7 @@ export function UniversalAuthForm() {
     clearAccountSession();
     setSignedInEmail("");
     setPassword("");
+    setShowPassword(false);
     setStatus("idle");
     setMessage("");
     router.replace("/login?signedOut=1");
@@ -276,6 +278,7 @@ export function UniversalAuthForm() {
               setDevCode("");
               setCode("");
               setPassword("");
+              setShowPassword(false);
             }}
             className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
               mode === option ? "bg-white text-[#0b1220] shadow-sm" : "text-[#475569]"
@@ -405,17 +408,45 @@ export function UniversalAuthForm() {
               required
             />
           </label>
-          <label className="block">
-            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1f2937]">Password</span>
-            <input
-              data-login-input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-[#cbd5e1] bg-white px-4 py-3 text-sm text-[#0b1220] outline-none focus:border-[#0b1220] focus:ring-4 focus:ring-[#dbe4ef]"
-              required
-            />
-          </label>
+          <div>
+            <label htmlFor="signin-password" className="block">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1f2937]">Password</span>
+            </label>
+            <div className="relative mt-2">
+              <input
+                id="signin-password"
+                data-login-input
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="w-full rounded-xl border border-[#cbd5e1] bg-white py-3 pl-4 pr-14 text-sm text-[#0b1220] outline-none focus:border-[#0b1220] focus:ring-4 focus:ring-[#dbe4ef]"
+                required
+              />
+              <button
+                type="button"
+                data-login-password-toggle
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-controls="signin-password"
+                title={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword((visible) => !visible)}
+                className="absolute right-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-[var(--login-muted)] transition-colors hover:text-[var(--login-accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--login-accent)]"
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                  {showPassword ? (
+                    <>
+                      <path d="m3 3 18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.2A11 11 0 0 1 12 5c7 0 10 7 10 7a15.7 15.7 0 0 1-3.1 4.1M6.5 6.5A16.7 16.7 0 0 0 2 12s3 7 10 7a10.8 10.8 0 0 0 5.5-1.5" />
+                    </>
+                  ) : (
+                    <>
+                      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </>
+                  )}
+                </svg>
+              </button>
+            </div>
+          </div>
           <button data-login-primary type="submit" disabled={status === "loading"} className="w-full rounded-full bg-[#0b1220] px-5 py-3 text-sm font-semibold text-white disabled:cursor-wait disabled:opacity-70">
             {status === "loading" ? "Signing in..." : "Sign In"}
           </button>
@@ -431,6 +462,7 @@ export function UniversalAuthForm() {
               setDevCode("");
               setCode("");
               setPassword("");
+              setShowPassword(false);
             }}
             className="w-full text-sm font-semibold text-[#475569]"
           >
@@ -509,6 +541,7 @@ export function UniversalAuthForm() {
               setDevCode("");
               setCode("");
               setPassword("");
+              setShowPassword(false);
             }}
             className="w-full text-sm font-semibold text-[#475569]"
           >

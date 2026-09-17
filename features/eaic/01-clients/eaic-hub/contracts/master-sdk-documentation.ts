@@ -261,7 +261,7 @@ const waistFunctions: AgentechFunction[] = [
       jointProfile("Yaw axis", "Agentech.adjust_waist(axis=\"yaw\", degrees=+10)", "Adjust waist yaw by x degrees"),
       jointProfile("Pitch axis", "Agentech.adjust_waist(axis=\"pitch\", degrees=+10)", "Adjust waist pitch by x degrees"),
       jointProfile("Roll axis", "Agentech.adjust_waist(axis=\"roll\", degrees=+10)", "Adjust waist roll by x degrees"),
-      jointProfile("Combined waist axes", "Agentech.adjust_waist(\n    yaw=+5,\n    pitch=-5,\n    roll=+5,\n    max_duration_seconds=8.0\n)", "Adjust waist yaw, pitch, and roll by the specified degrees")
+      jointProfile("Combined waist axes", "Agentech.adjust_waist(yaw=+5, pitch=-5, roll=+5, max_duration_seconds=8.0)", "Adjust waist yaw, pitch, and roll by their respective x values in degrees")
     ],
     params: [
       param("axis", 'string ("roll", "pitch", "yaw")', "Selects one supported waist axis."),
@@ -278,7 +278,7 @@ const waistFunctions: AgentechFunction[] = [
     signature: "Agentech.return_waist_to_neutral()",
     summary: "Return Master's waist to its supported neutral position.",
     example: "Agentech.return_waist_to_neutral(\n    max_duration_seconds=8.0\n)",
-    profiles: [jointProfile("Return to neutral", "Agentech.return_waist_to_neutral(\n    max_duration_seconds=8.0\n)", "Return waist to its neutral position")],
+    profiles: [jointProfile("Return to neutral", "Agentech.return_waist_to_neutral(max_duration_seconds=8.0)", "Return waist to its neutral position")],
     params: [param("max_duration_seconds", "number", "Maximum movement duration in seconds, as shown in the engineering example.")]
   }
 ];
@@ -291,7 +291,7 @@ const upperBodyFunctions: AgentechFunction[] = [
     summary: "Coordinate Master's waist and upper-body joints in one adjustment.",
     example: 'Agentech.adjust_upper_body(\n    waist={"yaw": +10},\n    both_elbows=+30,\n    duration_seconds=3.0,\n)',
     profiles: [
-      jointProfile("Waist + both elbows", "Agentech.adjust_upper_body(\n    waist={\"yaw\": +10},\n    both_elbows=+30,\n    duration_seconds=3.0,\n)", "Adjust waist yaw and both elbows by the specified degrees")
+      jointProfile("Waist + both elbows", "Agentech.adjust_upper_body(waist={\"yaw\": +10}, both_elbows=+30, duration_seconds=3.0)", "Adjust waist yaw and both elbows by their respective x values in degrees")
     ],
     params: [
       param("waist", "object", "Waist-axis adjustments shown in the engineering example."),
@@ -321,8 +321,8 @@ const upperBodyFunctions: AgentechFunction[] = [
     summary: "Mirror the selected source arm pose onto Master's opposite arm.",
     example: 'Agentech.mirror_arm_pose(\n    source_side="right",\n    duration_seconds=20.0\n)\n\nAgentech.mirror_arm_pose(\n    source_side="left",\n    duration_seconds=20.0\n)',
     profiles: [
-      jointProfile("Mirror from right arm", "Agentech.mirror_arm_pose(\n    source_side=\"right\",\n    duration_seconds=20.0\n)", "Mirror the right arm pose onto the left arm"),
-      jointProfile("Mirror from left arm", "Agentech.mirror_arm_pose(\n    source_side=\"left\",\n    duration_seconds=20.0\n)", "Mirror the left arm pose onto the right arm")
+      jointProfile("Mirror from right arm", "Agentech.mirror_arm_pose(source_side=\"right\", duration_seconds=20.0)", "Mirror the right arm pose onto the left arm"),
+      jointProfile("Mirror from left arm", "Agentech.mirror_arm_pose(source_side=\"left\", duration_seconds=20.0)", "Mirror the left arm pose onto the right arm")
     ],
     params: [
       param("source_side", "string", "Selects the source arm shown in the engineering examples."),

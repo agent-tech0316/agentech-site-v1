@@ -2182,7 +2182,9 @@ function FocusedBrowseFunctionsSection() {
                               <details data-sdk-param-name={param.name} key={param.name} open={postureDocumentation ? true : undefined} className={`group/param border ${param.status === "development" ? "border-[#e1ad32] bg-[#fffaf0]" : param.status === "unsupported" ? "border-[#d88b8b] bg-[#fff5f5]" : "border-[#dce7f2] bg-white"}`}>
                                 <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 p-3 outline-none transition hover:bg-[#f8fbff] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#005bd6]/25">
                                   <span data-sdk-typeface="code" data-sdk-param-label="true" className="font-mono text-xs text-[#006a5c]">{param.name}</span>
-                                  <span data-sdk-typeface="code" className="font-mono text-xs text-[#1a73e8]">{param.type}</span>
+                                  {selectedRobot === "master" && group.category === "Joint Adjustments" && ["roll", "pitch", "yaw"].includes(param.name) ? null : (
+                                    <span data-sdk-typeface="code" className="font-mono text-xs text-[#1a73e8]">{param.type}</span>
+                                  )}
                                   {postureDocumentation?.params.find((entry) => entry.name === param.name)?.allowedValues ? (
                                     <span data-sdk-param-allowed-values="true" className="flex flex-wrap items-center gap-2 text-xs text-[#526174]">
                                       <span>Allowed values:</span>
