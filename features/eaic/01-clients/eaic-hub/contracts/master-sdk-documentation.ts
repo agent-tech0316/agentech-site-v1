@@ -269,9 +269,6 @@ const waistFunctions: AgentechFunction[] = [
     params: [
       param("axis", 'string ("roll", "pitch", "yaw")', "Selects one supported waist axis."),
       param("degrees", "number · dynamic limit", "Signed relative adjustment for the selected axis. The accepted range depends on that axis's calibrated limits and current native headroom."),
-      param("yaw", "number", "Signed yaw adjustment in degrees."),
-      param("pitch", "number", "Signed pitch adjustment in degrees."),
-      param("roll", "number", "Signed roll adjustment in degrees."),
       param("max_duration_seconds", "number", "Maximum movement duration in seconds, as shown in the engineering example.")
     ]
   },
@@ -285,6 +282,20 @@ const waistFunctions: AgentechFunction[] = [
     params: [param("max_duration_seconds", "number", "Maximum movement duration in seconds, as shown in the engineering example.")]
   }
 ];
+
+const armJointParameters = (side: "right" | "left"): AgentechParam[] => [
+  ["shoulder_pitch", "shoulder pitch"],
+  ["shoulder_roll", "shoulder roll"],
+  ["shoulder_yaw", "shoulder yaw"],
+  ["elbow", "elbow"],
+  ["wrist_yaw", "wrist yaw"],
+  ["wrist_pitch", "wrist pitch"],
+  ["wrist_roll", "wrist roll"]
+].map(([joint, label]) => param(
+  `${side}.${joint}`,
+  "degrees",
+  `Absolute ${label} target for the ${side} arm, in degrees. Omit this joint to keep its current commanded target; zero is an explicit target.${joint === "elbow" ? " Positive values bend the elbow." : ""}`
+));
 
 const upperBodyFunctions: AgentechFunction[] = [
   {
@@ -306,14 +317,14 @@ const upperBodyFunctions: AgentechFunction[] = [
     name: "move_arms_to",
     category: "Joint Adjustments",
     signature: "Agentech.move_arms_to()",
-    summary: "Move Master's right and left arms to explicit coordinated joint targets.",
+    summary: "Move Master's right and left arms to explicit coordinated joint targets. Specify any subset of the seven joints per arm. Omitted joints keep their current commanded positions; they are not reset to zero. Set a joint to 0 explicitly to target zero degrees.",
     example: "Agentech.move_arms_to(\n    right={\n        \"shoulder_pitch\": -19.45,\n        \"shoulder_roll\": 16.68,\n        \"shoulder_yaw\": 6.36,\n        \"elbow\": 24.91,\n        \"wrist_yaw\": 0.58,\n        \"wrist_pitch\": 2.52,\n        \"wrist_roll\": -0.03\n    },\n    left={\n        \"shoulder_pitch\": -19.45,\n        \"shoulder_roll\": 16.68,\n        \"shoulder_yaw\": 6.36,\n        \"elbow\": 24.91,\n        \"wrist_yaw\": 0.58,\n        \"wrist_pitch\": 2.52,\n        \"wrist_roll\": -0.03\n    },\n    duration_seconds=8.0\n)",
     profiles: [
       jointProfile("Right + left arm targets", "Agentech.move_arms_to(\n    right={\n        \"shoulder_pitch\": -19.45,\n        \"shoulder_roll\": 16.68,\n        \"shoulder_yaw\": 6.36,\n        \"elbow\": 24.91,\n        \"wrist_yaw\": 0.58,\n        \"wrist_pitch\": 2.52,\n        \"wrist_roll\": -0.03\n    },\n    left={\n        \"shoulder_pitch\": -19.45,\n        \"shoulder_roll\": 16.68,\n        \"shoulder_yaw\": 6.36,\n        \"elbow\": 24.91,\n        \"wrist_yaw\": 0.58,\n        \"wrist_pitch\": 2.52,\n        \"wrist_roll\": -0.03\n    },\n    duration_seconds=8.0\n)", "Move both arms to the specified joint angles")
     ],
     params: [
-      param("right", "object", "Target joint values for the right arm."),
-      param("left", "object", "Target joint values for the left arm."),
+      ...armJointParameters("right"),
+      ...armJointParameters("left"),
       param("duration_seconds", "number", "Coordinated movement duration in seconds, as shown in the engineering example.")
     ]
   },
@@ -336,13 +347,13 @@ const upperBodyFunctions: AgentechFunction[] = [
     name: "move_mirrored_arms_to",
     category: "Joint Adjustments",
     signature: "Agentech.move_mirrored_arms_to()",
-    summary: "Move both of Master's arms to mirrored versions of one supplied joint pose.",
+    summary: "Move both of Master's arms to mirrored versions of one supplied joint pose. This command currently requires all seven joint targets; an incomplete pose is rejected, and missing joints are never filled with zero. Use move_arms_to() to move selected joints while keeping the others at their current commanded positions.",
     example: "Agentech.move_mirrored_arms_to(\n    {\n        \"shoulder_pitch\": -19.45,\n        \"shoulder_roll\": 16.68,\n        \"shoulder_yaw\": 6.36,\n        \"elbow\": 24.91,\n        \"wrist_yaw\": 0.58,\n        \"wrist_pitch\": 2.52,\n        \"wrist_roll\": -0.03\n    },\n    duration_seconds=20.0\n)",
     profiles: [
       jointProfile("Mirrored arm target", "Agentech.move_mirrored_arms_to(\n    {\n        \"shoulder_pitch\": -19.45,\n        \"shoulder_roll\": 16.68,\n        \"shoulder_yaw\": 6.36,\n        \"elbow\": 24.91,\n        \"wrist_yaw\": 0.58,\n        \"wrist_pitch\": 2.52,\n        \"wrist_roll\": -0.03\n    },\n    duration_seconds=20.0\n)", "Move both arms to mirrored versions of the specified joint angles")
     ],
     params: [
-      param("pose", "object", "Joint values for the source arm pose."),
+      param("pose", "object", "All seven joint targets in degrees: shoulder_pitch, shoulder_roll, shoulder_yaw, elbow, wrist_yaw, wrist_pitch, and wrist_roll. Every joint is required for this mirrored-pose command. An explicit 0 targets zero degrees; a missing joint causes an error."),
       param("duration_seconds", "number", "Mirrored movement duration in seconds, as shown in the engineering example.")
     ]
   }

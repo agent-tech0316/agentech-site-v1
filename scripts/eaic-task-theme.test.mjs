@@ -367,7 +367,7 @@ test("documents the latest Master command set once per API without changing the 
   }
 });
 
-test("presents adjust_waist overloads without redundant axis type badges", () => {
+test("presents adjust_waist without duplicate axis parameter rows", () => {
   const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
     .replaceAll("<!-- -->", "")
     .replaceAll("&quot;", '"')
@@ -379,6 +379,11 @@ test("presents adjust_waist overloads without redundant axis type badges", () =>
   const waistHtml = html.slice(waistStart, waistEnd);
   assert.match(waistHtml, />axis<\/span><span[^>]*>string \("roll", "pitch", "yaw"\)<\/span>/);
   assert.match(waistHtml, />degrees<\/span><span[^>]*>number · dynamic limit<\/span>/);
+  assert.deepEqual(
+    [...waistHtml.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]),
+    ["axis", "degrees", "max_duration_seconds"],
+    "list the selector and angle once instead of repeating each axis as a parameter",
+  );
   for (const numericAxis of ["yaw", "pitch", "roll"]) {
     assert.doesNotMatch(
       waistHtml,
@@ -393,6 +398,45 @@ test("presents adjust_waist overloads without redundant axis type badges", () =>
   const exampleHtml = waistHtml.slice(exampleStart, exampleEnd);
   assert.match(exampleHtml.replace(/\s+/g, "").replace(/,\)/g, ")"), /Agentech\.adjust_waist\("yaw",\+10\)/);
   assert.doesNotMatch(exampleHtml, /"pitch"|"roll"|max_duration_seconds/);
+});
+
+test("lists all seven move_arms_to joint parameters under each arm", () => {
+  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
+    .replaceAll("<!-- -->", "")
+    .replaceAll("&quot;", '"');
+  const start = html.indexOf('data-sdk-function-name="move_arms_to"');
+  const end = html.indexOf('data-sdk-function-name="mirror_arm_pose"', start);
+  const card = html.slice(start, end);
+  const joints = ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_yaw", "wrist_pitch", "wrist_roll"];
+  assert.deepEqual(
+    [...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]),
+    [...joints.map((joint) => `right.${joint}`), ...joints.map((joint) => `left.${joint}`), "duration_seconds"],
+  );
+  assert.deepEqual(
+    [...card.matchAll(/data-sdk-param-group="([^"]+)"/g)].map((match) => match[1]),
+    ["right", "left", "timing"],
+  );
+  assert.doesNotMatch(card, />object<\/span>/);
+  for (const joint of joints) {
+    assert.equal([...card.matchAll(new RegExp(`data-sdk-param-label="true"[^>]*>"${joint}"<`, "g"))].length, 2);
+  }
+  assert.ok(card.includes('right={'));
+  assert.ok(card.includes('left={'));
+  assert.match(card, /Omitted joints keep their current commanded positions; they are not reset to zero/);
+  assert.match(card, /Set a joint to 0 explicitly to target zero degrees/);
+  assert.equal([...card.matchAll(/Omit this joint to keep its current commanded target; zero is an explicit target/g)].length, 14);
+});
+
+test("explains that mirrored arm poses require all seven joints without zero-filling", () => {
+  const html = pages.get("/agentech-products/eaic-hub/view-sdk") ?? "";
+  const start = html.indexOf('data-sdk-function-name="move_mirrored_arms_to"');
+  assert.ok(start >= 0);
+  const end = html.indexOf('data-sdk-function-name="', start + 1);
+  const card = html.slice(start, end < 0 ? undefined : end);
+  assert.match(card, /requires all seven joint targets/);
+  assert.match(card, /an incomplete pose is rejected, and missing joints are never filled with zero/);
+  assert.match(card, /Use move_arms_to\(\) to move selected joints while keeping the others at their current commanded positions/);
+  assert.match(card, /An explicit 0 targets zero degrees; a missing joint causes an error/);
 });
 
 test("keeps public setup examples and guidance free of dry-run settings", () => {
