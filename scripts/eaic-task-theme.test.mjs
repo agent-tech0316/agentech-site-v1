@@ -311,10 +311,10 @@ test("documents the latest Master command set once per API without changing the 
   assert.match(postureHtml, /Commands for entering and restoring supported standing modes\./);
   assert.match(jointHtml, /Fine control of Master’s shoulders, elbows, wrists, waist, and upper-body joints\./);
   assert.match(actionHtml, /Predefined and coordinated arm, pose, and movement commands for Master\./);
-  const masterSetup = [...html.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)]
+  const masterSetup = [...decodedHtml.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)]
     .map(([, markup]) => markup.replace(/<[^>]*>/g, ""))
-    .find((code) => code.startsWith("from agentech import Agentech, master"));
-  assert.equal(masterSetup, "from agentech import Agentech, master\n\nAgentech.use(master)");
+    .find((code) => code.startsWith("from agentech import Agentech"));
+  assert.equal(masterSetup, 'from agentech import Agentech\nAgentech.use("master")');
   assert.doesNotMatch(html, /data-sdk-function-name="standing_actions\.teach"/);
   assert.doesNotMatch(html, /data-sdk-function-name="action_catalog"/);
   assert.doesNotMatch(html, /Agentech\.movement_b|data-sdk-function-name="movement_b"/);
@@ -408,7 +408,7 @@ test("keeps public setup examples and guidance free of dry-run settings", () => 
   }
 });
 
-test("renders valid multiline Python in every Master joint profile and copyable example", () => {
+test("renders valid multiline Python with grouped positional arguments and no trailing commas", () => {
   const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
     .replaceAll("<!-- -->", "")
     .replaceAll("&quot;", '"')
@@ -420,23 +420,42 @@ test("renders valid multiline Python in every Master joint profile and copyable 
   const examples = [...jointHtml.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)]
     .map(([, markup]) => markup.replace(/<[^>]*>/g, ""));
   assert.equal(examples.length, 16, "check the runnable example in every joint command card");
+  const allExamples = [...html.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)]
+    .map(([, markup]) => markup.replace(/<[^>]*>/g, ""));
+  assert.equal(allExamples.length, 39, "check setup and the examples in all 38 Master cards");
   // Parse only: never import the SDK or execute robot commands during this check.
   const python = spawnSync(process.env.PYTHON_BINARY ?? "python3", ["-c", [
-    "import ast, json, sys",
-    "for index, snippet in enumerate(json.load(sys.stdin)):",
+    "import ast, json, re, sys",
+    "snippets = json.load(sys.stdin)",
+    "for snippet in snippets['all']:",
+    "    ast.parse(snippet, mode='exec')",
+    "    assert not re.search(r',\\s*[)}]', snippet), f'No final commas in any Master example: {snippet}'",
+    "for index, snippet in enumerate(snippets['joint']):",
     "    tree = ast.parse(snippet, filename=f'Master snippet {index + 1}', mode='exec')",
+    "    assert not re.search(r',\\s*[)}]', snippet), f'No comma after the last argument or dictionary entry: {snippet}'",
     "    for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):",
     "        args = [*call.args, *call.keywords]",
     "        if not args: continue",
+    "        multiline = call.end_lineno > call.lineno",
+    "        if len(call.keywords) > 1 or (call.args and call.keywords):",
+    "            assert multiline, f'Keep calls with multiple options in a readable layout: {snippet}'",
+    "        if not multiline: continue",
     "        assert all(arg.lineno > call.lineno for arg in args), f'Arguments need separate indented lines: {snippet}'",
-    "        assert len({arg.lineno for arg in args}) == len(args), f'Use one argument per line: {snippet}'",
+    "        if len(call.args) == 2 and isinstance(call.args[0], ast.Constant) and isinstance(call.args[0].value, str):",
+    "            assert call.args[0].lineno == call.args[1].lineno, f'Keep the selector and angle together: {snippet}'",
+    "        keyword_lines = [arg.lineno for arg in call.keywords]",
+    "        assert len(set(keyword_lines)) == len(keyword_lines), f'Use one named argument per line: {snippet}'",
+    "        assert not set(keyword_lines).intersection(arg.lineno for arg in call.args), f'Put named options after the positional arguments: {snippet}'",
     "        assert all(snippet.splitlines()[arg.lineno - 1].startswith('    ') for arg in args), snippet",
     "        assert snippet.splitlines()[call.end_lineno - 1].strip() == ')', f'Put the closing parenthesis on its own line: {snippet}'",
     "        assert all(line.strip() for line in snippet.splitlines()[call.lineno - 1:call.end_lineno]), f'Remove empty lines inside the call: {snippet}'",
-  ].join("\n")], { input: JSON.stringify([...syntaxes, ...examples]), encoding: "utf8" });
+  ].join("\n")], { input: JSON.stringify({ all: allExamples, joint: [...syntaxes, ...examples] }), encoding: "utf8" });
   assert.ifError(python.error);
   assert.equal(python.status, 0, python.stderr);
   assert.doesNotMatch(jointHtml, /Display notation only|not executable Python/);
+  assert.ok(syntaxes.includes('Agentech.adjust_left_elbow(degrees = x)'), "keep a simple profile compact like Aegis");
+  assert.ok(examples.some((value) => value.includes('Agentech.adjust_left_wrist("roll", +5)')), "keep a short selector-and-angle call on one line");
+  assert.ok(examples.some((value) => value.includes('Agentech.adjust_elbow(\n    "left", +5,\n    duration_seconds=1.0\n)')), "group the side and angle, then show duration without a final comma");
   const elbowHtml = jointHtml.slice(jointHtml.indexOf('data-sdk-function-name="adjust_elbow"'), jointHtml.indexOf('data-sdk-function-name="move_elbows_to"'));
   assert.match(elbowHtml, />side<\/span><span[^>]*>string \("left", "right"\)<\/span>/);
   const compactCode = (value) => value.replace(/\s+/g, "").replace(/,\)/g, ")");
