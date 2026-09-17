@@ -15,29 +15,16 @@ const profile = (name: string, syntax: string): NonNullable<AgentechFunction["pr
   syntax
 });
 
-// These profiles use illustrative degree labels; executable examples stay in
-// each command's separate `example` field.
-function jointDisplaySyntax(syntax: string) {
-  const degrees = String.raw`([-+]?(?:\d+(?:\.\d*)?|\.\d+))`;
-  return syntax
-    .replace(new RegExp(String.raw`\b(?:axis|side)\s*=\s*"([^"]+)"\s*,\s*degrees\s*=\s*${degrees}`, "g"), '"$1" = degrees = $2')
-    .replace(new RegExp(String.raw`\b(roll|pitch|yaw|both_elbows)\s*=\s*${degrees}`, "g"), '"$1" = degrees = $2')
-    .replace(new RegExp(String.raw`"((?:shoulder_|wrist_)?(?:pitch|roll|yaw)|elbow)"\s*:\s*${degrees}`, "g"), '"$1" = degrees = $2')
-    .replace(new RegExp(String.raw`(Agentech\.adjust_(?:right|left)_wrist)\(\s*${degrees}\s*\)`, "g"), '$1("all axes" = degrees = $2)')
-    .replace(/\s*=\s*/g, " = ");
-}
-
 const jointProfile = (name: string, syntax: string, description: string): NonNullable<AgentechFunction["profiles"]>[number] => {
-  const formattedSyntax = jointDisplaySyntax(syntax);
-  const usesDisplayNotation = formattedSyntax !== syntax.replace(/\s*=\s*/g, " = ");
+  const formattedSyntax = syntax.replace(/\s*=\s*/g, " = ");
   const defaultSyntax = formattedSyntax
-    .replace(/,?\s*(?:max_)?duration_seconds\s*=\s*[\d.]+\s*,?(?=\s*\))/g, syntax.includes("\n") ? "\n" : "")
+    .replace(/,?\s*(?:max_)?duration_seconds\s*=\s*[\d.]+\s*,?\s*(?=\))/g, syntax.includes("\n") ? "\n" : "")
     .replace(/\(\s*\)/g, "()");
 
   return {
     name,
     syntax: defaultSyntax,
-    description: `${usesDisplayNotation ? "Display notation only, not executable Python. " : ""}${description}, at default speed.`,
+    description: `${description}, at default speed.`,
     ...(defaultSyntax !== formattedSyntax ? { customDurationSyntax: formattedSyntax } : {})
   };
 };
@@ -108,8 +95,8 @@ const elbowFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.adjust_right_elbow()",
     summary: "Adjust Master's right elbow by a signed number of degrees.",
-    example: "Agentech.adjust_right_elbow(+5, duration_seconds=1.0)",
-    profiles: [jointProfile("Right elbow relative angle", "Agentech.adjust_right_elbow(degrees=+5, duration_seconds=1.0)", "Adjust right elbow by x degrees")],
+    example: "Agentech.adjust_right_elbow(\n    +5,\n    duration_seconds=1.0,\n)",
+    profiles: [jointProfile("Right elbow relative angle", "Agentech.adjust_right_elbow(\n    degrees=+5,\n    duration_seconds=1.0,\n)", "Adjust right elbow by x degrees")],
     params: [
       param("degrees", "number", "Signed relative adjustment in degrees."),
       param("duration_seconds", "number", "Movement duration in seconds, as shown in the engineering example.")
@@ -120,8 +107,8 @@ const elbowFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.adjust_left_elbow()",
     summary: "Adjust Master's left elbow by a signed number of degrees.",
-    example: "Agentech.adjust_left_elbow(+5, duration_seconds=1.0)",
-    profiles: [jointProfile("Left elbow relative angle", "Agentech.adjust_left_elbow(degrees=+5, duration_seconds=1.0)", "Adjust left elbow by x degrees")],
+    example: "Agentech.adjust_left_elbow(\n    +5,\n    duration_seconds=1.0,\n)",
+    profiles: [jointProfile("Left elbow relative angle", "Agentech.adjust_left_elbow(\n    degrees=+5,\n    duration_seconds=1.0,\n)", "Adjust left elbow by x degrees")],
     params: [
       param("degrees", "number", "Signed relative adjustment in degrees."),
       param("duration_seconds", "number", "Movement duration in seconds, as shown in the engineering example.")
@@ -132,8 +119,8 @@ const elbowFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.adjust_both_elbows()",
     summary: "Adjust both of Master's elbows together by the same signed angle.",
-    example: "Agentech.adjust_both_elbows(+30, duration_seconds=3.0)",
-    profiles: [jointProfile("Both elbows relative angle", "Agentech.adjust_both_elbows(degrees=+30, duration_seconds=3.0)", "Adjust both elbows by x degrees")],
+    example: "Agentech.adjust_both_elbows(\n    +30,\n    duration_seconds=3.0,\n)",
+    profiles: [jointProfile("Both elbows relative angle", "Agentech.adjust_both_elbows(\n    degrees=+30,\n    duration_seconds=3.0,\n)", "Adjust both elbows by x degrees")],
     params: [
       param("degrees", "number", "Signed relative adjustment applied to both elbows."),
       param("duration_seconds", "number", "Coordinated movement duration in seconds, as shown in the engineering example.")
@@ -144,13 +131,13 @@ const elbowFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.adjust_elbow()",
     summary: "Adjust either of Master's elbows by selecting a side and signed angle.",
-    example: 'Agentech.adjust_elbow("right", +5, duration_seconds=1.0)\nAgentech.adjust_elbow("left", +5, duration_seconds=1.0)',
+    example: "Agentech.adjust_elbow(\n    \"right\",\n    +5,\n    duration_seconds=1.0,\n)\n\nAgentech.adjust_elbow(\n    \"left\",\n    +5,\n    duration_seconds=1.0,\n)",
     profiles: [
-      jointProfile("Select right elbow", "Agentech.adjust_elbow(side=\"right\", degrees=+5, duration_seconds=1.0)", "Adjust right elbow by x degrees"),
-      jointProfile("Select left elbow", "Agentech.adjust_elbow(side=\"left\", degrees=+5, duration_seconds=1.0)", "Adjust left elbow by x degrees")
+      jointProfile("Select right elbow", "Agentech.adjust_elbow(\n    side=\"right\",\n    degrees=+5,\n    duration_seconds=1.0,\n)", "Adjust right elbow by x degrees"),
+      jointProfile("Select left elbow", "Agentech.adjust_elbow(\n    side=\"left\",\n    degrees=+5,\n    duration_seconds=1.0,\n)", "Adjust left elbow by x degrees")
     ],
     params: [
-      param("side", "string", "Selects the elbow side shown in the engineering examples."),
+      param("side", 'string ("left", "right")', "Selects the elbow side shown in the engineering examples."),
       param("degrees", "number", "Signed relative elbow adjustment in degrees."),
       param("duration_seconds", "number", "Movement duration in seconds, as shown in the engineering examples.")
     ]
@@ -160,8 +147,8 @@ const elbowFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.move_elbows_to()",
     summary: "Move both of Master's elbows to the requested target angle.",
-    example: "Agentech.move_elbows_to(50, duration_seconds=8.0)",
-    profiles: [jointProfile("Both elbows target angle", "Agentech.move_elbows_to(degrees=50, duration_seconds=8.0)", "Move both elbows to x degrees")],
+    example: "Agentech.move_elbows_to(\n    50,\n    duration_seconds=8.0,\n)",
+    profiles: [jointProfile("Both elbows target angle", "Agentech.move_elbows_to(\n    degrees=50,\n    duration_seconds=8.0,\n)", "Move both elbows to x degrees")],
     params: [
       param("degrees", "number", "Target elbow angle in degrees."),
       param("duration_seconds", "number", "Coordinated movement duration in seconds, as shown in the engineering example.")
@@ -175,11 +162,11 @@ const shoulderFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.adjust_right_shoulder()",
     summary: "Adjust Master's right shoulder on its pitch, roll, or yaw axis.",
-    example: 'Agentech.adjust_right_shoulder("pitch", +5, duration_seconds=1.0)\nAgentech.adjust_right_shoulder("roll", +5, duration_seconds=1.0)\nAgentech.adjust_right_shoulder("yaw", +5, duration_seconds=1.0)',
+    example: "Agentech.adjust_right_shoulder(\n    \"pitch\",\n    +5,\n    duration_seconds=1.0,\n)\n\nAgentech.adjust_right_shoulder(\n    \"roll\",\n    +5,\n    duration_seconds=1.0,\n)\n\nAgentech.adjust_right_shoulder(\n    \"yaw\",\n    +5,\n    duration_seconds=1.0,\n)",
     profiles: [
-      jointProfile("Pitch axis", "Agentech.adjust_right_shoulder(axis=\"pitch\", degrees=+5, duration_seconds=1.0)", "Adjust right shoulder pitch by x degrees"),
-      jointProfile("Roll axis", "Agentech.adjust_right_shoulder(axis=\"roll\", degrees=+5, duration_seconds=1.0)", "Adjust right shoulder roll by x degrees"),
-      jointProfile("Yaw axis", "Agentech.adjust_right_shoulder(axis=\"yaw\", degrees=+5, duration_seconds=1.0)", "Adjust right shoulder yaw by x degrees")
+      jointProfile("Pitch axis", "Agentech.adjust_right_shoulder(\n    axis=\"pitch\",\n    degrees=+5,\n    duration_seconds=1.0,\n)", "Adjust right shoulder pitch by x degrees"),
+      jointProfile("Roll axis", "Agentech.adjust_right_shoulder(\n    axis=\"roll\",\n    degrees=+5,\n    duration_seconds=1.0,\n)", "Adjust right shoulder roll by x degrees"),
+      jointProfile("Yaw axis", "Agentech.adjust_right_shoulder(\n    axis=\"yaw\",\n    degrees=+5,\n    duration_seconds=1.0,\n)", "Adjust right shoulder yaw by x degrees")
     ],
     params: [
       param("axis", 'string ("roll", "pitch", "yaw")', "Selects the shoulder axis shown in the engineering examples."),
@@ -192,11 +179,11 @@ const shoulderFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.adjust_left_shoulder()",
     summary: "Adjust Master's left shoulder on its pitch, roll, or yaw axis.",
-    example: 'Agentech.adjust_left_shoulder("pitch", +5, duration_seconds=1.0)\nAgentech.adjust_left_shoulder("roll", +5, duration_seconds=1.0)\nAgentech.adjust_left_shoulder("yaw", +5, duration_seconds=1.0)',
+    example: "Agentech.adjust_left_shoulder(\n    \"pitch\",\n    +5,\n    duration_seconds=1.0,\n)\n\nAgentech.adjust_left_shoulder(\n    \"roll\",\n    +5,\n    duration_seconds=1.0,\n)\n\nAgentech.adjust_left_shoulder(\n    \"yaw\",\n    +5,\n    duration_seconds=1.0,\n)",
     profiles: [
-      jointProfile("Pitch axis", "Agentech.adjust_left_shoulder(axis=\"pitch\", degrees=+5, duration_seconds=1.0)", "Adjust left shoulder pitch by x degrees"),
-      jointProfile("Roll axis", "Agentech.adjust_left_shoulder(axis=\"roll\", degrees=+5, duration_seconds=1.0)", "Adjust left shoulder roll by x degrees"),
-      jointProfile("Yaw axis", "Agentech.adjust_left_shoulder(axis=\"yaw\", degrees=+5, duration_seconds=1.0)", "Adjust left shoulder yaw by x degrees")
+      jointProfile("Pitch axis", "Agentech.adjust_left_shoulder(\n    axis=\"pitch\",\n    degrees=+5,\n    duration_seconds=1.0,\n)", "Adjust left shoulder pitch by x degrees"),
+      jointProfile("Roll axis", "Agentech.adjust_left_shoulder(\n    axis=\"roll\",\n    degrees=+5,\n    duration_seconds=1.0,\n)", "Adjust left shoulder roll by x degrees"),
+      jointProfile("Yaw axis", "Agentech.adjust_left_shoulder(\n    axis=\"yaw\",\n    degrees=+5,\n    duration_seconds=1.0,\n)", "Adjust left shoulder yaw by x degrees")
     ],
     params: [
       param("axis", 'string ("roll", "pitch", "yaw")', "Selects the shoulder axis shown in the engineering examples."),
@@ -212,13 +199,13 @@ const wristFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.adjust_right_wrist()",
     summary: "Adjust one or more of Master's right-wrist axes.",
-    example: 'Agentech.adjust_right_wrist("roll", +5)\nAgentech.adjust_right_wrist("pitch", +5)\nAgentech.adjust_right_wrist("yaw", +5)\nAgentech.adjust_right_wrist(roll=+5, pitch=-3, yaw=+2)\nAgentech.adjust_right_wrist(+10)',
+    example: "Agentech.adjust_right_wrist(\n    \"roll\",\n    +5,\n)\n\nAgentech.adjust_right_wrist(\n    \"pitch\",\n    +5,\n)\n\nAgentech.adjust_right_wrist(\n    \"yaw\",\n    +5,\n)\n\nAgentech.adjust_right_wrist(\n    roll=+5,\n    pitch=-3,\n    yaw=+2,\n)\n\nAgentech.adjust_right_wrist(\n    +10,\n)",
     profiles: [
-      jointProfile("Roll axis", "Agentech.adjust_right_wrist(axis=\"roll\", degrees=+5)", "Adjust right wrist roll by x degrees"),
-      jointProfile("Pitch axis", "Agentech.adjust_right_wrist(axis=\"pitch\", degrees=+5)", "Adjust right wrist pitch by x degrees"),
-      jointProfile("Yaw axis", "Agentech.adjust_right_wrist(axis=\"yaw\", degrees=+5)", "Adjust right wrist yaw by x degrees"),
-      jointProfile("Combined axes", "Agentech.adjust_right_wrist(roll=+5, pitch=-3, yaw=+2)", "Adjust right wrist roll, pitch, and yaw by the specified degrees"),
-      jointProfile("Single-value form", "Agentech.adjust_right_wrist(+10)", "Adjust all right wrist axes by x degrees")
+      jointProfile("Roll axis", "Agentech.adjust_right_wrist(\n    axis=\"roll\",\n    degrees=+5,\n)", "Adjust right wrist roll by x degrees"),
+      jointProfile("Pitch axis", "Agentech.adjust_right_wrist(\n    axis=\"pitch\",\n    degrees=+5,\n)", "Adjust right wrist pitch by x degrees"),
+      jointProfile("Yaw axis", "Agentech.adjust_right_wrist(\n    axis=\"yaw\",\n    degrees=+5,\n)", "Adjust right wrist yaw by x degrees"),
+      jointProfile("Combined axes", "Agentech.adjust_right_wrist(\n    roll=+5,\n    pitch=-3,\n    yaw=+2,\n)", "Adjust right wrist roll, pitch, and yaw by the specified degrees"),
+      jointProfile("Single-value form", "Agentech.adjust_right_wrist(\n    +10,\n)", "Adjust all right wrist axes by x degrees")
     ],
     params: [
       param("axis", 'string ("roll", "pitch", "yaw") or number', "Selects one wrist axis, or supplies the one-value form shown in the examples."),
@@ -233,13 +220,13 @@ const wristFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.adjust_left_wrist()",
     summary: "Adjust one or more of Master's left-wrist axes.",
-    example: 'Agentech.adjust_left_wrist("roll", +5)\nAgentech.adjust_left_wrist("pitch", +5)\nAgentech.adjust_left_wrist("yaw", +5)\nAgentech.adjust_left_wrist(roll=+5, pitch=-3, yaw=+2)\nAgentech.adjust_left_wrist(+10)',
+    example: "Agentech.adjust_left_wrist(\n    \"roll\",\n    +5,\n)\n\nAgentech.adjust_left_wrist(\n    \"pitch\",\n    +5,\n)\n\nAgentech.adjust_left_wrist(\n    \"yaw\",\n    +5,\n)\n\nAgentech.adjust_left_wrist(\n    roll=+5,\n    pitch=-3,\n    yaw=+2,\n)\n\nAgentech.adjust_left_wrist(\n    +10,\n)",
     profiles: [
-      jointProfile("Roll axis", "Agentech.adjust_left_wrist(axis=\"roll\", degrees=+5)", "Adjust left wrist roll by x degrees"),
-      jointProfile("Pitch axis", "Agentech.adjust_left_wrist(axis=\"pitch\", degrees=+5)", "Adjust left wrist pitch by x degrees"),
-      jointProfile("Yaw axis", "Agentech.adjust_left_wrist(axis=\"yaw\", degrees=+5)", "Adjust left wrist yaw by x degrees"),
-      jointProfile("Combined axes", "Agentech.adjust_left_wrist(roll=+5, pitch=-3, yaw=+2)", "Adjust left wrist roll, pitch, and yaw by the specified degrees"),
-      jointProfile("Single-value form", "Agentech.adjust_left_wrist(+10)", "Adjust all left wrist axes by x degrees")
+      jointProfile("Roll axis", "Agentech.adjust_left_wrist(\n    axis=\"roll\",\n    degrees=+5,\n)", "Adjust left wrist roll by x degrees"),
+      jointProfile("Pitch axis", "Agentech.adjust_left_wrist(\n    axis=\"pitch\",\n    degrees=+5,\n)", "Adjust left wrist pitch by x degrees"),
+      jointProfile("Yaw axis", "Agentech.adjust_left_wrist(\n    axis=\"yaw\",\n    degrees=+5,\n)", "Adjust left wrist yaw by x degrees"),
+      jointProfile("Combined axes", "Agentech.adjust_left_wrist(\n    roll=+5,\n    pitch=-3,\n    yaw=+2,\n)", "Adjust left wrist roll, pitch, and yaw by the specified degrees"),
+      jointProfile("Single-value form", "Agentech.adjust_left_wrist(\n    +10,\n)", "Adjust all left wrist axes by x degrees")
     ],
     params: [
       param("axis", 'string ("roll", "pitch", "yaw") or number', "Selects one wrist axis, or supplies the one-value form shown in the examples."),
@@ -254,8 +241,8 @@ const wristFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.adjust_wrist()",
     summary: "Apply a coordinated roll, pitch, and yaw adjustment to Master's wrists.",
-    example: "Agentech.adjust_wrist(roll=+5, pitch=-3, yaw=+2)",
-    profiles: [jointProfile("Combined wrist axes", "Agentech.adjust_wrist(roll=+5, pitch=-3, yaw=+2)", "Adjust both wrists by the specified roll, pitch, and yaw degrees")],
+    example: "Agentech.adjust_wrist(\n    roll=+5,\n    pitch=-3,\n    yaw=+2,\n)",
+    profiles: [jointProfile("Combined wrist axes", "Agentech.adjust_wrist(\n    roll=+5,\n    pitch=-3,\n    yaw=+2,\n)", "Adjust both wrists by the specified roll, pitch, and yaw degrees")],
     params: [
       param("roll", "number", "Signed roll adjustment in degrees."),
       param("pitch", "number", "Signed pitch adjustment in degrees."),
@@ -270,12 +257,12 @@ const waistFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.adjust_waist()",
     summary: "Adjust one or more of Master's waist yaw, pitch, and roll axes.",
-    example: 'Agentech.adjust_waist("yaw", +10)',
+    example: "Agentech.adjust_waist(\n    \"yaw\",\n    +10,\n)",
     profiles: [
-      jointProfile("Yaw axis", "Agentech.adjust_waist(axis=\"yaw\", degrees=+10)", "Adjust waist yaw by x degrees"),
-      jointProfile("Pitch axis", "Agentech.adjust_waist(axis=\"pitch\", degrees=+10)", "Adjust waist pitch by x degrees"),
-      jointProfile("Roll axis", "Agentech.adjust_waist(axis=\"roll\", degrees=+10)", "Adjust waist roll by x degrees"),
-      jointProfile("Combined waist axes", "Agentech.adjust_waist(yaw=+5, pitch=-5, roll=+5, max_duration_seconds=8.0)", "Adjust waist yaw, pitch, and roll by their respective x values in degrees")
+      jointProfile("Yaw axis", "Agentech.adjust_waist(\n    axis=\"yaw\",\n    degrees=+10,\n)", "Adjust waist yaw by x degrees"),
+      jointProfile("Pitch axis", "Agentech.adjust_waist(\n    axis=\"pitch\",\n    degrees=+10,\n)", "Adjust waist pitch by x degrees"),
+      jointProfile("Roll axis", "Agentech.adjust_waist(\n    axis=\"roll\",\n    degrees=+10,\n)", "Adjust waist roll by x degrees"),
+      jointProfile("Combined waist axes", "Agentech.adjust_waist(\n    yaw=+5,\n    pitch=-5,\n    roll=+5,\n    max_duration_seconds=8.0,\n)", "Adjust waist yaw, pitch, and roll by their respective x values in degrees")
     ],
     params: [
       param("axis", 'string ("roll", "pitch", "yaw")', "Selects one supported waist axis."),
@@ -291,8 +278,8 @@ const waistFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.return_waist_to_neutral()",
     summary: "Return Master's waist to its supported neutral position.",
-    example: "Agentech.return_waist_to_neutral(\n    max_duration_seconds=8.0\n)",
-    profiles: [jointProfile("Return to neutral", "Agentech.return_waist_to_neutral(max_duration_seconds=8.0)", "Return waist to its neutral position")],
+    example: "Agentech.return_waist_to_neutral(\n    max_duration_seconds=8.0,\n)",
+    profiles: [jointProfile("Return to neutral", "Agentech.return_waist_to_neutral(\n    max_duration_seconds=8.0,\n)", "Return waist to its neutral position")],
     params: [param("max_duration_seconds", "number", "Maximum movement duration in seconds, as shown in the engineering example.")]
   }
 ];
@@ -303,9 +290,9 @@ const upperBodyFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.adjust_upper_body()",
     summary: "Coordinate Master's waist and upper-body joints in one adjustment.",
-    example: 'Agentech.adjust_upper_body(\n    waist={"yaw": +10},\n    both_elbows=+30,\n    duration_seconds=3.0,\n)',
+    example: "Agentech.adjust_upper_body(\n    waist={\"yaw\": +10},\n    both_elbows=+30,\n    duration_seconds=3.0,\n)",
     profiles: [
-      jointProfile("Waist + both elbows", "Agentech.adjust_upper_body(waist={\"yaw\": +10}, both_elbows=+30, duration_seconds=3.0)", "Adjust waist yaw and both elbows by their respective x values in degrees")
+      jointProfile("Waist + both elbows", "Agentech.adjust_upper_body(\n    waist={\"yaw\": +10},\n    both_elbows=+30,\n    duration_seconds=3.0,\n)", "Adjust waist yaw and both elbows by their respective x values in degrees")
     ],
     params: [
       param("waist", "object", "Waist-axis adjustments shown in the engineering example."),
@@ -318,7 +305,7 @@ const upperBodyFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.move_arms_to()",
     summary: "Move Master's right and left arms to explicit coordinated joint targets.",
-    example: 'Agentech.move_arms_to(\n    right={\n        "shoulder_pitch": -19.45,\n        "shoulder_roll": 16.68,\n        "shoulder_yaw": 6.36,\n        "elbow": 24.91,\n        "wrist_yaw": 0.58,\n        "wrist_pitch": 2.52,\n        "wrist_roll": -0.03,\n    },\n    left={\n        "shoulder_pitch": -19.45,\n        "shoulder_roll": 16.68,\n        "shoulder_yaw": 6.36,\n        "elbow": 24.91,\n        "wrist_yaw": 0.58,\n        "wrist_pitch": 2.52,\n        "wrist_roll": -0.03,\n    },\n    duration_seconds=8.0,\n)',
+    example: "Agentech.move_arms_to(\n    right={\n        \"shoulder_pitch\": -19.45,\n        \"shoulder_roll\": 16.68,\n        \"shoulder_yaw\": 6.36,\n        \"elbow\": 24.91,\n        \"wrist_yaw\": 0.58,\n        \"wrist_pitch\": 2.52,\n        \"wrist_roll\": -0.03,\n    },\n    left={\n        \"shoulder_pitch\": -19.45,\n        \"shoulder_roll\": 16.68,\n        \"shoulder_yaw\": 6.36,\n        \"elbow\": 24.91,\n        \"wrist_yaw\": 0.58,\n        \"wrist_pitch\": 2.52,\n        \"wrist_roll\": -0.03,\n    },\n    duration_seconds=8.0,\n)",
     profiles: [
       jointProfile("Right + left arm targets", "Agentech.move_arms_to(\n    right={\n        \"shoulder_pitch\": -19.45,\n        \"shoulder_roll\": 16.68,\n        \"shoulder_yaw\": 6.36,\n        \"elbow\": 24.91,\n        \"wrist_yaw\": 0.58,\n        \"wrist_pitch\": 2.52,\n        \"wrist_roll\": -0.03,\n    },\n    left={\n        \"shoulder_pitch\": -19.45,\n        \"shoulder_roll\": 16.68,\n        \"shoulder_yaw\": 6.36,\n        \"elbow\": 24.91,\n        \"wrist_yaw\": 0.58,\n        \"wrist_pitch\": 2.52,\n        \"wrist_roll\": -0.03,\n    },\n    duration_seconds=8.0,\n)", "Move both arms to the specified joint angles")
     ],
@@ -333,10 +320,10 @@ const upperBodyFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.mirror_arm_pose()",
     summary: "Mirror the selected source arm pose onto Master's opposite arm.",
-    example: 'Agentech.mirror_arm_pose(\n    source_side="right",\n    duration_seconds=20.0\n)\n\nAgentech.mirror_arm_pose(\n    source_side="left",\n    duration_seconds=20.0\n)',
+    example: "Agentech.mirror_arm_pose(\n    source_side=\"right\",\n    duration_seconds=20.0,\n)\n\nAgentech.mirror_arm_pose(\n    source_side=\"left\",\n    duration_seconds=20.0,\n)",
     profiles: [
-      jointProfile("Mirror from right arm", "Agentech.mirror_arm_pose(source_side=\"right\", duration_seconds=20.0)", "Mirror the right arm pose onto the left arm"),
-      jointProfile("Mirror from left arm", "Agentech.mirror_arm_pose(source_side=\"left\", duration_seconds=20.0)", "Mirror the left arm pose onto the right arm")
+      jointProfile("Mirror from right arm", "Agentech.mirror_arm_pose(\n    source_side=\"right\",\n    duration_seconds=20.0,\n)", "Mirror the right arm pose onto the left arm"),
+      jointProfile("Mirror from left arm", "Agentech.mirror_arm_pose(\n    source_side=\"left\",\n    duration_seconds=20.0,\n)", "Mirror the left arm pose onto the right arm")
     ],
     params: [
       param("source_side", "string", "Selects the source arm shown in the engineering examples."),
@@ -348,7 +335,7 @@ const upperBodyFunctions: AgentechFunction[] = [
     category: "Joint Adjustments",
     signature: "Agentech.move_mirrored_arms_to()",
     summary: "Move both of Master's arms to mirrored versions of one supplied joint pose.",
-    example: 'Agentech.move_mirrored_arms_to(\n    {\n        "shoulder_pitch": -19.45,\n        "shoulder_roll": 16.68,\n        "shoulder_yaw": 6.36,\n        "elbow": 24.91,\n        "wrist_yaw": 0.58,\n        "wrist_pitch": 2.52,\n        "wrist_roll": -0.03,\n    },\n    duration_seconds=20.0,\n)',
+    example: "Agentech.move_mirrored_arms_to(\n    {\n        \"shoulder_pitch\": -19.45,\n        \"shoulder_roll\": 16.68,\n        \"shoulder_yaw\": 6.36,\n        \"elbow\": 24.91,\n        \"wrist_yaw\": 0.58,\n        \"wrist_pitch\": 2.52,\n        \"wrist_roll\": -0.03,\n    },\n    duration_seconds=20.0,\n)",
     profiles: [
       jointProfile("Mirrored arm target", "Agentech.move_mirrored_arms_to(\n    {\n        \"shoulder_pitch\": -19.45,\n        \"shoulder_roll\": 16.68,\n        \"shoulder_yaw\": 6.36,\n        \"elbow\": 24.91,\n        \"wrist_yaw\": 0.58,\n        \"wrist_pitch\": 2.52,\n        \"wrist_roll\": -0.03,\n    },\n    duration_seconds=20.0,\n)", "Move both arms to mirrored versions of the specified joint angles")
     ],
@@ -371,11 +358,7 @@ export const masterDocumentationFunctions: AgentechFunction[] = [
 
 export const masterDocumentationStarterCode = `from agentech import Agentech, master
 
-Agentech.use(
-    master,
-    dry_run=False,
-    ssh_password="YOUR_PASSWORD"
-)`;
+Agentech.use(master)`;
 
 export const masterJointGroupStarts: Partial<Record<string, string>> = {
   adjust_right_elbow: "Elbows",

@@ -8,7 +8,7 @@ import { getEaicHubTaskPath } from "@/features/eaic/01-clients/eaic-hub/contract
 import { workflowAccentPalette } from "@/lib/eaic-workflow-palette";
 
 const footerStats = [
-  ["Dry-run first", "Validate movement before hardware execution"],
+  ["Code validation", "Validate movement before hardware execution"],
   ["10s max", "Per linear motion command"],
   ["Emergency stop", "Available throughout supervised runs"],
   ["Speed capped", "Safety limits enforced by the platform"]

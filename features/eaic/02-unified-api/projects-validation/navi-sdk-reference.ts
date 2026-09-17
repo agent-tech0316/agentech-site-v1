@@ -13,7 +13,7 @@ const p = (
 const naviConnection = p(
   "**connect_kwargs",
   "not accepted per call",
-  "Configure host, port, timeout, dry_run, and client_factory once with Agentech.use(\"navi\", ...). Per-call connection options raise TypeError."
+  "Select Navi once with Agentech.use(\"navi\"). Per-call connection options raise TypeError."
 );
 
 const controlledStop = p(
@@ -252,7 +252,7 @@ const naviFunctionDefinitions: AgentechFunction[] = [
     signature: "Agentech.return_to_home(facing_angle_deg=0)",
     summary: "Return Navi to the fixed dual-camera home coordinates, then face one of four approved cardinal directions.",
     example: "# Exact saved home heading\nAgentech.return_to_home()\n\n# Same fixed position, face right\nAgentech.return_to_home(facing_angle_deg=90)",
-    verification: "Dual-camera dry-run verified against OBS and Camo with sub-pixel position error and IMU-backed 360-degree heading.",
+    verification: "Dual-camera preview verified against OBS and Camo with sub-pixel position error and IMU-backed 360-degree heading.",
     platformNote: "Premium Navi capability. The home X/Y coordinates are immutable. Only 0, 90, 180, and 270 degrees are accepted; positive values rotate clockwise from the saved default heading.",
     platformNoteLabel: "Fixed home + premium access",
     creditUsage: "high",
@@ -788,7 +788,6 @@ export const naviStarterCode = `from agentech import Agentech
 Agentech.use("navi")`;
 
 export const naviSafetyLimits = [
-  "Motion is dry-run unless dry_run=False is selected",
   "Angle turns use yaw feedback; timed motion and rate-plus-time turns are limited to 10 seconds",
   "Timed poses and gestures accept any positive finite duration and return to standing",
   "Keep the physical controller stop available",

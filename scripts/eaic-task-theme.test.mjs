@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -261,6 +261,7 @@ test("presents Master SDK groups as joint adjustment, posture, then action comma
 test("documents the latest Master command set once per API without changing the three-group layout", () => {
   const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "").replaceAll("<!-- -->", "");
   const decodedHtml = html.replaceAll("&quot;", '"').replaceAll("&#x27;", "'");
+  const compactCode = (value) => value.replace(/\s+/g, "").replace(/,\)/g, ")");
   const groupStarts = [
     html.indexOf('id="function-joint-adjustments"'),
     html.indexOf('id="function-sensing"'),
@@ -310,9 +311,10 @@ test("documents the latest Master command set once per API without changing the 
   assert.match(postureHtml, /Commands for entering and restoring supported standing modes\./);
   assert.match(jointHtml, /Fine control of Master’s shoulders, elbows, wrists, waist, and upper-body joints\./);
   assert.match(actionHtml, /Predefined and coordinated arm, pose, and movement commands for Master\./);
-  assert.match(html, /from agentech import Agentech, master/);
-  assert.match(html, /ssh_password=&quot;YOUR_PASSWORD&quot;/);
-  assert.doesNotMatch(html, /ssh_password=&quot;1&quot;/);
+  const masterSetup = [...html.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)]
+    .map(([, markup]) => markup.replace(/<[^>]*>/g, ""))
+    .find((code) => code.startsWith("from agentech import Agentech, master"));
+  assert.equal(masterSetup, "from agentech import Agentech, master\n\nAgentech.use(master)");
   assert.doesNotMatch(html, /data-sdk-function-name="standing_actions\.teach"/);
   assert.doesNotMatch(html, /data-sdk-function-name="action_catalog"/);
   assert.doesNotMatch(html, /Agentech\.movement_b|data-sdk-function-name="movement_b"/);
@@ -351,7 +353,7 @@ test("documents the latest Master command set once per API without changing the 
     'Agentech.adjust_waist("yaw", +10)',
     "Agentech.stay(1.0)",
   ]) {
-    assert.ok(decodedHtml.includes(example), `${example} should be present as a Master usage example`);
+    assert.ok(compactCode(decodedHtml).includes(compactCode(example)), `${example} should be present as a Master usage example`);
   }
   for (const multilineExampleFragment of [
     "max_duration_seconds=8.0",
@@ -389,43 +391,72 @@ test("presents adjust_waist overloads without redundant axis type badges", () =>
   const exampleEnd = waistHtml.indexOf("</pre>", exampleStart);
   assert.ok(exampleStart >= 0 && exampleEnd > exampleStart, "the adjust_waist card should render a primary Example block");
   const exampleHtml = waistHtml.slice(exampleStart, exampleEnd);
-  assert.match(exampleHtml, /Agentech\.adjust_waist\("yaw", \+10\)/);
+  assert.match(exampleHtml.replace(/\s+/g, "").replace(/,\)/g, ")"), /Agentech\.adjust_waist\("yaw",\+10\)/);
   assert.doesNotMatch(exampleHtml, /"pitch"|"roll"|max_duration_seconds/);
 });
 
-test("uses consistent degree notation across every Master joint profile", () => {
+test("keeps public setup examples and guidance free of dry-run settings", () => {
+  for (const [route, html] of pages) {
+    assert.doesNotMatch(html, /dry[_ -]?run|ssh_password/i, route);
+  }
+  const hubSource = readFileSync(
+    new URL("../features/eaic/01-clients/eaic-hub/components/agentech-library-home.tsx", import.meta.url),
+    "utf8",
+  );
+  for (const source of [workbenchSource, naviReferenceSource, hubSource]) {
+    assert.doesNotMatch(source, /dry[_ -]?run|ssh_password/i);
+  }
+});
+
+test("renders valid multiline Python in every Master joint profile and copyable example", () => {
   const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
     .replaceAll("<!-- -->", "")
-    .replaceAll("&quot;", '"');
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#x27;", "'");
   const jointHtml = html.slice(html.indexOf('id="function-joint-adjustments"'), html.indexOf('id="function-sensing"'));
   const syntaxes = [...jointHtml.matchAll(/<p[^>]*data-sdk-profile-syntax="true"[^>]*>([\s\S]*?)<\/p>/g)]
     .map(([, markup]) => markup.replace(/<[^>]*>/g, ""));
   assert.equal(syntaxes.length, 52, "check all 33 default profiles and 19 duration variants");
-
-  for (const syntax of syntaxes) {
-    for (const value of syntax.matchAll(/\bx\b/g)) {
-      assert.match(syntax.slice(0, value.index), /\b(?:degrees|(?:max_)?duration_seconds)\s*=\s*$/, `${syntax}: every numeric placeholder should identify degrees or seconds`);
-    }
-    assert.doesNotMatch(syntax, /\baxis\s*=/, "axis selectors should use the requested quoted-axis display");
-    assert.doesNotMatch(syntax, /duration_seconds\s*=\s*degrees/, "time values must keep their seconds unit");
-  }
-
+  const examples = [...jointHtml.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)]
+    .map(([, markup]) => markup.replace(/<[^>]*>/g, ""));
+  assert.equal(examples.length, 16, "check the runnable example in every joint command card");
+  // Parse only: never import the SDK or execute robot commands during this check.
+  const python = spawnSync(process.env.PYTHON_BINARY ?? "python3", ["-c", [
+    "import ast, json, sys",
+    "for index, snippet in enumerate(json.load(sys.stdin)):",
+    "    tree = ast.parse(snippet, filename=f'Master snippet {index + 1}', mode='exec')",
+    "    for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):",
+    "        args = [*call.args, *call.keywords]",
+    "        if not args: continue",
+    "        assert all(arg.lineno > call.lineno for arg in args), f'Arguments need separate indented lines: {snippet}'",
+    "        assert len({arg.lineno for arg in args}) == len(args), f'Use one argument per line: {snippet}'",
+    "        assert all(snippet.splitlines()[arg.lineno - 1].startswith('    ') for arg in args), snippet",
+    "        assert snippet.splitlines()[call.end_lineno - 1].strip() == ')', f'Put the closing parenthesis on its own line: {snippet}'",
+    "        assert all(line.strip() for line in snippet.splitlines()[call.lineno - 1:call.end_lineno]), f'Remove empty lines inside the call: {snippet}'",
+  ].join("\n")], { input: JSON.stringify([...syntaxes, ...examples]), encoding: "utf8" });
+  assert.ifError(python.error);
+  assert.equal(python.status, 0, python.stderr);
+  assert.doesNotMatch(jointHtml, /Display notation only|not executable Python/);
+  const elbowHtml = jointHtml.slice(jointHtml.indexOf('data-sdk-function-name="adjust_elbow"'), jointHtml.indexOf('data-sdk-function-name="move_elbows_to"'));
+  assert.match(elbowHtml, />side<\/span><span[^>]*>string \("left", "right"\)<\/span>/);
+  const compactCode = (value) => value.replace(/\s+/g, "").replace(/,\)/g, ")");
   for (const syntax of [
-    'Agentech.adjust_elbow("right" = degrees = x)',
-    'Agentech.adjust_right_shoulder("pitch" = degrees = x)',
-    'Agentech.adjust_left_shoulder("yaw" = degrees = x, duration_seconds = x)',
-    'Agentech.adjust_right_wrist("roll" = degrees = x, "pitch" = degrees = x, "yaw" = degrees = x)',
-    'Agentech.adjust_left_wrist("all axes" = degrees = x)',
-    'Agentech.adjust_waist("yaw" = degrees = x, "pitch" = degrees = x, "roll" = degrees = x)',
-    'Agentech.adjust_upper_body(waist = {"yaw" = degrees = x}, "both_elbows" = degrees = x)',
+    'Agentech.adjust_elbow(side = "right", degrees = x)',
+    'Agentech.adjust_right_shoulder(axis = "pitch", degrees = x)',
+    'Agentech.adjust_left_shoulder(axis = "yaw", degrees = x, duration_seconds = x)',
+    'Agentech.adjust_right_wrist(roll = x, pitch = x, yaw = x)',
+    'Agentech.adjust_left_wrist(x)',
+    'Agentech.adjust_waist(yaw = x, pitch = x, roll = x)',
+    'Agentech.adjust_upper_body(waist = {"yaw": x}, both_elbows = x)',
+    'Agentech.adjust_upper_body(waist = {"yaw": x}, both_elbows = x, duration_seconds = x)',
   ]) {
-    assert.ok(syntaxes.includes(syntax), `${syntax} should appear as display notation`);
+    assert.ok(syntaxes.some((value) => compactCode(value) === compactCode(syntax)), `${syntax} should retain the SDK argument structure`);
   }
   for (const command of ["move_arms_to", "move_mirrored_arms_to"]) {
     const syntax = syntaxes.find((value) => value.startsWith(`Agentech.${command}(`));
     assert.ok(syntax);
     for (const joint of ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_yaw", "wrist_pitch", "wrist_roll"]) {
-      assert.ok(syntax.includes(`"${joint}" = degrees = x`), `${command}: ${joint} should label its degree value`);
+      assert.ok(syntax.includes(`"${joint}": x`), `${command}: ${joint} should use Python dictionary syntax`);
     }
   }
 });
@@ -453,9 +484,10 @@ test("documents Master default-speed profiles and separates paid performances fr
 
   const plain = (fragment) => fragment.replace(/<[^>]*>/g, "");
   const leftElbow = plain(cardHtml("adjust_left_elbow"));
-  const defaultCall = leftElbow.indexOf("Agentech.adjust_left_elbow(degrees = x)");
-  const explanation = leftElbow.indexOf("Adjust left elbow by x degrees, at default speed.");
-  const customCall = leftElbow.indexOf("Agentech.adjust_left_elbow(degrees = x, duration_seconds = x)");
+  const compactLeftElbow = leftElbow.replace(/\s+/g, "").replace(/,\)/g, ")");
+  const defaultCall = compactLeftElbow.indexOf("Agentech.adjust_left_elbow(degrees=x)");
+  const explanation = compactLeftElbow.indexOf("Adjustleftelbowbyxdegrees,atdefaultspeed.");
+  const customCall = compactLeftElbow.indexOf("Agentech.adjust_left_elbow(degrees=x,duration_seconds=x)");
   assert.ok(defaultCall >= 0 && explanation > defaultCall && customCall > explanation, "show default syntax, its explanation, then custom duration syntax");
   assert.match(html, /Using code to run robot or Navi performances on this website requires payment\./);
   assert.match(leftElbow, /Custom duration may require an extra fee or a higher-tier plan\./);

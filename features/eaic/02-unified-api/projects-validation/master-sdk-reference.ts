@@ -262,7 +262,6 @@ Agentech.use("master")`;
 export const masterSafetyLimits = [
   "Stable standing posture is required before every standing gesture",
   "Only one gesture can run at a time",
-  "Motion is dry-run unless dry_run=False is selected",
   "Every live gesture waits for completion and verifies stable standing again"
 ];
 

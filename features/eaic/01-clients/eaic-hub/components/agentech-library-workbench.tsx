@@ -1268,25 +1268,25 @@ function DocsSection() {
   );
   const workflowExample = `from agentech import Agentech
 
-with Agentech.robot(dry_run=True) as dog:
-    dog.stand()
-    dog.squat()
-    dog.forward(speed_mps=0.25, duration_s=1)
-    dog.backward(speed_mps=0.2, duration_s=1)
-    dog.lateral_left(speed_mps=0.5, duration_s=2.0)
-    dog.lateral_right(speed_mps=0.5, duration_s=2.0)
-    dog.squat_forward(speed_mps=0.5, duration_s=1.0)
-    dog.squat_backward(speed_mps=0.5, duration_s=1.0)
-    dog.squat_lateral(direction="left", speed_mps=0.5, duration_s=1.0)
-    dog.squat_diagonal(angle_deg=45, speed_mps=0.5, duration_s=1.0)
-    dog.turn(angle_deg=-45, turn_rate_deg_s=-22.5)
-    dog.yaw(speed_rad_s=0.4, position_rad=0.4426)
-    dog.pitch(speed_rad_s=0.4, position_rad=0.4)
-    dog.roll(speed_rad_s=0.4, position_rad=-0.463)
-    dog.stay(duration_s=1.0)
-    dog.backflip()
-    dog.jump()
-    dog.stop()`;
+Agentech.use("aegis")
+Agentech.stand()
+Agentech.squat()
+Agentech.forward(speed_mps=0.25, duration_s=1)
+Agentech.backward(speed_mps=0.2, duration_s=1)
+Agentech.lateral_left(speed_mps=0.5, duration_s=2.0)
+Agentech.lateral_right(speed_mps=0.5, duration_s=2.0)
+Agentech.squat_forward(speed_mps=0.5, duration_s=1.0)
+Agentech.squat_backward(speed_mps=0.5, duration_s=1.0)
+Agentech.squat_lateral(direction="left", speed_mps=0.5, duration_s=1.0)
+Agentech.squat_diagonal(angle_deg=45, speed_mps=0.5, duration_s=1.0)
+Agentech.turn(angle_deg=-45, turn_rate_deg_s=-22.5)
+Agentech.yaw(speed_rad_s=0.4, position_rad=0.4426)
+Agentech.pitch(speed_rad_s=0.4, position_rad=0.4)
+Agentech.roll(speed_rad_s=0.4, position_rad=-0.463)
+Agentech.stay(duration_s=1.0)
+Agentech.backflip()
+Agentech.jump()
+Agentech.stop()`;
   const submitExample = `# Option 1: paste code into this page
 Agentech.stand()
 Agentech.forward()
@@ -1330,8 +1330,8 @@ Live camera -> Website viewer -> Student watches the run`;
           </div>
           <div className="border border-[#2a3440] bg-[#0d1117] p-4">
             <p className="text-xs uppercase tracking-[0.14em] text-[#7f8c99]">3. Run Safely</p>
-            <pre className="mt-3 overflow-x-auto font-mono text-xs leading-6 text-[#e5edf5]">with Agentech.robot(dry_run=True) as dog:</pre>
-            <p className="mt-3 text-sm leading-6 text-[#aeb8c2]">Use dry-run on laptops. Use a supervised robot session before allowing real hardware movement.</p>
+            <pre className="mt-3 overflow-x-auto font-mono text-xs leading-6 text-[#e5edf5]">{'Agentech.use("aegis")'}</pre>
+            <p className="mt-3 text-sm leading-6 text-[#aeb8c2]">Select Aegis, then submit commands for a supervised robot session.</p>
           </div>
         </div>
 
@@ -1798,7 +1798,7 @@ function FocusedBrowseFunctionsSection() {
           temporaryBoundaryLimit
         ]
       : [
-          { label: "Dry-run before hardware" },
+          { label: "Validate commands before hardware" },
           { label: "10s max per linear motion" },
           { label: "Speed caps enforced" },
           { label: "Emergency stop available" },
@@ -4049,7 +4049,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                 Safety defaults
               </summary>
               <ul className="space-y-2 border-t border-[#2a3440] p-3 text-sm leading-6 text-[#cdd6df]">
-                <li>Dry-run first</li>
+                <li>Validate commands before execution</li>
                 <li>Forward capped at 2.37 m/s; backward capped at 2.365 m/s</li>
                 <li>Lateral walking capped at 0.78 m/s</li>
                 <li>Motion capped at 10 seconds</li>
@@ -4153,7 +4153,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
             <div className="border border-[#2a3440] bg-[#0d1117] p-3">
               <p className="text-xs uppercase tracking-[0.14em] text-[#7f8c99]">Safety Defaults</p>
               <ul className="mt-3 space-y-2 text-sm text-[#cdd6df]">
-                <li>Dry-run first</li>
+                <li>Validate commands before execution</li>
                 <li>Forward capped at 2.37 m/s; backward capped at 2.365 m/s</li>
                 <li>Lateral walking capped at 0.78 m/s</li>
                 <li>Motion capped at 10 seconds</li>
