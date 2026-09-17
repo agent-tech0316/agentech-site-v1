@@ -192,7 +192,7 @@ test("keeps every robot's SDK controls together after a custom disclosure arrow"
   const compactMasterRows = [...html.matchAll(/data-sdk-function-name="([^"]+)"[^>]*><summary data-sdk-function-summary-layout="compact-leading"/g)]
     .map((match) => match[1]);
 
-  assert.equal(compactMasterRows.length, 39, "every Master command row should use the leading compact layout");
+  assert.equal(compactMasterRows.length, 38, "every Master command row should use the leading compact layout");
   assert.match(
     workbenchSource,
     /const useTrailingDescriptionLayout = selectedRobot === "master"[\s\S]*?\|\| selectedRobot === "aegis"[\s\S]*?\|\| selectedRobot === "navi"/,
@@ -296,12 +296,13 @@ test("documents the latest Master command set once per API without changing the 
     "adjust_waist",
     "return_waist_to_neutral",
     "adjust_upper_body",
+    "move_arms_to",
+    "mirror_arm_pose",
+    "move_mirrored_arms_to",
   ]);
-  assert.equal(actionNames.length, 22, "the existing 18 actions plus four new unique APIs should render once each");
-  for (const name of ["move_arms_to", "mirror_arm_pose", "move_mirrored_arms_to", "movement_b", "stay"]) {
-    assert.equal(actionNames.filter((candidate) => candidate === name).length, 1, `${name} should render as one command card`);
-  }
-  assert.equal(new Set([...postureNames, ...jointNames, ...actionNames]).size, 39, "all Master documentation cards should have unique API names");
+  assert.equal(actionNames.length, 18, "the existing 18 actions should render once each");
+  assert.equal(actionNames.filter((name) => name === "stay").length, 1, "stay should render as one command card");
+  assert.equal(new Set([...postureNames, ...jointNames, ...actionNames]).size, 38, "all Master documentation cards should have unique API names");
   assert.deepEqual(
     [...jointHtml.matchAll(/data-master-joint-group="([^"]+)"/g)].map((match) => match[1]),
     ["Elbows", "Shoulders", "Wrists", "Waist", "Upper Body"],
@@ -314,7 +315,10 @@ test("documents the latest Master command set once per API without changing the 
   assert.doesNotMatch(html, /ssh_password=&quot;1&quot;/);
   assert.doesNotMatch(html, /data-sdk-function-name="standing_actions\.teach"/);
   assert.doesNotMatch(html, /data-sdk-function-name="action_catalog"/);
+  assert.doesNotMatch(html, /Agentech\.movement_b|data-sdk-function-name="movement_b"/);
   assert.match(html, /data-sdk-overview-category="Sensing"[^>]*data-sdk-function-count="4"/);
+  assert.match(html, /data-sdk-overview-category="Joint Adjustments"[^>]*data-sdk-function-count="16"/);
+  assert.match(html, /data-sdk-overview-category="Actions"[^>]*data-sdk-function-count="18"/);
 
   for (const example of [
     'Agentech.enter_stand_hand_guide("right")',
@@ -356,7 +360,6 @@ test("documents the latest Master command set once per API without changing the 
     'source_side="right"',
     'source_side="left"',
     "duration_seconds=20.0",
-    "maximum_degrees_per_second=60.0",
   ]) {
     assert.ok(decodedHtml.includes(multilineExampleFragment), `${multilineExampleFragment} should be present in the engineering examples`);
   }
@@ -390,7 +393,7 @@ test("presents adjust_waist overloads with one axis example and accurate paramet
   assert.doesNotMatch(exampleHtml, /"pitch"|"roll"|max_duration_seconds/);
 });
 
-test("documents Master three-axis selectors and duration as an unenforced usage policy", () => {
+test("documents Master default-speed profiles and separates paid performances from pending duration pricing", () => {
   const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
     .replaceAll("<!-- -->", "")
     .replaceAll("&quot;", '"')
@@ -411,17 +414,137 @@ test("documents Master three-axis selectors and duration as an unenforced usage 
     assert.match(cardHtml(wrist), />axis<\/span><span[^>]*>string \("roll", "pitch", "yaw"\) or number<\/span>/);
   }
 
-  const shoulderHtml = cardHtml("adjust_right_shoulder");
-  assert.match(shoulderHtml, />Usage policy:<\/span> Adjustable by authorized users only\. Other users should omit duration_seconds and use the SDK default\./);
-  assert.doesNotMatch(cardHtml("adjust_waist"), /Adjustable by authorized users only/);
+  const plain = (fragment) => fragment.replace(/<[^>]*>/g, "");
+  const leftElbow = plain(cardHtml("adjust_left_elbow"));
+  const defaultCall = leftElbow.indexOf("Agentech.adjust_left_elbow(degrees = x)");
+  const explanation = leftElbow.indexOf("Adjust left elbow by x degrees, at default speed.");
+  const customCall = leftElbow.indexOf("Agentech.adjust_left_elbow(degrees = x, duration_seconds = x)");
+  assert.ok(defaultCall >= 0 && explanation > defaultCall && customCall > explanation, "show default syntax, its explanation, then custom duration syntax");
+  assert.match(html, /Using code to run robot or Navi performances on this website requires payment\./);
+  assert.match(leftElbow, /Custom duration may require an extra fee or a higher-tier plan\./);
+  assert.match(leftElbow, /Pricing TBD/);
+  assert.doesNotMatch(html, /Paid users only|Top up to customize duration|Top up on this website to customize duration/);
+  assert.match(plain(cardHtml("adjust_right_shoulder")), /Adjust right shoulder pitch by x degrees, at default speed\./);
+  assert.match(plain(cardHtml("move_elbows_to")), /Move both elbows to x degrees, at default speed\./);
+  assert.match(plain(cardHtml("mirror_arm_pose")), /Mirror the right arm pose onto the left arm, at default speed\./);
+  assert.match(plain(cardHtml("adjust_left_wrist")), /Adjust left wrist roll by x degrees, at default speed\./);
+
+  const jointStart = html.indexOf('id="function-joint-adjustments"');
+  const jointEnd = html.indexOf('id="function-sensing"', jointStart);
+  const jointHtml = html.slice(jointStart, jointEnd);
+  const defaultSyntaxes = [...jointHtml.matchAll(/data-sdk-profile-default="true"[^>]*>([\s\S]*?)<\/p>/g)];
+  assert.equal(defaultSyntaxes.length, 33, "every joint profile should document default speed");
+  for (const [, syntax] of defaultSyntaxes) {
+    assert.doesNotMatch(plain(syntax), /(?:max_)?duration_seconds\s*=/);
+  }
+  assert.equal([...jointHtml.matchAll(/data-sdk-profile-description="true"/g)].length, 33);
+  assert.equal([...jointHtml.matchAll(/data-sdk-profile-custom-duration="true"/g)].length, 19);
+
+  const parameterRows = [...jointHtml.matchAll(/<details data-sdk-param-name="([^"]+)"[\s\S]*?<\/details>/g)];
+  assert.ok(parameterRows.length > 0);
+  for (const [row, name] of parameterRows) {
+    if (name === "duration_seconds" || name === "max_duration_seconds") {
+      assert.match(row, /Pricing TBD/);
+      assert.doesNotMatch(row, />Available</);
+    } else {
+      assert.doesNotMatch(row, /Pricing TBD/);
+    }
+  }
+  assert.doesNotMatch(jointHtml, /Adjustable by authorized users only/);
+});
+
+test("explains Master Posture Commands once and exposes valid arm configurations without another disclosure", () => {
+  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
+    .replaceAll("<!-- -->", "")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#x27;", "'");
+  const cards = [...html.matchAll(/data-sdk-function-name="([^"]+)"/g)];
+  const cardHtml = (name) => {
+    const index = cards.findIndex((match) => match[1] === name);
+    assert.ok(index >= 0, `${name} should remain one command`);
+    return html.slice(cards[index].index, cards[index + 1]?.index ?? html.length);
+  };
+  const plain = (fragment) => fragment.replace(/<[^>]*>/g, "");
+  const entry = cardHtml("enter_stand_hand_guide");
+  const entryText = plain(entry);
+  assert.match(entry, /data-sdk-posture-title="true"[^>]*>Enter Standing Hand Guidance</);
+  assert.match(entryText, /Agentech\.enter_stand_hand_guide\(side\)/);
+  assert.equal((entry.match(/data-sdk-profile-syntax="true"/g) ?? []).length, 2);
+  assert.match(entryText, /Right arm.*Enables Hand Guidance for the right arm\./s);
+  assert.match(entryText, /Both arms.*Enables Hand Guidance for both arms\./s);
+  const side = entry.match(/<details data-sdk-param-name="side"[\s\S]*?<\/details>/)?.[0] ?? "";
+  const sideSummary = side.split("</summary>")[0];
+  assert.match(sideSummary, /data-sdk-param-allowed-values="true"/);
+  assert.match(plain(sideSummary), /Allowed values:.*"right".*"both"/s);
+  assert.match(plain(side), /Selects which arm configuration enters Hand Guidance mode\./);
+  assert.match(entryText, /# Enable Hand Guidance for the right arm\nAgentech\.enter_stand_hand_guide\("right"\)\n\n# Enable Hand Guidance for both arms\nAgentech\.enter_stand_hand_guide\("both"\)/);
+
+  for (const name of ["enter_stand_hand_guide", "restore_stand_hand_guide", "restore_stand_default", "status"]) {
+    const card = cardHtml(name);
+    const explanation = card.match(/data-sdk-posture-explanation="true"[^>]*>([\s\S]*?)<\/p>/)?.[1];
+    assert.ok(explanation, `${name} should have a plain-English explanation`);
+    assert.equal(card.split(explanation).length - 1, 1, `${name} should not repeat its description in the summary`);
+    const order = ["data-sdk-posture-title", "data-sdk-posture-signature", "data-sdk-posture-explanation", "data-sdk-posture-configurations", ">Parameters<", ">Example<"].map((marker) => card.indexOf(marker));
+    assert.ok(order.every((offset, index) => offset >= 0 && (index === 0 || offset > order[index - 1])), `${name} should follow the requested documentation hierarchy`);
+  }
+  assert.match(plain(cardHtml("restore_stand_hand_guide")), /selected arms and waist.*reference positions.*releases.*hold/s);
+  assert.match(plain(cardHtml("restore_stand_hand_guide")), /restore_stand_default\(\).*stiffness/s);
+  assert.match(plain(cardHtml("restore_stand_default")), /stiffness.*does not.*pose/s);
+  assert.match(plain(cardHtml("status")), /Does not move Master\./);
+  assert.doesNotMatch(entryText, /allows? .*physically moved by hand/i);
+});
+
+test("makes all 18 Master Action Commands readable with visible parameters and matching preview calls", () => {
+  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
+    .replaceAll("<!-- -->", "").replaceAll("&quot;", '"').replaceAll("&#x27;", "'");
+  const cards = [...html.matchAll(/data-sdk-function-name="([^"]+)"/g)];
+  const actionNames = ["wave", "blow_kiss", "raise_hand", "salute", "heart", "handshake", "high_five", "clap", "cross_arms", "chest_wave", "hug", "cheer", "wave_goodbye", "raise_hands", "bow", "scratch_head", "center", "stay"];
+  const handCommands = new Set(["wave", "blow_kiss", "raise_hand", "salute", "heart", "handshake", "high_five", "chest_wave"]);
+  const plain = (value) => value.replace(/<[^>]*>/g, "").replaceAll("&lt;", "<").replaceAll("&gt;", ">");
+  for (const name of actionNames) {
+    const index = cards.findIndex((match) => match[1] === name);
+    assert.ok(index >= 0, `${name} should be present`);
+    const card = html.slice(cards[index].index, cards[index + 1]?.index ?? html.indexOf("</details>", cards[index].index) + 10);
+    const summary = card.match(/data-sdk-function-description="true"[^>]*>([\s\S]*?)<\/p>/)?.[1];
+    const definition = card.match(/data-sdk-action-definition="true"[^>]*>([\s\S]*?)<\/p>/)?.[1];
+    assert.ok(summary && definition, `${name} needs both a short summary and detailed behavior`);
+    assert.notEqual(plain(summary), plain(definition), `${name} should not repeat its summary`);
+    assert.match(card, /data-sdk-action-preview-call="true"/);
+    assert.match(card, />Action Preview</);
+    assert.doesNotMatch(card, />Verification<|bg-\[#e8f7f3\]/, "verification should not be a prominent panel");
+    if (handCommands.has(name)) {
+      const values = name === "heart" ? ["left", "right", "both"] : ["left", "right"];
+      const hand = card.match(/data-sdk-action-parameter="hand"[\s\S]*?<\/section>/)?.[0] ?? "";
+      assert.match(hand, /Allowed values:/);
+      assert.doesNotMatch(hand, /<details|<summary/);
+      for (const value of values) {
+        assert.ok(plain(card).includes(`Agentech.${name}("${value}")`), `${name} should show the ${value} example`);
+        assert.ok(plain(hand).includes(`"${value}"`), `${name} should expose ${value} outside a disclosure`);
+        assert.ok(card.includes(`data-sdk-action-option="${value}"`));
+      }
+    } else if (name === "stay") {
+      assert.match(card, /data-sdk-action-parameter="seconds"/);
+      assert.match(plain(card), /0 < seconds ≤ 300/);
+    } else {
+      assert.match(card, />No parameters\.</);
+      assert.doesNotMatch(card, /data-sdk-action-option|Select .+ preview variant/);
+    }
+    if (name === "wave") {
+      assert.match(plain(card), /# Wave with the left hand\nAgentech\.wave\("left"\)\n\n# Wave with the right hand\nAgentech\.wave\("right"\)/);
+    }
+    if (name === "center") assert.match(plain(definition), /head.*saved.*center/i);
+    if (name === "heart") {
+      for (const parameter of ["posture", "operator_ready", "feet_planted"]) {
+        assert.ok(card.includes(`data-sdk-action-parameter="${parameter}"`));
+      }
+    }
+  }
 });
 
 test("renders the engineering Master usage variants as numbered parameter profiles", () => {
   const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "").replaceAll("<!-- -->", "");
   const expectedProfiles = new Map([
-    ["enter_stand_hand_guide", ["Right-arm hand guidance", "Both-arm hand guidance"]],
-    ["restore_stand_hand_guide", ["Restore hand-guidance mode"]],
-    ["restore_stand_default", ["Restore default standing mode"]],
+    ["enter_stand_hand_guide", ["Right arm", "Both arms"]],
     ["adjust_right_elbow", ["Right elbow relative angle"]],
     ["adjust_left_elbow", ["Left elbow relative angle"]],
     ["adjust_both_elbows", ["Both elbows relative angle"]],
@@ -438,8 +561,6 @@ test("renders the engineering Master usage variants as numbered parameter profil
     ["move_arms_to", ["Right + left arm targets"]],
     ["mirror_arm_pose", ["Mirror from right arm", "Mirror from left arm"]],
     ["move_mirrored_arms_to", ["Mirrored arm target"]],
-    ["movement_b", ["Maximum joint speed"]],
-    ["stay", ["Hold duration"]],
   ]);
 
   for (const [command, profileNames] of expectedProfiles) {
@@ -456,8 +577,8 @@ test("renders the engineering Master usage variants as numbered parameter profil
 
   assert.equal(
     [...expectedProfiles.values()].reduce((total, profiles) => total + profiles.length, 0),
-    39,
-    "the engineering examples should produce 39 profiles without creating more API cards",
+    35,
+    "the engineering examples should produce 38 profiles without creating more API cards",
   );
 });
 

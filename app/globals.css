@@ -867,6 +867,22 @@ select {
   color: #7cc4ff !important;
 }
 
+:root[data-theme="dark"] .eaic-task-theme [data-sdk-profile-syntax="true"],
+:root[data-theme="dark"] .eaic-task-theme [data-sdk-param-label="true"],
+:root[data-theme="dark"] .eaic-task-theme [data-sdk-param-available="true"],
+:root[data-theme="dark"] .eaic-task-theme [data-sdk-param-name][open] [data-sdk-param-toggle="true"] {
+  color: #5eead4 !important;
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-sdk-param-name] {
+  background-color: #0d1117 !important;
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-sdk-param-available="true"] {
+  background-color: #0d2723 !important;
+  border-color: #008a7a !important;
+}
+
 :root[data-theme="dark"] .eaic-task-theme [data-sdk-profile-placeholder="true"] {
   color: #c4b5fd !important;
 }
