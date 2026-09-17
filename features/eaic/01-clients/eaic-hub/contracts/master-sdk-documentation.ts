@@ -215,11 +215,8 @@ const wristFunctions: AgentechFunction[] = [
       jointProfile("Single-value form", "Agentech.adjust_right_wrist(+10)", "Adjust all right wrist axes by x degrees")
     ],
     params: [
-      param("axis", 'string ("roll", "pitch", "yaw") or number', "Selects one wrist axis, or supplies the one-value form shown in the examples."),
-      param("degrees", "number", "Signed relative adjustment for the selected axis."),
-      param("roll", "number", "Signed roll adjustment in degrees."),
-      param("pitch", "number", "Signed pitch adjustment in degrees."),
-      param("yaw", "number", "Signed yaw adjustment in degrees.")
+      param("axis", 'string ("roll", "pitch", "yaw")', "Selects one wrist axis."),
+      param("degrees", "number", "Signed relative adjustment for the selected axis. Each named axis in the combined form uses its own degree value.")
     ]
   },
   {
@@ -236,11 +233,8 @@ const wristFunctions: AgentechFunction[] = [
       jointProfile("Single-value form", "Agentech.adjust_left_wrist(+10)", "Adjust all left wrist axes by x degrees")
     ],
     params: [
-      param("axis", 'string ("roll", "pitch", "yaw") or number', "Selects one wrist axis, or supplies the one-value form shown in the examples."),
-      param("degrees", "number", "Signed relative adjustment for the selected axis."),
-      param("roll", "number", "Signed roll adjustment in degrees."),
-      param("pitch", "number", "Signed pitch adjustment in degrees."),
-      param("yaw", "number", "Signed yaw adjustment in degrees.")
+      param("axis", 'string ("roll", "pitch", "yaw")', "Selects one wrist axis."),
+      param("degrees", "number", "Signed relative adjustment for the selected axis. Each named axis in the combined form uses its own degree value.")
     ]
   },
   {
@@ -251,9 +245,8 @@ const wristFunctions: AgentechFunction[] = [
     example: "Agentech.adjust_wrist(\n    roll=+5,\n    pitch=-3,\n    yaw=+2\n)",
     profiles: [jointProfile("Combined wrist axes", "Agentech.adjust_wrist(\n    roll=+5,\n    pitch=-3,\n    yaw=+2\n)", "Adjust both wrists by the specified roll, pitch, and yaw degrees")],
     params: [
-      param("roll", "number", "Signed roll adjustment in degrees."),
-      param("pitch", "number", "Signed pitch adjustment in degrees."),
-      param("yaw", "number", "Signed yaw adjustment in degrees.")
+      param("axis", 'string ("roll", "pitch", "yaw")', "Selects the wrist axis represented by each named value in the combined form."),
+      param("degrees", "number", "Signed relative adjustment for the selected axis. Each named axis in the combined form uses its own degree value.")
     ]
   }
 ];
@@ -296,11 +289,17 @@ const upperBodyFunctions: AgentechFunction[] = [
     summary: "Coordinate Master's waist and upper-body joints in one adjustment.",
     example: "Agentech.adjust_upper_body(\n    waist={\"yaw\": +10},\n    both_elbows=+30,\n    duration_seconds=3.0\n)",
     profiles: [
-      jointProfile("Waist + both elbows", "Agentech.adjust_upper_body(\n    waist={\"yaw\": +10},\n    both_elbows=+30,\n    duration_seconds=3.0\n)", "Adjust waist yaw and both elbows by their respective x values in degrees")
+      {
+        name: "Waist + both elbows",
+        syntax: "Agentech.adjust_upper_body(\n    waist = {\n        axis: x,\n        degrees = x\n    },\n    both_elbows = degrees = x\n)",
+        syntaxKind: "parameter-map",
+        description: "Adjust the selected waist axis and both elbows by their respective x values in degrees, at default speed.",
+        customDurationSyntax: "Agentech.adjust_upper_body(\n    waist = {\n        axis: x,\n        degrees = x\n    },\n    both_elbows = degrees = x,\n    duration_seconds = x\n)"
+      }
     ],
     params: [
-      param("waist", "object", "Waist-axis adjustments shown in the engineering example."),
-      param("both_elbows", "number", "Signed adjustment applied to both elbows."),
+      param("axis", 'string ("yaw", "pitch", "roll")', "Selects the waist axis inside the waist parameter."),
+      param("degrees", "number", "Each x is an independent signed angle in degrees for the selected waist axis or both elbows."),
       param("duration_seconds", "number", "Coordinated movement duration in seconds, as shown in the engineering example.")
     ]
   },

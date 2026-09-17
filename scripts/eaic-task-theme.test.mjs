@@ -400,6 +400,62 @@ test("presents adjust_waist without duplicate axis parameter rows", () => {
   assert.doesNotMatch(exampleHtml, /"pitch"|"roll"|max_duration_seconds/);
 });
 
+test("documents adjust_upper_body with shared axis and degrees parameters", () => {
+  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
+    .replaceAll("<!-- -->", "")
+    .replaceAll("&quot;", '"');
+  const start = html.indexOf('data-sdk-function-name="adjust_upper_body"');
+  const end = html.indexOf('data-sdk-function-name="move_arms_to"', start);
+  const card = html.slice(start, end);
+  const syntaxes = [...card.matchAll(/data-sdk-profile-syntax="true"[^>]*>([\s\S]*?)<\/p>/g)]
+    .map(([, markup]) => markup.replace(/<[^>]*>/g, ""));
+  const compact = (value) => value.replace(/\s+/g, "");
+
+  assert.deepEqual(
+    [...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]),
+    ["axis", "degrees", "duration_seconds"],
+  );
+  assert.match(card, />axis<\/span><span[^>]*>string \("yaw", "pitch", "roll"\)<\/span>/);
+  assert.equal(syntaxes.length, 2, "show the default-speed and custom-duration profiles");
+  for (const syntax of syntaxes) {
+    assert.ok(
+      compact(syntax).includes('waist={axis:x,degrees=x},both_elbows=degrees=x'),
+      "show the waist axis and degrees fields before the independent elbow angle",
+    );
+  }
+  assert.doesNotMatch(syntaxes[0], /duration_seconds/);
+  assert.match(syntaxes[1], /duration_seconds\s*=\s*x/);
+  assert.match(compact(card), /waist=\{"yaw":\+10\},both_elbows=\+30,duration_seconds=3\.0/);
+});
+
+test("uses shared axis and degrees parameters for every wrist command", () => {
+  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
+    .replaceAll("<!-- -->", "")
+    .replaceAll("&quot;", '"');
+  const commands = ["adjust_right_wrist", "adjust_left_wrist", "adjust_wrist"];
+
+  for (const [index, command] of commands.entries()) {
+    const start = html.indexOf(`data-sdk-function-name="${command}"`);
+    const nextCommand = commands[index + 1];
+    const end = nextCommand
+      ? html.indexOf(`data-sdk-function-name="${nextCommand}"`, start)
+      : html.indexOf('data-sdk-function-name="adjust_waist"', start);
+    const card = html.slice(start, end);
+
+    assert.deepEqual(
+      [...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]),
+      ["axis", "degrees"],
+      `${command} should describe wrist axes through the shared selector and angle parameters`,
+    );
+    assert.match(card, />axis<\/span><span[^>]*>string \("roll", "pitch", "yaw"\)<\/span>/);
+    assert.doesNotMatch(card, /or number/);
+    for (const axis of ["roll", "pitch", "yaw"]) {
+      assert.ok(card.includes(`&quot;${axis}&quot;`) || card.includes(`"${axis}"`));
+      assert.doesNotMatch(card, new RegExp(`data-sdk-param-name="${axis}"`));
+    }
+  }
+});
+
 test("uses one shared degrees definition for move_arms_to with a single position note", () => {
   const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
     .replaceAll("<!-- -->", "")
@@ -545,8 +601,8 @@ test("renders valid multiline Python with grouped positional arguments and no tr
     'Agentech.adjust_right_wrist(roll = degrees = x, pitch = degrees = x, yaw = degrees = x)',
     'Agentech.adjust_left_wrist(degrees = x)',
     'Agentech.adjust_waist(yaw = degrees = x, pitch = degrees = x, roll = degrees = x)',
-    'Agentech.adjust_upper_body(waist = {"yaw": degrees = x}, both_elbows = degrees = x)',
-    'Agentech.adjust_upper_body(waist = {"yaw": degrees = x}, both_elbows = degrees = x, duration_seconds = x)',
+    'Agentech.adjust_upper_body(waist = {axis: x, degrees = x}, both_elbows = degrees = x)',
+    'Agentech.adjust_upper_body(waist = {axis: x, degrees = x}, both_elbows = degrees = x, duration_seconds = x)',
   ]) {
     assert.ok(syntaxes.some((value) => compactCode(value) === compactCode(syntax)), `${syntax} should retain the SDK argument structure`);
   }
@@ -577,7 +633,7 @@ test("documents Master default-speed profiles and separates paid performances fr
     assert.match(cardHtml(shoulder), />axis<\/span><span[^>]*>string \("roll", "pitch", "yaw"\)<\/span>/);
   }
   for (const wrist of ["adjust_right_wrist", "adjust_left_wrist"]) {
-    assert.match(cardHtml(wrist), />axis<\/span><span[^>]*>string \("roll", "pitch", "yaw"\) or number<\/span>/);
+    assert.match(cardHtml(wrist), />axis<\/span><span[^>]*>string \("roll", "pitch", "yaw"\)<\/span>/);
   }
 
   const plain = (fragment) => fragment.replace(/<[^>]*>/g, "");
