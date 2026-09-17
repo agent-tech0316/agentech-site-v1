@@ -749,6 +749,30 @@ test("renders the engineering Master usage variants as numbered parameter profil
   );
 });
 
+test("numbers the custom-duration Master variant directly beneath its default profile", () => {
+  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "").replaceAll("<!-- -->", "");
+
+  for (const command of ["move_arms_to", "move_mirrored_arms_to"]) {
+    const commandOffset = html.indexOf(`data-sdk-function-name="${command}"`);
+    const nextCommandOffset = html.indexOf('data-sdk-function-name="', commandOffset + 1);
+    const commandHtml = html.slice(commandOffset, nextCommandOffset >= 0 ? nextCommandOffset : undefined);
+    const numbers = [...commandHtml.matchAll(/data-sdk-profile-number="true"[^>]*>(\d+)<\/span>/g)]
+      .map(([, number]) => number);
+
+    assert.deepEqual(numbers, ["1", "2"], `${command} should number its default and custom-duration profiles 1 and 2`);
+    assert.match(
+      commandHtml,
+      /data-sdk-profile-variant="custom-duration"[^>]*\bborder\b[^>]*\bp-3\b[\s\S]*?data-sdk-profile-number="true"[^>]*>2<\/span>[\s\S]*?>Custom duration<\/span>/,
+      `${command} should label the second profile directly above its custom-duration syntax`,
+    );
+    assert.doesNotMatch(
+      commandHtml.match(/<div[^>]*data-sdk-profile-variant="custom-duration"[^>]*>/)?.[0] ?? "",
+      /\bborder-t\b/,
+      `${command} should render the second profile as a separate Aegis-format card`,
+    );
+  }
+});
+
 test("blends the Master motor map into the warm EAIC page palette", () => {
   const html = pages.get("/agentech-products/eaic-hub/view-sdk") ?? "";
   assert.match(

@@ -2143,33 +2143,47 @@ function FocusedBrowseFunctionsSection() {
                               <span className="border border-[#c9d8e8] bg-white px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-[#526174]">Choose one profile only</span>
                             </div>
                             <div className="mt-2 grid gap-2">
-                              {item.profiles.map((profile, profileIndex) => (
-                                <div key={profile.name} className={`border p-3 ${profile.status === "development" ? "border-[#e1ad32] bg-[#fffaf0]" : "border-[#dce7f2] bg-white"}`}>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span data-sdk-typeface="interface" className="grid h-5 w-5 place-items-center rounded-[6px] bg-[#eaf2fd] font-interface text-[10px] font-medium text-[#1a73e8]">{profile.number ?? profileIndex + 1}</span>
-                                    <span className="text-xs font-medium text-[#111111]">{profile.name}</span>
-                                    {profile.status === "development" ? <span className="border border-[#d99a00] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#8a5b00]">Under Development</span> : null}
-                                  </div>
-                                  <p data-sdk-typeface="code" data-sdk-profile-syntax="true" data-sdk-profile-format={profile.syntaxKind ?? "python"} data-sdk-profile-default={!postureDocumentation && profile.description ? "true" : undefined} className="mt-2 whitespace-pre-wrap overflow-x-auto font-mono text-xs leading-5 text-[#006a5c]">{profileSyntaxWithPlaceholders(profile.syntax)}</p>
-                                  {profile.description ? (
-                                    <p data-sdk-profile-description="true" className="mt-2 text-xs leading-5 text-[#526174]">{profile.description}</p>
-                                  ) : null}
-                                  {profile.customDurationSyntax ? (
-                                    <div className="mt-3 border-t border-[#dce7f2] pt-3">
-                                      <p data-sdk-typeface="code" data-sdk-profile-syntax="true" data-sdk-profile-format={profile.syntaxKind ?? "python"} data-sdk-profile-custom-duration="true" className="whitespace-pre-wrap overflow-x-auto font-mono text-xs leading-5 text-[#006a5c]">{profileSyntaxWithPlaceholders(profile.customDurationSyntax)}</p>
-                                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs leading-5">
-                                        <span className="border border-[#1a73e8]/25 bg-[#eaf2fd] px-2 py-0.5 font-interface text-[10px] font-medium text-[#1a73e8]">Pricing TBD</span>
-                                        <span className="text-[#526174]">Custom duration may require an extra fee or a higher-tier plan.</span>
+                              {item.profiles.map((profile, profileIndex) => {
+                                const profileNumber = profile.number ?? item.profiles!.slice(0, profileIndex).reduce(
+                                  (count, precedingProfile) => count + (precedingProfile.customDurationSyntax ? 2 : 1),
+                                  1,
+                                );
+
+                                return (
+                                  <Fragment key={profile.name}>
+                                    <div className={`border p-3 ${profile.status === "development" ? "border-[#e1ad32] bg-[#fffaf0]" : "border-[#dce7f2] bg-white"}`}>
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span data-sdk-typeface="interface" data-sdk-profile-number="true" className="grid h-5 w-5 place-items-center rounded-[6px] bg-[#eaf2fd] font-interface text-[10px] font-medium text-[#1a73e8]">{profileNumber}</span>
+                                        <span className="text-xs font-medium text-[#111111]">{profile.name}</span>
+                                        {profile.status === "development" ? <span className="border border-[#d99a00] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#8a5b00]">Under Development</span> : null}
                                       </div>
+                                      <p data-sdk-typeface="code" data-sdk-profile-syntax="true" data-sdk-profile-format={profile.syntaxKind ?? "python"} data-sdk-profile-default={!postureDocumentation && profile.description ? "true" : undefined} className="mt-2 whitespace-pre-wrap overflow-x-auto font-mono text-xs leading-5 text-[#006a5c]">{profileSyntaxWithPlaceholders(profile.syntax)}</p>
+                                      {profile.description ? (
+                                        <p data-sdk-profile-description="true" className="mt-2 text-xs leading-5 text-[#526174]">{profile.description}</p>
+                                      ) : null}
+                                      {profile.note ? (
+                                        <p className="mt-3 border border-[#e1ad32] bg-[#fff8df] p-3 text-xs leading-5 text-[#704b00]">
+                                          <span className="font-medium">{profile.noteLabel ?? "Distance note"}:</span> {profile.note}
+                                        </p>
+                                      ) : null}
                                     </div>
-                                  ) : null}
-                                  {profile.note ? (
-                                    <p className="mt-3 border border-[#e1ad32] bg-[#fff8df] p-3 text-xs leading-5 text-[#704b00]">
-                                      <span className="font-medium">{profile.noteLabel ?? "Distance note"}:</span> {profile.note}
-                                    </p>
-                                  ) : null}
-                                </div>
-                              ))}
+
+                                    {profile.customDurationSyntax ? (
+                                      <div data-sdk-profile-variant="custom-duration" className={`border p-3 ${profile.status === "development" ? "border-[#e1ad32] bg-[#fffaf0]" : "border-[#dce7f2] bg-white"}`}>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span data-sdk-typeface="interface" data-sdk-profile-number="true" className="grid h-5 w-5 place-items-center rounded-[6px] bg-[#eaf2fd] font-interface text-[10px] font-medium text-[#1a73e8]">{profileNumber + 1}</span>
+                                          <span className="text-xs font-medium text-[#111111]">Custom duration</span>
+                                        </div>
+                                        <p data-sdk-typeface="code" data-sdk-profile-syntax="true" data-sdk-profile-format={profile.syntaxKind ?? "python"} data-sdk-profile-custom-duration="true" className="mt-2 whitespace-pre-wrap overflow-x-auto font-mono text-xs leading-5 text-[#006a5c]">{profileSyntaxWithPlaceholders(profile.customDurationSyntax)}</p>
+                                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs leading-5">
+                                          <span className="border border-[#1a73e8]/25 bg-[#eaf2fd] px-2 py-0.5 font-interface text-[10px] font-medium text-[#1a73e8]">Pricing TBD</span>
+                                          <span className="text-[#526174]">Custom duration may require an extra fee or a higher-tier plan.</span>
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                  </Fragment>
+                                );
+                              })}
                             </div>
                             {postureDocumentation ? null : <p className="mt-2 text-xs leading-5 text-[#526174]">Do not combine selectors from different profiles. Optional modifiers shown inside a profile belong only to that structure.</p>}
                           </div>
