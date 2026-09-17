@@ -400,7 +400,7 @@ test("presents adjust_waist without duplicate axis parameter rows", () => {
   assert.doesNotMatch(exampleHtml, /"pitch"|"roll"|max_duration_seconds/);
 });
 
-test("lists all seven move_arms_to joint parameters under each arm", () => {
+test("uses one shared degrees definition for move_arms_to with a single position note", () => {
   const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
     .replaceAll("<!-- -->", "")
     .replaceAll("&quot;", '"');
@@ -410,33 +410,58 @@ test("lists all seven move_arms_to joint parameters under each arm", () => {
   const joints = ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_yaw", "wrist_pitch", "wrist_roll"];
   assert.deepEqual(
     [...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]),
-    [...joints.map((joint) => `right.${joint}`), ...joints.map((joint) => `left.${joint}`), "duration_seconds"],
+    ["joint", "degrees", "duration_seconds"],
   );
-  assert.deepEqual(
-    [...card.matchAll(/data-sdk-param-group="([^"]+)"/g)].map((match) => match[1]),
-    ["right", "left", "timing"],
-  );
+  const jointParam = card.slice(card.indexOf('data-sdk-param-name="joint"'), card.indexOf('data-sdk-param-name="degrees"'));
+  assert.match(jointParam, />joint<\/span><span[^>]*>string<\/span>/);
+  assert.deepEqual([...jointParam.matchAll(/<code[^>]*>"([^"]+)"<\/code>/g)].map((match) => match[1]), joints);
   assert.doesNotMatch(card, />object<\/span>/);
   for (const joint of joints) {
-    assert.equal([...card.matchAll(new RegExp(`data-sdk-param-label="true"[^>]*>"${joint}"<`, "g"))].length, 2);
+    assert.ok(card.includes(`"${joint}":`), `${joint} stays in the profile and example`);
   }
+  assert.match(card, /Absolute target angle for the named joint, in degrees/);
+  const profiles = [...card.matchAll(/data-sdk-profile-syntax="true"[^>]*>([\s\S]*?)<\/p>/g)].map(([, markup]) => markup.replace(/<[^>]*>/g, ""));
+  assert.equal(profiles.length, 2);
+  for (const syntax of profiles) {
+    assert.ok(syntax.startsWith("Agentech.move_arms_to("));
+    assert.doesNotMatch(syntax, /#/);
+    assert.doesNotMatch(syntax, /,\s*[)}]/);
+    for (const joint of joints) assert.equal(syntax.split(`"${joint}": degrees = x`).length - 1, 2);
+  }
+  assert.equal([...card.matchAll(/data-sdk-profile-format="parameter-map"/g)].length, 2);
   assert.ok(card.includes('right={'));
   assert.ok(card.includes('left={'));
-  assert.match(card, /Omitted joints keep their current commanded positions; they are not reset to zero/);
+  assert.equal([...card.matchAll(/data-sdk-joint-target-note="true"/g)].length, 1);
+  assert.equal([...card.matchAll(/0 is a position/g)].length, 1);
+  assert.equal([...card.matchAll(/Omitted joints keep their current commanded positions/g)].length, 1);
   assert.match(card, /Set a joint to 0 explicitly to target zero degrees/);
-  assert.equal([...card.matchAll(/Omit this joint to keep its current commanded target; zero is an explicit target/g)].length, 14);
+  assert.doesNotMatch(card, /Omit this joint to keep its current commanded target/);
+  assert.ok(card.indexOf('data-sdk-joint-target-note="true"') < card.indexOf('data-sdk-profile-syntax="true"'));
 });
 
 test("explains that mirrored arm poses require all seven joints without zero-filling", () => {
-  const html = pages.get("/agentech-products/eaic-hub/view-sdk") ?? "";
+  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "").replaceAll("<!-- -->", "").replaceAll("&quot;", '"');
   const start = html.indexOf('data-sdk-function-name="move_mirrored_arms_to"');
   assert.ok(start >= 0);
   const end = html.indexOf('data-sdk-function-name="', start + 1);
   const card = html.slice(start, end < 0 ? undefined : end);
-  assert.match(card, /requires all seven joint targets/);
-  assert.match(card, /an incomplete pose is rejected, and missing joints are never filled with zero/);
-  assert.match(card, /Use move_arms_to\(\) to move selected joints while keeping the others at their current commanded positions/);
-  assert.match(card, /An explicit 0 targets zero degrees; a missing joint causes an error/);
+  assert.match(card, /All seven joint targets are required/);
+  assert.match(card, /A missing joint causes an error; 0 explicitly targets zero degrees/);
+  assert.match(card, /Use move_arms_to\(\) for partial joint targets/);
+  assert.equal([...card.matchAll(/data-sdk-joint-target-note="true"/g)].length, 1);
+  assert.doesNotMatch(card, /data-sdk-param-name="pose"|>object<\/span>/);
+  assert.deepEqual([...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]), ["joint", "degrees", "duration_seconds"]);
+  const jointParam = card.slice(card.indexOf('data-sdk-param-name="joint"'), card.indexOf('data-sdk-param-name="degrees"'));
+  assert.match(jointParam, />joint<\/span><span[^>]*>string<\/span>/);
+  assert.deepEqual([...jointParam.matchAll(/<code[^>]*>"([^"]+)"<\/code>/g)].map((match) => match[1]), ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_yaw", "wrist_pitch", "wrist_roll"]);
+});
+
+test("lists both mirror_arm_pose source-side strings in the parameter type", () => {
+  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "").replaceAll("<!-- -->", "").replaceAll("&quot;", '"');
+  const start = html.indexOf('data-sdk-function-name="mirror_arm_pose"');
+  const end = html.indexOf('data-sdk-function-name="move_mirrored_arms_to"', start);
+  const card = html.slice(start, end);
+  assert.match(card, />source_side<\/span><span[^>]*>string \("left", "right"\)<\/span>/);
 });
 
 test("keeps public setup examples and guidance free of dry-run settings", () => {
@@ -458,9 +483,19 @@ test("renders valid multiline Python with grouped positional arguments and no tr
     .replaceAll("&quot;", '"')
     .replaceAll("&#x27;", "'");
   const jointHtml = html.slice(html.indexOf('id="function-joint-adjustments"'), html.indexOf('id="function-sensing"'));
-  const syntaxes = [...jointHtml.matchAll(/<p[^>]*data-sdk-profile-syntax="true"[^>]*>([\s\S]*?)<\/p>/g)]
-    .map(([, markup]) => markup.replace(/<[^>]*>/g, ""));
+  const profileBlocks = [...jointHtml.matchAll(/<p[^>]*data-sdk-profile-syntax="true"([^>]*)>([\s\S]*?)<\/p>/g)];
+  const syntaxes = profileBlocks.map(([, , markup]) => markup.replace(/<[^>]*>/g, ""));
+  const pythonSyntaxes = profileBlocks.filter(([, attributes]) => !attributes.includes('data-sdk-profile-format="parameter-map"'))
+    .map(([, , markup]) => markup.replace(/<[^>]*>/g, ""));
   assert.equal(syntaxes.length, 52, "check all 33 default profiles and 19 duration variants");
+  assert.equal(pythonSyntaxes.length, 39, "joint parameter maps describe fields; runnable examples remain Python");
+  const parameterMaps = profileBlocks.filter(([, attributes]) => attributes.includes('data-sdk-profile-format="parameter-map"'))
+    .map(([, , markup]) => markup.replace(/<[^>]*>/g, ""));
+  for (const syntax of parameterMaps) {
+    assert.match(syntax, /degrees = x/);
+    assert.doesNotMatch(syntax, /"[a-z_]+":\s*x|\b(?:roll|pitch|yaw|both_elbows)\s*=\s*x|,\s*[)}]/);
+    assert.doesNotMatch(syntax, /^degrees = x|#/);
+  }
   const examples = [...jointHtml.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)]
     .map(([, markup]) => markup.replace(/<[^>]*>/g, ""));
   assert.equal(examples.length, 16, "check the runnable example in every joint command card");
@@ -493,7 +528,7 @@ test("renders valid multiline Python with grouped positional arguments and no tr
     "        assert all(snippet.splitlines()[arg.lineno - 1].startswith('    ') for arg in args), snippet",
     "        assert snippet.splitlines()[call.end_lineno - 1].strip() == ')', f'Put the closing parenthesis on its own line: {snippet}'",
     "        assert all(line.strip() for line in snippet.splitlines()[call.lineno - 1:call.end_lineno]), f'Remove empty lines inside the call: {snippet}'",
-  ].join("\n")], { input: JSON.stringify({ all: allExamples, joint: [...syntaxes, ...examples] }), encoding: "utf8" });
+  ].join("\n")], { input: JSON.stringify({ all: allExamples, joint: [...pythonSyntaxes, ...examples] }), encoding: "utf8" });
   assert.ifError(python.error);
   assert.equal(python.status, 0, python.stderr);
   assert.doesNotMatch(jointHtml, /Display notation only|not executable Python/);
@@ -507,19 +542,19 @@ test("renders valid multiline Python with grouped positional arguments and no tr
     'Agentech.adjust_elbow(side = "right", degrees = x)',
     'Agentech.adjust_right_shoulder(axis = "pitch", degrees = x)',
     'Agentech.adjust_left_shoulder(axis = "yaw", degrees = x, duration_seconds = x)',
-    'Agentech.adjust_right_wrist(roll = x, pitch = x, yaw = x)',
-    'Agentech.adjust_left_wrist(x)',
-    'Agentech.adjust_waist(yaw = x, pitch = x, roll = x)',
-    'Agentech.adjust_upper_body(waist = {"yaw": x}, both_elbows = x)',
-    'Agentech.adjust_upper_body(waist = {"yaw": x}, both_elbows = x, duration_seconds = x)',
+    'Agentech.adjust_right_wrist(roll = degrees = x, pitch = degrees = x, yaw = degrees = x)',
+    'Agentech.adjust_left_wrist(degrees = x)',
+    'Agentech.adjust_waist(yaw = degrees = x, pitch = degrees = x, roll = degrees = x)',
+    'Agentech.adjust_upper_body(waist = {"yaw": degrees = x}, both_elbows = degrees = x)',
+    'Agentech.adjust_upper_body(waist = {"yaw": degrees = x}, both_elbows = degrees = x, duration_seconds = x)',
   ]) {
     assert.ok(syntaxes.some((value) => compactCode(value) === compactCode(syntax)), `${syntax} should retain the SDK argument structure`);
   }
   for (const command of ["move_arms_to", "move_mirrored_arms_to"]) {
-    const syntax = syntaxes.find((value) => value.startsWith(`Agentech.${command}(`));
+    const syntax = syntaxes.find((value) => value.includes(`Agentech.${command}(`));
     assert.ok(syntax);
     for (const joint of ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_yaw", "wrist_pitch", "wrist_roll"]) {
-      assert.ok(syntax.includes(`"${joint}": x`), `${command}: ${joint} should use Python dictionary syntax`);
+      assert.ok(syntax.includes(`"${joint}": degrees = x`), `${command}: ${joint} should retain the requested value notation`);
     }
   }
 });

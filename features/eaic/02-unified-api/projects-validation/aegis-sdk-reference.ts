@@ -5,6 +5,7 @@ export type AgentechParam = {
   type: string;
   defaultValue?: string;
   description: string;
+  allowedValues?: string[];
   status?: CapabilityStatus;
   paidOnly?: boolean;
 };
@@ -16,7 +17,7 @@ export type AgentechFunction = {
   summary: string;
   example: string;
   params: AgentechParam[];
-  profiles?: { name: string; syntax: string; description?: string; customDurationSyntax?: string; number?: number; note?: string; noteLabel?: string; status?: CapabilityStatus }[];
+  profiles?: { name: string; syntax: string; syntaxKind?: "parameter-map"; description?: string; customDurationSyntax?: string; number?: number; note?: string; noteLabel?: string; status?: CapabilityStatus }[];
   verification?: string;
   platformNote?: string;
   platformNoteLabel?: string;

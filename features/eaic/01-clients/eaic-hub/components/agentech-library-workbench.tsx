@@ -2120,7 +2120,12 @@ function FocusedBrowseFunctionsSection() {
                             <p className="mt-1 text-xs leading-5 text-[#174b42]">{item.verification}</p>
                           </div>
                         ) : null}
-                        {item.platformNote && postureDocumentation ? (
+                        {item.platformNote && selectedRobot === "master" && ["move_arms_to", "move_mirrored_arms_to"].includes(item.name) ? (
+                          <aside data-sdk-joint-target-note="true" className="mt-4 border border-[#1a73e8]/25 bg-[#eaf2fd] p-4">
+                            <p className="text-base font-semibold text-[#1a73e8]">{item.platformNoteLabel}</p>
+                            <p className="mt-2 text-sm leading-6 text-[#334155]">{item.platformNote}</p>
+                          </aside>
+                        ) : item.platformNote && postureDocumentation ? (
                           <p className="mt-3 text-xs leading-5 text-[#526174]">
                             <span className="font-medium">{item.platformNoteLabel}:</span> {item.platformNote}
                           </p>
@@ -2145,13 +2150,13 @@ function FocusedBrowseFunctionsSection() {
                                     <span className="text-xs font-medium text-[#111111]">{profile.name}</span>
                                     {profile.status === "development" ? <span className="border border-[#d99a00] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#8a5b00]">Under Development</span> : null}
                                   </div>
-                                  <p data-sdk-typeface="code" data-sdk-profile-syntax="true" data-sdk-profile-default={!postureDocumentation && profile.description ? "true" : undefined} className="mt-2 whitespace-pre-wrap overflow-x-auto font-mono text-xs leading-5 text-[#006a5c]">{profileSyntaxWithPlaceholders(profile.syntax)}</p>
+                                  <p data-sdk-typeface="code" data-sdk-profile-syntax="true" data-sdk-profile-format={profile.syntaxKind ?? "python"} data-sdk-profile-default={!postureDocumentation && profile.description ? "true" : undefined} className="mt-2 whitespace-pre-wrap overflow-x-auto font-mono text-xs leading-5 text-[#006a5c]">{profileSyntaxWithPlaceholders(profile.syntax)}</p>
                                   {profile.description ? (
                                     <p data-sdk-profile-description="true" className="mt-2 text-xs leading-5 text-[#526174]">{profile.description}</p>
                                   ) : null}
                                   {profile.customDurationSyntax ? (
                                     <div className="mt-3 border-t border-[#dce7f2] pt-3">
-                                      <p data-sdk-typeface="code" data-sdk-profile-syntax="true" data-sdk-profile-custom-duration="true" className="whitespace-pre-wrap overflow-x-auto font-mono text-xs leading-5 text-[#006a5c]">{profileSyntaxWithPlaceholders(profile.customDurationSyntax)}</p>
+                                      <p data-sdk-typeface="code" data-sdk-profile-syntax="true" data-sdk-profile-format={profile.syntaxKind ?? "python"} data-sdk-profile-custom-duration="true" className="whitespace-pre-wrap overflow-x-auto font-mono text-xs leading-5 text-[#006a5c]">{profileSyntaxWithPlaceholders(profile.customDurationSyntax)}</p>
                                       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs leading-5">
                                         <span className="border border-[#1a73e8]/25 bg-[#eaf2fd] px-2 py-0.5 font-interface text-[10px] font-medium text-[#1a73e8]">Pricing TBD</span>
                                         <span className="text-[#526174]">Custom duration may require an extra fee or a higher-tier plan.</span>
@@ -2178,52 +2183,48 @@ function FocusedBrowseFunctionsSection() {
                         <p className="mt-4 text-xs uppercase tracking-[0.14em] text-[#334155]">Parameters</p>
                         <div className="mt-2 grid gap-2">
                           {item.params.length ? (
-                            item.params.map((param) => {
-                              const [armSide, armJoint] = selectedRobot === "master" && item.name === "move_arms_to" ? param.name.split(".") : [];
-                              const isArmTiming = armSide === "duration_seconds";
-                              return (
-                                <Fragment key={param.name}>
-                                  {armJoint === "shoulder_pitch" || isArmTiming ? (
-                                    <h4 data-sdk-param-group={isArmTiming ? "timing" : armSide} className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#334155]">
-                                      {isArmTiming ? "Timing" : armSide === "right" ? "Right arm" : "Left arm"}
-                                    </h4>
+                            item.params.map((param) => (
+                              <details data-sdk-param-name={param.name} key={param.name} open={postureDocumentation ? true : undefined} className={`group/param border ${param.status === "development" ? "border-[#e1ad32] bg-[#fffaf0]" : param.status === "unsupported" ? "border-[#d88b8b] bg-[#fff5f5]" : "border-[#dce7f2] bg-white"}`}>
+                                <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 p-3 outline-none transition hover:bg-[#f8fbff] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#005bd6]/25">
+                                  <span data-sdk-typeface="code" data-sdk-param-label="true" className="font-mono text-xs text-[#006a5c]">{param.name}</span>
+                                  {selectedRobot === "master" && group.category === "Joint Adjustments" && ["roll", "pitch", "yaw"].includes(param.name) ? null : (
+                                    <span data-sdk-typeface="code" className="font-mono text-xs text-[#1a73e8]">{param.type}</span>
+                                  )}
+                                  {postureDocumentation?.params.find((entry) => entry.name === param.name)?.allowedValues ? (
+                                    <span data-sdk-param-allowed-values="true" className="flex flex-wrap items-center gap-2 text-xs text-[#526174]">
+                                      <span>Allowed values:</span>
+                                      {postureDocumentation.params.find((entry) => entry.name === param.name)?.allowedValues?.map((value) => (
+                                        <code key={value} data-sdk-typeface="code" className="font-mono text-[#1a73e8]">{value}</code>
+                                      ))}
+                                    </span>
                                   ) : null}
-                                  <details data-sdk-param-name={param.name} open={postureDocumentation ? true : undefined} className={`group/param border ${param.status === "development" ? "border-[#e1ad32] bg-[#fffaf0]" : param.status === "unsupported" ? "border-[#d88b8b] bg-[#fff5f5]" : "border-[#dce7f2] bg-white"}`}>
-                                    <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 p-3 outline-none transition hover:bg-[#f8fbff] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#005bd6]/25">
-                                      <span data-sdk-typeface="code" data-sdk-param-label="true" className="font-mono text-xs text-[#006a5c]">{armJoint ? `"${armJoint}"` : param.name}</span>
-                                      {selectedRobot === "master" && group.category === "Joint Adjustments" && ["roll", "pitch", "yaw"].includes(param.name) ? null : (
-                                        <span data-sdk-typeface="code" className="font-mono text-xs text-[#1a73e8]">{param.type}</span>
-                                      )}
-                                      {postureDocumentation?.params.find((entry) => entry.name === param.name)?.allowedValues ? (
-                                        <span data-sdk-param-allowed-values="true" className="flex flex-wrap items-center gap-2 text-xs text-[#526174]">
-                                          <span>Allowed values:</span>
-                                          {postureDocumentation.params.find((entry) => entry.name === param.name)?.allowedValues?.map((value) => (
-                                            <code key={value} data-sdk-typeface="code" className="font-mono text-[#1a73e8]">{value}</code>
-                                          ))}
-                                        </span>
-                                      ) : null}
-                                      {param.defaultValue ? <span data-sdk-typeface="code" className="font-mono text-xs text-[#a35d00]">default {param.defaultValue}</span> : null}
-                                      {param.status === "development" ? (
-                                        <span className="border border-[#d99a00] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#8a5b00]">Under Development</span>
-                                      ) : param.status === "unsupported" ? (
-                                        <span className="border border-[#c93434] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#a51f1f]">Not Supported</span>
-                                      ) : param.paidOnly ? (
-                                        <span title="Custom duration may require an extra fee or a higher-tier plan. Details are not yet finalized." className="border border-[#1a73e8]/25 bg-[#eaf2fd] px-2 py-0.5 font-interface text-[10px] font-medium text-[#1a73e8]">Pricing TBD</span>
-                                      ) : (
-                                        <span data-sdk-param-available="true" className="border border-[#008a7a] bg-[#e8f7f3] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#006a5c]">Available</span>
-                                      )}
-                                      <span data-sdk-param-toggle="true" className="font-interface ml-auto border border-[#c9d8e8] bg-white px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[#005bd6] group-open/param:border-[#008a7a] group-open/param:text-[#006a5c]">
-                                        <span className="group-open/param:hidden">Details</span>
-                                        <span className="hidden group-open/param:inline">Hide</span>
-                                      </span>
-                                    </summary>
-                                    <div className="border-t border-inherit px-3 py-3">
-                                      <p className="text-xs leading-5 text-[#334155]">{param.description}</p>
-                                    </div>
-                                  </details>
-                                </Fragment>
-                              );
-                            })
+                                  {param.defaultValue ? <span data-sdk-typeface="code" className="font-mono text-xs text-[#a35d00]">default {param.defaultValue}</span> : null}
+                                  {param.status === "development" ? (
+                                    <span className="border border-[#d99a00] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#8a5b00]">Under Development</span>
+                                  ) : param.status === "unsupported" ? (
+                                    <span className="border border-[#c93434] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#a51f1f]">Not Supported</span>
+                                  ) : param.paidOnly ? (
+                                    <span title="Custom duration may require an extra fee or a higher-tier plan. Details are not yet finalized." className="border border-[#1a73e8]/25 bg-[#eaf2fd] px-2 py-0.5 font-interface text-[10px] font-medium text-[#1a73e8]">Pricing TBD</span>
+                                  ) : (
+                                    <span data-sdk-param-available="true" className="border border-[#008a7a] bg-[#e8f7f3] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#006a5c]">Available</span>
+                                  )}
+                                  <span data-sdk-param-toggle="true" className="font-interface ml-auto border border-[#c9d8e8] bg-white px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[#005bd6] group-open/param:border-[#008a7a] group-open/param:text-[#006a5c]">
+                                    <span className="group-open/param:hidden">Details</span>
+                                    <span className="hidden group-open/param:inline">Hide</span>
+                                  </span>
+                                </summary>
+                                <div className="border-t border-inherit px-3 py-3">
+                                  <p className="text-xs leading-5 text-[#334155]">{param.description}</p>
+                                  {param.allowedValues && !postureDocumentation ? (
+                                    <ul data-sdk-param-allowed-values="true" className="mt-2 grid gap-1 sm:grid-cols-2">
+                                      {param.allowedValues.map((value) => (
+                                        <li key={value}><code data-sdk-typeface="code" className="font-mono text-xs leading-5 text-[#1a73e8]">{value}</code></li>
+                                      ))}
+                                    </ul>
+                                  ) : null}
+                                </div>
+                              </details>
+                            ))
                           ) : (
                             <p className="border border-[#dce7f2] bg-white p-3 text-xs text-[#334155]">No parameters.</p>
                           )}
