@@ -261,7 +261,7 @@ const waistFunctions: AgentechFunction[] = [
       jointProfile("Yaw axis", "Agentech.adjust_waist(axis=\"yaw\", degrees=+10)", "Adjust waist yaw by x degrees"),
       jointProfile("Pitch axis", "Agentech.adjust_waist(axis=\"pitch\", degrees=+10)", "Adjust waist pitch by x degrees"),
       jointProfile("Roll axis", "Agentech.adjust_waist(axis=\"roll\", degrees=+10)", "Adjust waist roll by x degrees"),
-      jointProfile("Combined waist axes", "Agentech.adjust_waist(yaw=+5, pitch=-5, roll=+5, max_duration_seconds=8.0)", "Adjust waist yaw, pitch, and roll by their respective x values in degrees")
+      jointProfile("Combined waist axes", "Agentech.adjust_waist(\"yaw\"=degrees=+5, \"pitch\"=degrees=-5, \"roll\"=degrees=+5, max_duration_seconds=8.0)", "Display notation only, not executable Python. Adjust waist yaw, pitch, and roll by their respective x values in degrees")
     ],
     params: [
       param("axis", 'string ("roll", "pitch", "yaw")', "Selects one supported waist axis."),
