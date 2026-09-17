@@ -365,7 +365,7 @@ test("documents the latest Master command set once per API without changing the 
   }
 });
 
-test("presents adjust_waist overloads with one axis example and accurate parameter types", () => {
+test("presents adjust_waist overloads without redundant axis type badges", () => {
   const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
     .replaceAll("<!-- -->", "")
     .replaceAll("&quot;", '"')
@@ -378,10 +378,10 @@ test("presents adjust_waist overloads with one axis example and accurate paramet
   assert.match(waistHtml, />axis<\/span><span[^>]*>string \("roll", "pitch", "yaw"\)<\/span>/);
   assert.match(waistHtml, />degrees<\/span><span[^>]*>number · dynamic limit<\/span>/);
   for (const numericAxis of ["yaw", "pitch", "roll"]) {
-    assert.match(
+    assert.doesNotMatch(
       waistHtml,
       new RegExp(`>${numericAxis}<\\/span><span[^>]*>number<\\/span>`),
-      `${numericAxis} should remain a numeric keyword argument`,
+      `${numericAxis} should not repeat a number badge in its display row`,
     );
   }
 
@@ -391,6 +391,43 @@ test("presents adjust_waist overloads with one axis example and accurate paramet
   const exampleHtml = waistHtml.slice(exampleStart, exampleEnd);
   assert.match(exampleHtml, /Agentech\.adjust_waist\("yaw", \+10\)/);
   assert.doesNotMatch(exampleHtml, /"pitch"|"roll"|max_duration_seconds/);
+});
+
+test("uses consistent degree notation across every Master joint profile", () => {
+  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
+    .replaceAll("<!-- -->", "")
+    .replaceAll("&quot;", '"');
+  const jointHtml = html.slice(html.indexOf('id="function-joint-adjustments"'), html.indexOf('id="function-sensing"'));
+  const syntaxes = [...jointHtml.matchAll(/<p[^>]*data-sdk-profile-syntax="true"[^>]*>([\s\S]*?)<\/p>/g)]
+    .map(([, markup]) => markup.replace(/<[^>]*>/g, ""));
+  assert.equal(syntaxes.length, 52, "check all 33 default profiles and 19 duration variants");
+
+  for (const syntax of syntaxes) {
+    for (const value of syntax.matchAll(/\bx\b/g)) {
+      assert.match(syntax.slice(0, value.index), /\b(?:degrees|(?:max_)?duration_seconds)\s*=\s*$/, `${syntax}: every numeric placeholder should identify degrees or seconds`);
+    }
+    assert.doesNotMatch(syntax, /\baxis\s*=/, "axis selectors should use the requested quoted-axis display");
+    assert.doesNotMatch(syntax, /duration_seconds\s*=\s*degrees/, "time values must keep their seconds unit");
+  }
+
+  for (const syntax of [
+    'Agentech.adjust_elbow("right" = degrees = x)',
+    'Agentech.adjust_right_shoulder("pitch" = degrees = x)',
+    'Agentech.adjust_left_shoulder("yaw" = degrees = x, duration_seconds = x)',
+    'Agentech.adjust_right_wrist("roll" = degrees = x, "pitch" = degrees = x, "yaw" = degrees = x)',
+    'Agentech.adjust_left_wrist("all axes" = degrees = x)',
+    'Agentech.adjust_waist("yaw" = degrees = x, "pitch" = degrees = x, "roll" = degrees = x)',
+    'Agentech.adjust_upper_body(waist = {"yaw" = degrees = x}, "both_elbows" = degrees = x)',
+  ]) {
+    assert.ok(syntaxes.includes(syntax), `${syntax} should appear as display notation`);
+  }
+  for (const command of ["move_arms_to", "move_mirrored_arms_to"]) {
+    const syntax = syntaxes.find((value) => value.startsWith(`Agentech.${command}(`));
+    assert.ok(syntax);
+    for (const joint of ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_yaw", "wrist_pitch", "wrist_roll"]) {
+      assert.ok(syntax.includes(`"${joint}" = degrees = x`), `${command}: ${joint} should label its degree value`);
+    }
+  }
 });
 
 test("documents Master default-speed profiles and separates paid performances from pending duration pricing", () => {
