@@ -1,0 +1,22 @@
+{
+  "windows": {
+    "filename": "AgentechV1.0.exe",
+    "sha256": "338f00c6c6e7d4554155d17ec8c436102eecbacdf9c9368f13afd61424b97d32",
+    "size": 54834688,
+    "parts": [
+      "/downloads/AgentechV1.0-v9.14-338f00c6c6e7.exe.part-00",
+      "/downloads/AgentechV1.0-v9.14-338f00c6c6e7.exe.part-01",
+      "/downloads/AgentechV1.0-v9.14-338f00c6c6e7.exe.part-02"
+    ]
+  },
+  "source": {
+    "filename": "Agentech-v9.14-source.zip",
+    "sha256": "ed6577f82aafc1a0d45640407298d0c08ae1dcdd785bb59bda4b48e1bc352e95",
+    "size": 54857320,
+    "parts": [
+      "/downloads/Agentech-v9.14-source-v9.14-ed6577f82aaf.zip.part-00",
+      "/downloads/Agentech-v9.14-source-v9.14-ed6577f82aaf.zip.part-01",
+      "/downloads/Agentech-v9.14-source-v9.14-ed6577f82aaf.zip.part-02"
+    ]
+  }
+}
