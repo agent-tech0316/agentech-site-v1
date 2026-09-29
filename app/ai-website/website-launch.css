@@ -91,13 +91,24 @@
 .wl-agency small { display:block; color:var(--wl-muted); font-size:10px; margin-top:15px; }
 .wl-agency .wl-button { margin-top:15px; }
 .wl-faq { display:grid; grid-template-columns:.85fr 1.3fr; gap:70px; }
+.wl-faq-illustration { max-width:420px; margin-top:32px; }
+.wl-faq-illustration img { display:block; width:100%; height:auto; }
 .wl-faq details { border-bottom:1px solid var(--wl-line); }
 .wl-faq details:first-child { border-top:1px solid var(--wl-line); }
-.wl-faq summary { display:flex; justify-content:space-between; gap:25px; cursor:pointer; list-style:none; font-size:13px; line-height:1.7; font-weight:500; padding:21px 0; }
+.wl-faq summary { display:flex; align-items:center; justify-content:space-between; gap:25px; min-height:64px; padding:21px 0; cursor:pointer; list-style:none; font-size:13px; line-height:1.7; font-weight:500; }
 .wl-faq summary::-webkit-details-marker { display:none; }
-.wl-faq summary span { font-size:20px; font-weight:400; }
-.wl-faq details[open] summary span { transform:rotate(45deg); }
-.wl-faq details p { font-size:12px; color:var(--wl-muted); line-height:1.95; padding-right:25px; padding-bottom:10px; }
+.wl-faq summary:focus-visible { outline:2px solid var(--wl-accent); outline-offset:4px; border-radius:4px; }
+.wl-faq summary:hover { color:var(--wl-accent); }
+.wl-faq-icon { display:grid; place-items:center; flex:0 0 20px; width:20px; height:20px; color:var(--wl-text); }
+.wl-faq-icon svg { width:12px; height:12px; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; }
+.wl-faq-icon-vertical { transform-origin:center; transition:transform .18s; }
+.wl-faq details[open] .wl-faq-icon { color:var(--wl-accent); }
+.wl-faq details[open] .wl-faq-icon-vertical { transform:scaleY(0); }
+.wl-faq details p { margin:0; padding:0 25px 20px 0; font-size:12px; line-height:1.95; color:var(--wl-muted); }
+@media (max-width:800px) {
+  .wl-faq-illustration { max-width:320px; margin-top:24px; }
+  .wl-faq details p { padding-right:0; }
+}
 .wl-contact { display:grid; grid-template-columns:.85fr 1.3fr; gap:70px; border-top:1px solid var(--wl-line); margin-top:95px; padding-top:65px; padding-bottom:75px; }
 .wl-contact h2 { font-size:55px; }
 .wl-contact>div>p:not(.wl-eyebrow) { font-size:13px; line-height:1.9; color:var(--wl-muted); max-width:310px; margin:26px 0 15px; }

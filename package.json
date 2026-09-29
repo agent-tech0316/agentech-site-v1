@@ -33,7 +33,7 @@
     "test:login-bypass": "node --experimental-strip-types --test lib/login-bypass.test.ts",
     "test:auth-sign-in": "node --experimental-strip-types --test scripts/auth-sign-in.test.mjs",
     "test:theme": "node --experimental-strip-types --test lib/theme.test.ts lib/theme-page-scopes.test.ts lib/about-news-themes.test.ts",
-    "test:website-launch": "node --experimental-strip-types --test lib/website-inquiry.test.ts scripts/agency-prospecting.test.mjs scripts/website-form-ssr.test.mjs",
+    "test:website-launch": "node --experimental-strip-types --test lib/website-inquiry.test.ts scripts/agency-prospecting.test.mjs scripts/website-form-ssr.test.mjs scripts/website-faq.test.mjs scripts/ai-services.test.mjs",
     "test:talents-page": "node --test scripts/talents-page.test.mjs",
     "test:master-motor-map": "node --test scripts/master-motor-map.test.mjs",
     "test:master-live-camera": "node --test scripts/master-live-camera.test.mjs scripts/master-live-camera-state.test.mjs scripts/master-live-camera-ui.test.mjs scripts/master-livekit-track-state.test.mjs scripts/master-camera-web-service.test.mjs",

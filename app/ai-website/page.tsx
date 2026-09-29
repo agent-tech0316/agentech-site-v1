@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { WebsiteConceptPreview } from "@/components/website-concept-preview";
 import { WebsiteInquiryForm } from "@/components/website-inquiry-form";
@@ -19,20 +20,20 @@ const steps = [
   ["04", "Ready for the world.", "Approve the final preview and pay the balance. We launch, hand over the source and instructions, and begin 30-day bug support."]
 ];
 const faqs = [
-  ["What kinds of websites fit?", "Company websites, professional services, startup and product sites, and focused landing pages. A SaaS marketing site fits; building the SaaS application itself does not."],
-  ["Are the showcase websites real client projects?", "Fieldwork and Orbit are original Agentech concept projects for fictional businesses. You can explore the working demos to assess our design and build quality. They are not paid client work, and we do not claim business results for them."],
-  ["When does the 5–7 business day timeline start?", "After the scope is approved, the 50% deposit is received, and your required materials are complete. We confirm a start date with you. Delayed materials, feedback, or scope changes can move the launch date."],
-  ["What do I need to provide?", "Your business and audience information, preferred pages, logo, available images and copy, reference websites, and one person responsible for final approval. We refine supplied copy; extensive research, branding, or copywriting needs a separate scope."],
-  ["What is outside the package?", "Custom backends, account and login systems, large online stores, apps, ERP, CRM, marketplaces, and open-ended development. Additional pages, languages, ongoing content changes, and CMS editing needs must be scoped before we quote them."],
-  ["Are hosting and domains included?", "Deployment setup is included. Domain registration, hosting subscriptions, paid assets, and third-party service charges are separate and agreed before work starts. Accounts should be owned by you."],
-  ["How do revisions and bug support work?", "You receive two rounds of consolidated feedback within the approved scope. New features or a change in direction are quoted separately. The 30-day support period begins at launch or handoff and covers defects in delivered functionality; ongoing maintenance and new content are separate."],
-  ["Do we need lots of meetings?", "We work primarily through email or project messages, with one point of contact. If a conversation will resolve something faster, we can arrange a focused call of up to 20 minutes."]
+  ["What kinds of websites fit?", "The package is designed for company websites, professional service firms, startup and product marketing sites, and focused landing pages. SaaS marketing websites are included; application functionality falls outside the package."],
+  ["Are the showcase websites real client projects?", "Fieldwork and Orbit are original Agentech concept projects for fictional businesses. They demonstrate our approach to design and development. They do not represent commissioned client work or verified business outcomes."],
+  ["When does the 5–7 business day timeline start?", "The delivery period begins once the project scope is approved, the 50% deposit is received, and all required content and assets are supplied. We confirm the start date in writing. Delayed feedback, incomplete materials, or approved scope changes may affect the schedule."],
+  ["What do I need to provide?", "Please provide a business brief, target audience, page requirements, logo, copy, images, and reference websites. Designate one representative to consolidate feedback and approve deliverables. Basic copy refinement is included; original copywriting and brand development require a separate scope."],
+  ["What is outside the package?", "The package excludes custom applications, user authentication, complex backends, large e-commerce systems, ERP, CRM, and marketplace platforms. Additional pages, languages, CMS functionality, and other requirements are assessed and quoted separately before work begins."],
+  ["Are hosting and domains included?", "Deployment configuration is included. Domain registration, hosting, licensed assets, and third-party subscriptions are separate costs, confirmed before work begins. Domain and hosting accounts are established under your ownership."],
+  ["How do revisions and bug support work?", "The package includes two rounds of consolidated revisions within the approved scope. Additional rounds, new features, or changes in direction require a separate quotation. For 30 days following launch or handoff, we resolve defects in the delivered functionality. Content updates and ongoing maintenance are excluded."],
+  ["Do we need lots of meetings?", "A single project contact coordinates communication through email or project messages. When written communication is insufficient, we arrange a focused call of up to 20 minutes to resolve the outstanding requirements."]
 ];
 
 export default function AIWebsitePage() {
   return (
     <div className="website-launch" data-website-launch>
-      <div className="wl-subnav wl-wrap"><Link href="/ai-service" className="wl-breadcrumb">AI-DEVELOPMENT <span>/</span> AI-WEBSITE</Link><nav aria-label="Website service"><a href="#showcase">Showcase</a><a href="#package">The package</a><a href="#inquiry">Let’s build <span aria-hidden="true">↗</span></a></nav></div>
+      <div className="wl-subnav wl-wrap"><Link href="/ai-service" className="wl-breadcrumb" aria-label="Back to AI Services">AI SERVICES <span>/</span> AI-WEBSITE</Link><nav aria-label="Website service"><a href="#showcase">Showcase</a><a href="#package">The package</a><a href="#inquiry">Let’s build <span aria-hidden="true">↗</span></a></nav></div>
       <section className="wl-hero wl-wrap">
         <div className="wl-hero-copy"><p className="wl-eyebrow"><span className="wl-dot" /> WEBSITES, BY AGENTECH</p><h1>Your next chapter.<br /><span>Built for the web.</span></h1><p className="wl-intro">A considered website for the business you’re building. Clear scope, thoughtful design, and one team from first brief to final handoff.</p><div className="wl-actions"><a className="wl-button wl-button-primary" href="#inquiry">Start your project <span aria-hidden="true">↗</span></a><a className="wl-text-link" href="#showcase">Explore the showcase <span aria-hidden="true">↓</span></a></div><p className="wl-hero-note">$2,000 fixed package · 1–5 main pages · Human reviewed</p></div>
         <div className="wl-hero-visual"><div className="wl-browser wl-hero-browser"><div className="wl-browser-bar"><span>● ● ●</span><span>FIELDWORK / CONCEPT WEBSITE</span><span>↗</span></div><WebsiteConceptPreview /></div><div className="wl-floating-note"><span>YOUR BUSINESS, IN FOCUS</span><p>A good first impression.<br />A clear next step.</p><span className="wl-note-arrow" aria-hidden="true">↗</span></div><div className="wl-visual-caption"><span>01 / AN ORIGINAL AGENTECH CONCEPT</span><span>DESIGNED TO BE EXPLORED</span></div></div>
@@ -46,7 +47,26 @@ export default function AIWebsitePage() {
       <section id="package" className="wl-section wl-wrap"><div className="wl-package"><div className="wl-package-intro"><p className="wl-eyebrow">02 / SIMPLE BY DESIGN</p><h2>Everything you need<br />to make your entrance.</h2><p>One focused package for company websites, professional services, and product launches.</p><div className="wl-price">$2,000<span>USD · fixed project price</span></div><a href="#inquiry" className="wl-button wl-button-white">Tell us about your website ↗</a><small>50% to begin. 50% before launch or source handoff.</small></div><div className="wl-package-details"><h3>The Website Launch Package</h3><ul>{included.map(item => <li key={item}><span aria-hidden="true">✓</span>{item}</li>)}</ul><div className="wl-scope-note"><b>A focused website, with clear boundaries.</b><p>Custom apps, logins, complex backends, and large stores need a separate scope. Domains, hosting, and paid services are separate.</p></div></div></div></section>
       <section id="process" className="wl-section wl-wrap"><div className="wl-section-heading"><div><p className="wl-eyebrow">03 / A CLEAR WAY FORWARD</p><h2>From a first hello<br />to a finished website.</h2></div><p>One point of contact. Written updates.<br />Two focused rounds of feedback.</p></div><div className="wl-steps">{steps.map(([number,title,body]) => <article key={number}><span>{number}</span><h3>{title}</h3><p>{body}</p></article>)}</div></section>
       <section id="agency-partners" className="wl-wrap wl-section"><div className="wl-agency"><div><p className="wl-eyebrow">FOR DESIGN & MARKETING AGENCIES</p><h2>Your client.<br />Your brand.<br /><span>Our build.</span></h2></div><div><p className="wl-intro">A website delivery partner for the projects you bring in.</p><p>You own the client relationship and consolidate feedback. We handle the agreed build, testing, and handoff through one agency contact. Branding and confidentiality are agreed before we start.</p><a href="#inquiry" className="wl-button wl-button-outline">Discuss an agency project ↗</a><small>Select “An agency client” in the inquiry below.</small></div></div></section>
-      <section className="wl-section wl-wrap wl-faq"><div><p className="wl-eyebrow">04 / GOOD TO KNOW</p><h2>A few things,<br />made clear.</h2></div><div>{faqs.map(([q,a]) => <details key={q}><summary>{q}<span aria-hidden="true">+</span></summary><p>{a}</p></details>)}</div></section>
+      <section id="faq" className="wl-section wl-wrap wl-faq" aria-labelledby="website-faq-heading">
+        <div>
+          <p className="wl-eyebrow">04 / GOOD TO KNOW</p>
+          <h2 id="website-faq-heading">A few things,<br />made clear.</h2>
+          <div className="wl-faq-illustration">
+            <Image src="/assets/website-service/faq-responsive-design.png" alt="Coordinated website designs displayed on a desktop browser and a smartphone" width={1448} height={1086} sizes="(max-width: 800px) 320px, 420px" />
+          </div>
+        </div>
+        <div>
+          {faqs.map(([question, answer]) => (
+            <details key={question}>
+              <summary>
+                <span>{question}</span>
+                <span className="wl-faq-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none"><path d="M3 8h10" /><path className="wl-faq-icon-vertical" d="M8 3v10" /></svg></span>
+              </summary>
+              <p>{answer}</p>
+            </details>
+          ))}
+        </div>
+      </section>
       <section id="inquiry" className="wl-section wl-wrap wl-contact"><div><p className="wl-eyebrow">05 / YOUR NEXT CHAPTER</p><h2>Let’s make<br />something<br /><span>that fits.</span></h2><p>Tell us where your business is going. We’ll review whether the package fits and confirm scope before you commit.</p><a className="wl-text-link" href="mailto:info@agent-tech.ai">info@agent-tech.ai ↗</a></div><WebsiteInquiryForm /></section>
       <div className="wl-end wl-wrap"><span>THOUGHTFULLY BUILT. PERSONALLY REVIEWED.</span><a href="#" aria-label="Back to the top of the website service page">BACK TO TOP ↑</a></div>
     </div>

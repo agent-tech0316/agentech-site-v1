@@ -224,24 +224,44 @@ export function ServiceMenu({
                     setOpenBranch(null);
                   }}
                 >
-                  <button
-                    type="button"
-                    data-service-menu-column
-                    data-service-submenu-trigger
-                    aria-expanded={branchOpen}
-                    aria-controls={submenuId}
-                    onClick={() => setOpenBranch((current) => current === column.label ? null : column.label)}
-                    onKeyDown={(event) => {
-                      if (event.key !== "ArrowRight" && event.key !== "ArrowDown") return;
-                      event.preventDefault();
-                      setOpenBranch(column.label);
-                    }}
-                  >
-                    <h2 data-service-menu-title>{column.label}</h2>
-                    <svg data-service-submenu-chevron aria-hidden="true" viewBox="0 0 12 12">
-                      <path d="M2.25 4.5 6 8.25 9.75 4.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.4" />
-                    </svg>
-                  </button>
+                  <div data-service-branch-row>
+                    {column.href && (
+                      <Link
+                        href={column.href}
+                        data-service-menu-column
+                        data-service-menu-link
+                        data-service-branch-link
+                        onClick={() => { closeMenu(); onNavigate?.(); }}
+                        onKeyDown={(event) => {
+                          if (event.key !== "ArrowRight" && event.key !== "ArrowDown") return;
+                          event.preventDefault();
+                          setOpenBranch(column.label);
+                        }}
+                      >
+                        <h2 data-service-menu-title>{column.label}</h2>
+                      </Link>
+                    )}
+                    <button
+                      type="button"
+                      data-service-menu-column={column.href ? undefined : ""}
+                      data-service-submenu-trigger
+                      data-service-branch-toggle={column.href ? "" : undefined}
+                      aria-label={column.href ? `Show ${column.label} services` : undefined}
+                      aria-expanded={branchOpen}
+                      aria-controls={submenuId}
+                      onClick={() => setOpenBranch((current) => current === column.label ? null : column.label)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "ArrowRight" && event.key !== "ArrowDown") return;
+                        event.preventDefault();
+                        setOpenBranch(column.label);
+                      }}
+                    >
+                      {!column.href && <h2 data-service-menu-title>{column.label}</h2>}
+                      <svg data-service-submenu-chevron aria-hidden="true" viewBox="0 0 12 12">
+                        <path d="M2.25 4.5 6 8.25 9.75 4.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.4" />
+                      </svg>
+                    </button>
+                  </div>
 
                   <div data-service-submenu-positioner hidden={!branchOpen}>
                     <div id={submenuId} data-service-submenu-panel hidden={!branchOpen} aria-label={`${column.label} services`}>

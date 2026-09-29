@@ -58,10 +58,10 @@ export const navigation: NavItem[] = [
       { label: "ROBOTICS SALE", href: "/agentech-robotic" },
       {
         label: "AI-DEVELOPMENT",
+        href: "/ai-service",
         children: [
           { label: "AI-WEBSITE", href: "/ai-website" },
-          { label: "AI-APP DEV", href: "/coming-soon?feature=ai-app-dev" },
-          { label: "AI-SERVICE", href: "/ai-service" }
+          { label: "AI-APP DEV", href: "/ai-app-dev" }
         ]
       },
       { label: "DATA COLLECTION", href: "/coming-soon?feature=data-collection" }

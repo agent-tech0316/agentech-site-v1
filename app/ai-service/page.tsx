@@ -1,14 +1,54 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { WebsiteConceptPreview } from "@/components/website-concept-preview";
+import { AppDevelopmentPreview } from "@/components/app-development-preview";
 import "../ai-website/website-launch.css";
+import "./ai-services.css";
 
 export const metadata: Metadata = {
-  title: "AI Development Services",
-  description: "Focused digital projects, built with AI and reviewed by people. Explore Agentech’s Website Launch Package.",
+  title: "AI Services — Websites & App Development",
+  description: "Explore Agentech’s AI development services. Launch your business website with a clear scope and fixed price. App development is coming soon.",
   alternates: { canonical: "/ai-service" }
 };
 
 export default function AIServicePage() {
-  return <div className="website-launch"><div className="wl-wrap wl-overview"><p className="wl-eyebrow">SERVICE / AI-DEVELOPMENT</p><h1>From your next idea<br />to something <span>real.</span></h1><p className="wl-intro">Focused digital services from Agentech. A clear scope, a responsible team, and work that is reviewed by people at every step.</p><article className="wl-service-feature"><div><span className="wl-tag">WEBSITE DEVELOPMENT</span><h2>A better place<br />for your business.</h2><p>The Website Launch Package brings together design, development, testing, and handoff for a focused 1–5 page website.</p><p><strong>$2,000 USD</strong> · Two revision rounds · 30-day bug support</p><Link href="/ai-website" className="wl-button wl-button-primary">Explore AI-WEBSITE ↗</Link></div><WebsiteConceptPreview /></article><div className="wl-overview-links"><Link href="/ai-website#agency-partners">Website delivery for agencies ↗</Link><Link href="/ai-website#showcase">Explore our concept websites ↗</Link><Link href="/ai-website#inquiry">Discuss a project ↗</Link></div></div></div>;
+  return (
+    <div className="website-launch" data-ai-services>
+      <div className="wl-wrap">
+        <header className="ais-heading">
+          <p className="wl-eyebrow">SERVICE / AI-DEVELOPMENT</p>
+          <h1>AI Services</h1>
+          <p>Websites for your next chapter.<br />Applications for what comes next.</p>
+        </header>
+        <section className="ais-offerings" aria-label="AI development services">
+          <article className="ais-card" data-ai-offering="website">
+            <Link href="/ai-website" className="ais-preview ais-website-preview" aria-label="Explore AI Website">
+              <div className="ais-browser"><div className="ais-browser-bar"><span aria-hidden="true">● ● ●</span><span>FIELDWORK / CONCEPT WEBSITE</span></div><WebsiteConceptPreview /></div>
+            </Link>
+            <div className="ais-card-content">
+              <div className="ais-card-label"><span>01 / WEB</span><span className="ais-status ais-status-available">Available now</span></div>
+              <h2>AI Website</h2>
+              <p>A considered website for your business. Design, development, and handoff in one focused package.</p>
+              <div className="ais-card-facts"><strong>$2,000 <small>USD</small></strong><span>1–5 pages</span><span>Two revision rounds</span></div>
+              <Link href="/ai-website" className="ais-card-link">Explore website development <span aria-hidden="true">↗</span></Link>
+            </div>
+          </article>
+          <article className="ais-card" data-ai-offering="app">
+            <Link href="/ai-app-dev" className="ais-preview ais-app-preview" aria-label="Explore AI App Development"><AppDevelopmentPreview /></Link>
+            <div className="ais-card-content">
+              <div className="ais-card-label"><span>02 / APP</span><span className="ais-status">Coming soon</span></div>
+              <h2>AI App Development</h2>
+              <p>The next part of our development offering. We’re preparing a dedicated service for applications.</p>
+              <div className="ais-card-facts"><span>Service in development</span></div>
+              <Link href="/ai-app-dev" className="ais-card-link">Explore app development <span aria-hidden="true">↗</span></Link>
+            </div>
+          </article>
+        </section>
+        <aside className="ais-agency">
+          <div><p className="wl-eyebrow">FOR DESIGN & MARKETING AGENCIES</p><h2>Your client. Your brand. Our build.</h2></div>
+          <Link href="/ai-website#agency-partners">Explore agency website delivery <span aria-hidden="true">↗</span></Link>
+        </aside>
+      </div>
+    </div>
+  );
 }

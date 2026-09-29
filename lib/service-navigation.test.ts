@@ -6,7 +6,7 @@ import * as siteData from "./site-data.ts";
 
 const { navigation } = siteData;
 
-test("Service opens the website offer and service overview while retaining unfinished destinations", () => {
+test("AI Development opens AI Services and has only website and app subpages", () => {
   const service = navigation.find((item) => item.label === "Service");
   assert.ok(service);
   assert.deepEqual(service.columns, [
@@ -14,10 +14,10 @@ test("Service opens the website offer and service overview while retaining unfin
     { label: "ROBOTICS SALE", href: "/agentech-robotic" },
     {
       label: "AI-DEVELOPMENT",
+      href: "/ai-service",
       children: [
         { label: "AI-WEBSITE", href: "/ai-website" },
-        { label: "AI-APP DEV", href: "/coming-soon?feature=ai-app-dev" },
-        { label: "AI-SERVICE", href: "/ai-service" }
+        { label: "AI-APP DEV", href: "/ai-app-dev" }
       ]
     },
     { label: "DATA COLLECTION", href: "/coming-soon?feature=data-collection" }
@@ -159,7 +159,7 @@ test("Platform browser check stays aligned with the live category links", async 
   for (const href of [
     "/coming-soon?feature=robotics-rent",
     "/ai-website",
-    "/coming-soon?feature=ai-app-dev",
+    "/ai-app-dev",
     "/ai-service",
     "/coming-soon?feature=data-collection"
   ]) {

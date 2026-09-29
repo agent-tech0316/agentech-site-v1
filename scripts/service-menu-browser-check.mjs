@@ -7,7 +7,7 @@ export async function checkServiceMenu(tab) {
   await tab.playwright.getByRole("heading", { name: "Leadership and Technical Members", exact: true }).click();
   const trigger = tab.playwright.getByRole("link", { name: "Service", exact: true });
   const roboticsRent = tab.playwright.getByRole("link", { name: "ROBOTICS RENT", exact: true });
-  const category = tab.playwright.getByRole("button", { name: "AI-DEVELOPMENT", exact: true });
+  const category = tab.playwright.getByRole("button", { name: "Show AI-DEVELOPMENT services", exact: true });
   const state = () => tab.playwright.evaluate(() => {
     const menu = document.querySelector('[data-menu-name="Service"][data-mobile="false"]');
     const trigger = menu.querySelector("[data-service-menu-trigger]");
@@ -40,9 +40,9 @@ export async function checkServiceMenu(tab) {
   assert.deepEqual(Array.from(result.links), [
     "/coming-soon?feature=robotics-rent",
     "/agentech-robotic",
-    "/ai-website",
-    "/coming-soon?feature=ai-app-dev",
     "/ai-service",
+    "/ai-website",
+    "/ai-app-dev",
     "/coming-soon?feature=data-collection"
   ]);
 
@@ -50,7 +50,7 @@ export async function checkServiceMenu(tab) {
   result = await state();
   assert.equal(result.submenuExpanded, "true");
   assert.equal(result.submenuHidden, false);
-  assert.deepEqual(Array.from(result.submenuTitles), ["AI-WEBSITE", "AI-APP DEV", "AI-SERVICE"]);
+  assert.deepEqual(Array.from(result.submenuTitles), ["AI-WEBSITE", "AI-APP DEV"]);
 
   const insidePanel = await tab.playwright.evaluate(() => {
     const rect = document.querySelector('[data-menu-name="Service"][data-mobile="false"] [data-service-menu-panel]').getBoundingClientRect();

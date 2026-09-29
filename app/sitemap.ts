@@ -7,6 +7,7 @@ const routes = [
   "/about",
   "/ai-website",
   "/ai-service",
+  "/ai-app-dev",
   "/news",
   "/career-intern",
   "/career-intern/apply",
