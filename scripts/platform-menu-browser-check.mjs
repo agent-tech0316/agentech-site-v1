@@ -35,8 +35,8 @@ export async function checkPlatformMenu(tab, mobile = false) {
   let panel = await readPanel();
   assert.deepEqual(Array.from(panel.titles), ["EAIC", "EAIS", "NAVI STORE"]);
   assert.deepEqual(Array.from(panel.links), [
-    "/agentech-products/eaic-hub",
-    "/coming-soon?feature=eais",
+    "/agentech-products/eaic",
+    "/agentech-products/eais",
     "/agentech-education/what-can-we-learn-from-navi"
   ]);
   assert.equal(panel.nestedMenus, 0, "categories must not have submenu triggers");
@@ -73,13 +73,13 @@ export async function checkPlatformMenu(tab, mobile = false) {
   await eaic.waitFor({ state: "hidden" });
   const deadline = Date.now() + 10_000;
   let destination = await tab.playwright.evaluate(() => window.location.pathname);
-  while (destination !== "/agentech-products/eaic-hub" && Date.now() < deadline) {
+  while (destination !== "/agentech-products/eaic" && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 100));
     destination = await tab.playwright.evaluate(() => window.location.pathname);
   }
   assert.equal(
     destination,
-    "/agentech-products/eaic-hub",
+    "/agentech-products/eaic",
     mobile ? "EAIC must navigate to the existing Hub" : "clicking the desktop Platform trigger must enter EAIC"
   );
   if (mobile) {

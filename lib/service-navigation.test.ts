@@ -6,7 +6,7 @@ import * as siteData from "./site-data.ts";
 
 const { navigation } = siteData;
 
-test("Service routes every unfinished leaf to its shared coming-soon experience", () => {
+test("Service opens the website offer and service overview while retaining unfinished destinations", () => {
   const service = navigation.find((item) => item.label === "Service");
   assert.ok(service);
   assert.deepEqual(service.columns, [
@@ -15,9 +15,9 @@ test("Service routes every unfinished leaf to its shared coming-soon experience"
     {
       label: "AI-DEVELOPMENT",
       children: [
-        { label: "AI-WEBSITE", href: "/coming-soon?feature=ai-website" },
+        { label: "AI-WEBSITE", href: "/ai-website" },
         { label: "AI-APP DEV", href: "/coming-soon?feature=ai-app-dev" },
-        { label: "AI-SERVICE", href: "/coming-soon?feature=ai-service" }
+        { label: "AI-SERVICE", href: "/ai-service" }
       ]
     },
     { label: "DATA COLLECTION", href: "/coming-soon?feature=data-collection" }
@@ -52,16 +52,16 @@ test("AI-Development third-level navigation is a desktop flyout and a mobile inl
   );
 });
 
-test("Platform routes EAIS to coming soon and NAVI STORE to the existing learning page", () => {
+test("Platform routes to the current EAIC, EAIS, and NAVI STORE destinations", () => {
   const platform = navigation.find((item) => item.label === "Platform");
   assert.ok(platform);
   assert.deepEqual(platform.columns, [
-    { label: "EAIC", href: "/agentech-products/eaic-hub" },
-    { label: "EAIS", href: "/coming-soon?feature=eais" },
+    { label: "EAIC", href: "/agentech-products/eaic" },
+    { label: "EAIS", href: "/agentech-products/eais" },
     { label: "NAVI STORE", href: "/agentech-education/what-can-we-learn-from-navi" }
   ]);
   assert.equal(platform.children, undefined, "Platform categories must not have another menu level");
-  assert.equal(platform.menuTriggerHref, "/agentech-products/eaic-hub");
+  assert.equal(platform.menuTriggerHref, "/agentech-products/eaic");
   assert.deepEqual(navigation.filter((item) => item.columns?.length).map((item) => item.label), ["Platform", "Service", "Education", "Talents"]);
 });
 
@@ -154,13 +154,13 @@ test("Platform browser check stays aligned with the live category links", async 
   );
   assert.doesNotMatch(source, /\[data-mobile=\\?"false\\?"\] button/);
   assert.match(source, /clicking the desktop Platform trigger must enter EAIC/);
-  assert.match(source, /"\/agentech-products\/eaic-hub",\s*"\/coming-soon\?feature=eais",\s*"\/agentech-education\/what-can-we-learn-from-navi"/);
+  assert.match(source, /"\/agentech-products\/eaic",\s*"\/agentech-products\/eais",\s*"\/agentech-education\/what-can-we-learn-from-navi"/);
   assert.match(source, /name: "ROBOTICS SALE"/);
   for (const href of [
     "/coming-soon?feature=robotics-rent",
-    "/coming-soon?feature=ai-website",
+    "/ai-website",
     "/coming-soon?feature=ai-app-dev",
-    "/coming-soon?feature=ai-service",
+    "/ai-service",
     "/coming-soon?feature=data-collection"
   ]) {
     assert.match(serviceSource, new RegExp(href.replace(/[?]/g, "\\?")));

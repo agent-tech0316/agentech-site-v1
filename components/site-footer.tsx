@@ -27,6 +27,9 @@ export function SiteFooter() {
           data-site-footer-links
           className="flex gap-6 sm:flex-col sm:gap-5 lg:flex-row lg:items-center lg:gap-8"
         >
+          <Link data-site-footer-link href="/ai-website" className="transition hover:text-white">
+            Websites
+          </Link>
           <Link data-site-footer-link href="/about" className="transition hover:text-white">
             About
           </Link>

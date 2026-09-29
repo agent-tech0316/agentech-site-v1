@@ -5,6 +5,8 @@ import { internshipRoles } from "@/lib/internship-roles";
 const routes = [
   "",
   "/about",
+  "/ai-website",
+  "/ai-service",
   "/news",
   "/career-intern",
   "/career-intern/apply",

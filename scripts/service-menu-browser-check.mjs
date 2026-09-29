@@ -40,9 +40,9 @@ export async function checkServiceMenu(tab) {
   assert.deepEqual(Array.from(result.links), [
     "/coming-soon?feature=robotics-rent",
     "/agentech-robotic",
-    "/coming-soon?feature=ai-website",
+    "/ai-website",
     "/coming-soon?feature=ai-app-dev",
-    "/coming-soon?feature=ai-service",
+    "/ai-service",
     "/coming-soon?feature=data-collection"
   ]);
 

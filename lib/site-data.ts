@@ -59,9 +59,9 @@ export const navigation: NavItem[] = [
       {
         label: "AI-DEVELOPMENT",
         children: [
-          { label: "AI-WEBSITE", href: "/coming-soon?feature=ai-website" },
+          { label: "AI-WEBSITE", href: "/ai-website" },
           { label: "AI-APP DEV", href: "/coming-soon?feature=ai-app-dev" },
-          { label: "AI-SERVICE", href: "/coming-soon?feature=ai-service" }
+          { label: "AI-SERVICE", href: "/ai-service" }
         ]
       },
       { label: "DATA COLLECTION", href: "/coming-soon?feature=data-collection" }
