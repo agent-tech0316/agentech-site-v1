@@ -44,18 +44,17 @@ export const navigation: NavItem[] = [
     columns: [
       { label: "EAIC", href: "/agentech-products/eaic" },
       { label: "EAIS", href: "/agentech-products/eais" },
+      { label: "SKILL MARKET", href: "/skill-market" },
       { label: "NAVI STORE", href: "/agentech-education/what-can-we-learn-from-navi" }
     ]
   },
   {
     label: "Service",
-    href: "/agentech-robotic",
-    menuTriggerHref: "/agentech-robotic",
+    href: "/ai-service",
+    menuTriggerHref: "/ai-service",
     image: "/assets/logo/AGENTECH-robotic-grey191.png",
     activeImage: "/assets/logo/AGENTECH-robotic-solid.png",
     columns: [
-      { label: "ROBOTICS RENT", href: "/coming-soon?feature=robotics-rent" },
-      { label: "ROBOTICS SALE", href: "/agentech-robotic" },
       {
         label: "AI-DEVELOPMENT",
         href: "/ai-service",
@@ -64,7 +63,19 @@ export const navigation: NavItem[] = [
           { label: "AI-APP DEV", href: "/ai-app-dev" }
         ]
       },
-      { label: "DATA COLLECTION", href: "/coming-soon?feature=data-collection" }
+      { label: "DATA COLLECTION", href: "/data-collection" },
+      { label: "AIGC", href: "/aigc" }
+    ]
+  },
+  {
+    label: "Robotics",
+    href: "/agentech-robotic",
+    menuTriggerHref: "/agentech-robotic",
+    image: "/assets/logo/AGENTECH-robotic-grey191.png",
+    activeImage: "/assets/logo/AGENTECH-robotic-solid.png",
+    columns: [
+      { label: "ROBOTICS RENT", href: "/coming-soon?feature=robotics-rent" },
+      { label: "ROBOTICS SALE", href: "/agentech-robotic" }
     ]
   },
   {

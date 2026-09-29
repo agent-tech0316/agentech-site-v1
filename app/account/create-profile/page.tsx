@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { HistoryBackButton } from "@/components/history-back-button";
 import { getAccountSession } from "@/lib/account-session";
+import { ServiceProfileLinks } from "@/components/service-profile-links";
 
 type AccessProfileType = "developer" | "student" | "teacher" | "talent";
 
@@ -154,6 +155,7 @@ export default function CreateProfilePage() {
             </p>
           </div>
 
+          <ServiceProfileLinks />
           <div className="mt-8 grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
               {profileOptions.map((option) => {

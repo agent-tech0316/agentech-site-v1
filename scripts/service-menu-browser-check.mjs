@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 export async function checkServiceMenu(tab) {
   await tab.playwright.getByRole("heading", { name: "Leadership and Technical Members", exact: true }).click();
   const trigger = tab.playwright.getByRole("link", { name: "Service", exact: true });
-  const roboticsRent = tab.playwright.getByRole("link", { name: "ROBOTICS RENT", exact: true });
+  const aigc = tab.playwright.getByRole("link", { name: "AIGC", exact: true });
   const category = tab.playwright.getByRole("button", { name: "Show AI-DEVELOPMENT services", exact: true });
   const state = () => tab.playwright.evaluate(() => {
     const menu = document.querySelector('[data-menu-name="Service"][data-mobile="false"]');
@@ -35,15 +35,14 @@ export async function checkServiceMenu(tab) {
   let result = await state();
   assert.equal(result.expanded, "true", "hover must expand Service");
   assert.equal(result.hidden, false);
-  assert.deepEqual(Array.from(result.titles), ["ROBOTICS RENT", "ROBOTICS SALE", "AI-DEVELOPMENT", "DATA COLLECTION"]);
+  assert.deepEqual(Array.from(result.titles), ["AI-DEVELOPMENT", "DATA COLLECTION", "AIGC"]);
   assert.match(result.font, /Manrope/);
   assert.deepEqual(Array.from(result.links), [
-    "/coming-soon?feature=robotics-rent",
-    "/agentech-robotic",
     "/ai-service",
     "/ai-website",
     "/ai-app-dev",
-    "/coming-soon?feature=data-collection"
+    "/data-collection",
+    "/aigc"
   ]);
 
   await category.press("Enter");
@@ -71,18 +70,18 @@ export async function checkServiceMenu(tab) {
   await trigger.press("ArrowDown");
   result = await state();
   assert.equal(result.expanded, "true");
-  assert.equal(result.focus, "ROBOTICS RENT", "ArrowDown must focus the first available destination");
-  await roboticsRent.press("Tab");
+  assert.equal(result.focus, "AI-DEVELOPMENT", "ArrowDown must focus the first available destination");
+  await aigc.press("Tab");
   assert.equal((await state()).expanded, "false", "tabbing outside must dismiss the panel");
 
   await trigger.press("Enter");
   const deadline = Date.now() + 10_000;
   let destination = await tab.playwright.evaluate(() => window.location.pathname);
-  while (destination !== "/agentech-robotic" && Date.now() < deadline) {
+  while (destination !== "/ai-service" && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 100));
     destination = await tab.playwright.evaluate(() => window.location.pathname);
   }
-  assert.equal(destination, "/agentech-robotic", "clicking the desktop Service trigger must enter Robotics");
+  assert.equal(destination, "/ai-service", "clicking the desktop Service trigger must enter AI Services");
   return "Service hover, panel continuity, typography, destinations, Escape, ArrowDown, Tab and direct navigation passed.";
 }
 

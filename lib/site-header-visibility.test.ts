@@ -74,9 +74,17 @@ test("orders and names the primary navigation for the platform-first hierarchy",
     navigation.map(({ label, href }) => ({ label, href })),
     [
       { label: "Platform", href: "/agentech-products/eaic" },
-      { label: "Service", href: "/agentech-robotic" },
+      { label: "Service", href: "/ai-service" },
+      { label: "Robotics", href: "/agentech-robotic" },
       { label: "Education", href: "/agentech-education" },
       { label: "Talents", href: "/talents" }
     ]
   );
+});
+
+test("five primary categories leave room for account controls by using the drawer below 1280px", async () => {
+  const source = await readFile(path.join(process.cwd(), "components/site-header.tsx"), "utf8");
+  assert.match(source, /<nav[^>]*xl:flex/);
+  assert.match(source, /data-mobile-theme-controls[^>]*xl:hidden/);
+  assert.doesNotMatch(source, /\blg:(?:flex|hidden)\b/);
 });

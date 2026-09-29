@@ -127,7 +127,7 @@ export function SiteHeader() {
           <BrandMark />
         </Link>
 
-        <div data-mobile-theme-controls className="ml-auto flex shrink-0 items-center gap-2 lg:hidden">
+        <div data-mobile-theme-controls className="ml-auto flex shrink-0 items-center gap-2 xl:hidden">
           {showMobileThemeToggle ? <ThemeToggle mobileHeader /> : null}
           <button
             type="button"
@@ -137,7 +137,7 @@ export function SiteHeader() {
               setMobileOpen((open) => !open);
               setOpenCategoryMenu(null);
             }}
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 text-white transition hover:bg-white/10 lg:hidden"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 text-white transition hover:bg-white/10 xl:hidden"
           >
             <span className="flex w-5 flex-col gap-1.5">
               <span className={`h-0.5 rounded-full bg-current transition ${mobileOpen ? "translate-y-2 rotate-45" : ""}`} />
@@ -147,7 +147,7 @@ export function SiteHeader() {
           </button>
         </div>
 
-        <nav className={`ml-auto hidden h-full flex-nowrap items-center justify-end gap-1 text-sm text-slate lg:flex ${showAuthControls && accountEmail ? "pr-[152px]" : ""}`}>
+        <nav className={`ml-auto hidden h-full flex-nowrap items-center justify-end gap-1 text-sm text-slate xl:flex ${showAuthControls && accountEmail ? "pr-[152px]" : ""}`}>
           {navigation.map((item) => {
             const linkClassName = "agent-nav-link rounded-xl px-3 py-2";
             const isActive = isActiveNavItem(item.href);
@@ -234,7 +234,7 @@ export function SiteHeader() {
         </nav>
 
         {showAuthControls && accountEmail ? (
-        <div className="absolute right-2 top-1/2 hidden w-[140px] -translate-y-1/2 items-center justify-end gap-1 sm:right-3 lg:right-4 lg:flex">
+        <div className="absolute right-2 top-1/2 hidden w-[140px] -translate-y-1/2 items-center justify-end gap-1 sm:right-3 lg:right-4 xl:flex">
           <Link href="/account" className="rounded-full border border-white/10 px-2 py-2 text-[11px] font-semibold leading-none text-slate transition hover:bg-white/5 hover:text-white">
             Account
           </Link>
@@ -250,16 +250,17 @@ export function SiteHeader() {
       </div>
 
       <div
-        className={`fixed inset-0 top-[72px] z-[80] bg-black/55 transition lg:hidden ${
+        className={`fixed inset-0 top-[72px] z-[80] bg-black/55 transition xl:hidden ${
           mobileOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
         onClick={closeMobileNav}
       />
 
       <aside
+        data-site-mobile-drawer
         inert={!mobileOpen}
         aria-hidden={!mobileOpen}
-        className={`fixed right-0 top-[72px] z-[90] h-[calc(100vh-72px)] w-[82vw] max-w-[340px] overflow-y-auto border-l border-white/10 bg-[#05070a] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.72)] transition-transform duration-200 lg:hidden ${
+        className={`fixed right-0 top-[72px] z-[90] h-[calc(100vh-72px)] w-[82vw] max-w-[340px] overflow-y-auto border-l border-white/10 bg-[#05070a] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.72)] transition-transform duration-200 xl:hidden ${
           mobileOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >

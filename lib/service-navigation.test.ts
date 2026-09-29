@@ -10,8 +10,6 @@ test("AI Development opens AI Services and has only website and app subpages", (
   const service = navigation.find((item) => item.label === "Service");
   assert.ok(service);
   assert.deepEqual(service.columns, [
-    { label: "ROBOTICS RENT", href: "/coming-soon?feature=robotics-rent" },
-    { label: "ROBOTICS SALE", href: "/agentech-robotic" },
     {
       label: "AI-DEVELOPMENT",
       href: "/ai-service",
@@ -20,9 +18,20 @@ test("AI Development opens AI Services and has only website and app subpages", (
         { label: "AI-APP DEV", href: "/ai-app-dev" }
       ]
     },
-    { label: "DATA COLLECTION", href: "/coming-soon?feature=data-collection" }
+    { label: "DATA COLLECTION", href: "/data-collection" },
+    { label: "AIGC", href: "/aigc" }
   ]);
-  assert.equal(service.menuTriggerHref, "/agentech-robotic");
+  assert.equal(service.menuTriggerHref, "/ai-service");
+});
+
+test("Robotics has its own primary menu containing rental and sales", () => {
+  const robotics = navigation.find((item) => item.label === "Robotics");
+  assert.ok(robotics);
+  assert.equal(robotics.menuTriggerHref, "/agentech-robotic");
+  assert.deepEqual(robotics.columns, [
+    { label: "ROBOTICS RENT", href: "/coming-soon?feature=robotics-rent" },
+    { label: "ROBOTICS SALE", href: "/agentech-robotic" }
+  ]);
 });
 
 test("AI-Development third-level navigation is a desktop flyout and a mobile inline panel", async () => {
@@ -52,17 +61,18 @@ test("AI-Development third-level navigation is a desktop flyout and a mobile inl
   );
 });
 
-test("Platform routes to the current EAIC, EAIS, and NAVI STORE destinations", () => {
+test("Platform puts Skill Market above NAVI STORE alongside EAIC and EAIS", () => {
   const platform = navigation.find((item) => item.label === "Platform");
   assert.ok(platform);
   assert.deepEqual(platform.columns, [
     { label: "EAIC", href: "/agentech-products/eaic" },
     { label: "EAIS", href: "/agentech-products/eais" },
+    { label: "SKILL MARKET", href: "/skill-market" },
     { label: "NAVI STORE", href: "/agentech-education/what-can-we-learn-from-navi" }
   ]);
   assert.equal(platform.children, undefined, "Platform categories must not have another menu level");
   assert.equal(platform.menuTriggerHref, "/agentech-products/eaic");
-  assert.deepEqual(navigation.filter((item) => item.columns?.length).map((item) => item.label), ["Platform", "Service", "Education", "Talents"]);
+  assert.deepEqual(navigation.filter((item) => item.columns?.length).map((item) => item.label), ["Platform", "Service", "Robotics", "Education", "Talents"]);
 });
 
 test("coming-soon feature resolution accepts only the six unfinished navigation leaves", () => {
@@ -154,14 +164,14 @@ test("Platform browser check stays aligned with the live category links", async 
   );
   assert.doesNotMatch(source, /\[data-mobile=\\?"false\\?"\] button/);
   assert.match(source, /clicking the desktop Platform trigger must enter EAIC/);
-  assert.match(source, /"\/agentech-products\/eaic",\s*"\/agentech-products\/eais",\s*"\/agentech-education\/what-can-we-learn-from-navi"/);
-  assert.match(source, /name: "ROBOTICS SALE"/);
+  assert.match(source, /"\/agentech-products\/eaic",\s*"\/agentech-products\/eais",\s*"\/skill-market",\s*"\/agentech-education\/what-can-we-learn-from-navi"/);
+  assert.match(source, /name: "AIGC"/);
   for (const href of [
-    "/coming-soon?feature=robotics-rent",
     "/ai-website",
     "/ai-app-dev",
     "/ai-service",
-    "/coming-soon?feature=data-collection"
+    "/data-collection",
+    "/aigc"
   ]) {
     assert.match(serviceSource, new RegExp(href.replace(/[?]/g, "\\?")));
   }

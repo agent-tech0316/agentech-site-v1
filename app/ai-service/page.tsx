@@ -19,6 +19,7 @@ export default function AIServicePage() {
           <p className="wl-eyebrow">SERVICE / AI-DEVELOPMENT</p>
           <h1>AI Services</h1>
           <p>Websites for your next chapter.<br />Applications for what comes next.</p>
+          <Link className="ais-card-link" href={`/account/service-profiles?type=development-client${process.env.NODE_ENV === "development" ? "&preview=1" : ""}`}>Your app / website client profile <span aria-hidden="true">↗</span></Link>
         </header>
         <section className="ais-offerings" aria-label="AI development services">
           <article className="ais-card" data-ai-offering="website">

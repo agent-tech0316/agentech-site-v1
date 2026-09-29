@@ -1,5 +1,6 @@
 .next
 .next-dev
+.data-collection-local/
 .next.codex-backup-*
 .next-cache-*
 .tmp

@@ -33,10 +33,11 @@ export async function checkPlatformMenu(tab, mobile = false) {
     };
   });
   let panel = await readPanel();
-  assert.deepEqual(Array.from(panel.titles), ["EAIC", "EAIS", "NAVI STORE"]);
+  assert.deepEqual(Array.from(panel.titles), ["EAIC", "EAIS", "SKILL MARKET", "NAVI STORE"]);
   assert.deepEqual(Array.from(panel.links), [
     "/agentech-products/eaic",
     "/agentech-products/eais",
+    "/skill-market",
     "/agentech-education/what-can-we-learn-from-navi"
   ]);
   assert.equal(panel.nestedMenus, 0, "categories must not have submenu triggers");
@@ -61,7 +62,7 @@ export async function checkPlatformMenu(tab, mobile = false) {
   const service = tab.playwright.getByRole(mobile ? "button" : "link", { name: "Service", exact: true });
   if (mobile) await service.press("Enter");
   else await service.press("ArrowDown");
-  await tab.playwright.getByRole("link", { name: "ROBOTICS SALE", exact: true }).waitFor({ state: "visible" });
+  await tab.playwright.getByRole("link", { name: "AIGC", exact: true }).waitFor({ state: "visible" });
   await eaic.waitFor({ state: "hidden" });
   if (mobile) await platform.press("Enter");
   else await platform.press("ArrowDown");
