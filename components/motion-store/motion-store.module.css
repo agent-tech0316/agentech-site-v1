@@ -212,7 +212,7 @@
 
 .store {
   min-height: 100vh;
-  overflow: hidden;
+  overflow-x: clip;
   background:
     radial-gradient(circle at 70% 4%, rgb(124 196 255 / 8%), transparent 28rem),
     linear-gradient(180deg, #05070a 0%, #07090d 48%, #030405 100%);
@@ -625,6 +625,10 @@
 
   .catalogControls {
     margin-inline: -2px;
+  }
+
+  .categoryRail {
+    padding-bottom: max(4px, env(safe-area-inset-bottom));
   }
 
   .modalBackdrop {

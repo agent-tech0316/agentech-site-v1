@@ -3,10 +3,10 @@ import test from "node:test";
 import { motionCatalog } from "./motion-store-data.ts";
 
 test("motion filtering combines normalized text and category without mutating catalog order", async () => {
-  const module = await import("./motion-store-filter.ts").catch(() => null);
-  assert.ok(module, "motion-store-filter.ts must define the catalog filtering boundary");
+  const filterModule = await import("./motion-store-filter.ts").catch(() => null);
+  assert.ok(filterModule, "motion-store-filter.ts must define the catalog filtering boundary");
 
-  const { filterMotions } = module;
+  const { filterMotions } = filterModule;
   const originalOrder = motionCatalog.map((motion) => motion.id);
 
   assert.deepEqual(filterMotions(motionCatalog, "", "All").map((motion) => motion.name), [

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { MotionPreview } from "@/lib/motion-store-data";
 import styles from "./motion-store.module.css";
 
@@ -21,7 +22,16 @@ const paths = {
 
 export function MotionPreviewView({ preview, name, featured = false }: MotionPreviewViewProps) {
   if (preview.type === "image" && preview.src) {
-    return <img data-motion-preview src={preview.src} alt={`${name} motion preview`} />;
+    return (
+      <Image
+        data-motion-preview
+        src={preview.src}
+        alt={`${name} motion preview`}
+        width={1280}
+        height={960}
+        sizes={featured ? "(min-width: 1024px) 620px, 72vw" : "(min-width: 1380px) 25vw, (min-width: 640px) 50vw, 100vw"}
+      />
+    );
   }
 
   if (preview.type === "video" && preview.src) {

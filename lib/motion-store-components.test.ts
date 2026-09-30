@@ -39,6 +39,8 @@ test("motion cards expose product content and a replaceable preview boundary", a
   assert.match(preview, /data-motion-preview-fallback/);
   assert.match(preview, /<svg/);
   assert.match(preview, /preview\.type === "placeholder"/);
+  assert.match(preview, /import Image from "next\/image"/);
+  assert.doesNotMatch(preview, /<img\b/);
 });
 
 test("motion cards keep previews dominant with restrained accessible interaction", async () => {
@@ -51,4 +53,23 @@ test("motion cards keep previews dominant with restrained accessible interaction
 
   const reduced = declarations(css, ".previewInner", "(prefers-reduced-motion: reduce)");
   assert.equal(reduced.transition, "none");
+});
+
+test("motion store rails and grid adapt without creating page overflow", async () => {
+  const css = await readWorkspaceFile("components/motion-store/motion-store.module.css");
+  assert.equal(declarations(css, ".store")["overflow-x"], "clip");
+  assert.equal(declarations(css, ".featuredRail")["overflow-x"], "auto");
+  assert.equal(declarations(css, ".categoryRail")["overflow-x"], "auto");
+  assert.equal(declarations(css, ".catalogGrid")["grid-template-columns"], "repeat(3, minmax(0, 1fr))");
+  assert.equal(
+    declarations(css, ".catalogGrid", "(max-width: 900px)")["grid-template-columns"],
+    "repeat(2, minmax(0, 1fr))"
+  );
+  assert.equal(declarations(css, ".catalogGrid", "(max-width: 639px)")["grid-template-columns"], "1fr");
+  assert.equal(declarations(css, ".viewButton")["min-height"], "44px");
+  assert.equal(declarations(css, ".modal").overflow, "auto");
+  assert.equal(
+    declarations(css, ".categoryRail", "(max-width: 639px)")["padding-bottom"],
+    "max(4px, env(safe-area-inset-bottom))"
+  );
 });
