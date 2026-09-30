@@ -33,7 +33,7 @@ export async function checkPlatformMenu(tab, mobile = false) {
     };
   });
   let panel = await readPanel();
-  assert.deepEqual(Array.from(panel.titles), ["EAIC", "EAIS", "SKILL MARKET", "NAVI STORE"]);
+  assert.deepEqual(Array.from(panel.titles), ["EAIC", "EAIS", "MOTION STORE", "NAVI STORE"]);
   assert.deepEqual(Array.from(panel.links), [
     "/agentech-products/eaic",
     "/agentech-products/eais",

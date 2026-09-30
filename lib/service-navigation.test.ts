@@ -61,13 +61,13 @@ test("AI-Development third-level navigation is a desktop flyout and a mobile inl
   );
 });
 
-test("Platform puts Skill Market above NAVI STORE alongside EAIC and EAIS", () => {
+test("Platform puts Motion Store above NAVI STORE alongside EAIC and EAIS", () => {
   const platform = navigation.find((item) => item.label === "Platform");
   assert.ok(platform);
   assert.deepEqual(platform.columns, [
     { label: "EAIC", href: "/agentech-products/eaic" },
     { label: "EAIS", href: "/agentech-products/eais" },
-    { label: "SKILL MARKET", href: "/skill-market" },
+    { label: "MOTION STORE", href: "/skill-market" },
     { label: "NAVI STORE", href: "/agentech-education/what-can-we-learn-from-navi" }
   ]);
   assert.equal(platform.children, undefined, "Platform categories must not have another menu level");
@@ -165,6 +165,7 @@ test("Platform browser check stays aligned with the live category links", async 
   assert.doesNotMatch(source, /\[data-mobile=\\?"false\\?"\] button/);
   assert.match(source, /clicking the desktop Platform trigger must enter EAIC/);
   assert.match(source, /"\/agentech-products\/eaic",\s*"\/agentech-products\/eais",\s*"\/skill-market",\s*"\/agentech-education\/what-can-we-learn-from-navi"/);
+  assert.match(source, /\["EAIC", "EAIS", "MOTION STORE", "NAVI STORE"\]/);
   assert.match(source, /name: "AIGC"/);
   for (const href of [
     "/ai-website",
