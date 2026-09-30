@@ -51,6 +51,9 @@ test("motion detail overlay owns dismissal, scroll lock, metadata, and focus ret
   assert.match(modal, /disabled[\s\S]*Coming Soon/);
   assert.match(modal, /aria-label="Close motion details"/);
   assert.match(modal, /event\.key === "Escape"/);
+  assert.match(modal, /event\.key === "Tab"/);
+  assert.match(modal, /modalRef\.current\?\.querySelectorAll/);
+  assert.match(modal, /event\.preventDefault\(\)/);
   assert.match(modal, /event\.target === event\.currentTarget/);
   assert.match(modal, /document\.body\.style\.overflow = "hidden"/);
   assert.match(modal, /document\.body\.style\.overflow = previousOverflow/);

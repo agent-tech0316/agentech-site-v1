@@ -13,6 +13,7 @@ type MotionDetailModalProps = {
 
 export function MotionDetailModal({ motion, onClose }: MotionDetailModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const modalRef = useRef<HTMLElement>(null);
   const titleId = `motion-detail-${motion.id}`;
 
   useEffect(() => {
@@ -22,6 +23,23 @@ export function MotionDetailModal({ motion, onClose }: MotionDetailModalProps) {
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
+      if (event.key === "Tab") {
+        const focusable = Array.from(
+          modalRef.current?.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          ) ?? []
+        );
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (!first || !last) return;
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
     }
 
     window.addEventListener("keydown", handleKeyDown);
@@ -46,6 +64,7 @@ export function MotionDetailModal({ motion, onClose }: MotionDetailModalProps) {
   return (
     <div className={styles.modalBackdrop} onMouseDown={closeFromBackdrop} data-motion-modal-backdrop>
       <section
+        ref={modalRef}
         className={styles.modal}
         role="dialog"
         aria-modal="true"
