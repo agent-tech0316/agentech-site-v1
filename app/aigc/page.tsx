@@ -60,7 +60,13 @@ export default function AIGCPage() {
             <p>{stage.description}</p>
             <div className={`aigc-stage-placeholder${stage.icon === "asset" ? " aigc-stage-placeholder--art" : stage.icon === "animation" ? " aigc-stage-placeholder--video" : ""}`} data-aigc-placeholder={stage.icon}>
               {stage.icon === "asset"
-                ? <Image src="/assets/aigc/master-humanoid-blueprint.jpg" alt="Master humanoid robot blueprint with front, side, back, and component studies." width={1110} height={1417} sizes="(max-width: 760px) calc(100vw - 88px), 28vw" />
+                ? <div className="aigc-blueprint-composition">
+                    <Image className="aigc-blueprint-background" src="/assets/aigc/master-humanoid-blueprint.jpg" alt="" aria-hidden="true" width={1110} height={1417} sizes="(max-width: 760px) calc(100vw - 88px), 28vw" />
+                    <Image className="aigc-blueprint-robot" src="/assets/aigc/master-humanoid-blueprint.jpg" alt="Master humanoid robot blueprint with front, side, back, and component studies." width={1110} height={1417} sizes="(max-width: 760px) calc(100vw - 88px), 28vw" />
+                    <div className="aigc-blueprint-detail" aria-hidden="true">
+                      <Image src="/assets/aigc/master-humanoid-blueprint.jpg" alt="" width={1110} height={1417} sizes="12vw" />
+                    </div>
+                  </div>
                 : stage.icon === "animation"
                   ? <video src="/assets/aigc/full-animation-showcase.mp4" aria-label="Full animation showcase" autoPlay loop muted playsInline controls preload="metadata" />
                   : <><StageIllustration type={stage.icon} /><span>CONTENT COMING SOON</span></>}
