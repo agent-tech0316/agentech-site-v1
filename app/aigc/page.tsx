@@ -58,7 +58,11 @@ export default function AIGCPage() {
             <div className="aigc-stage-meta"><span>{stage.number} / AIGC</span><span>COMING SOON</span></div>
             <h3 id={`${stage.id}-title`}>{stage.title}</h3>
             <p>{stage.description}</p>
-            <div className="aigc-stage-placeholder" data-aigc-placeholder={stage.icon}><StageIllustration type={stage.icon} /><span>CONTENT COMING SOON</span></div>
+            <div className={`aigc-stage-placeholder${stage.icon === "asset" ? " aigc-stage-placeholder--art" : ""}`} data-aigc-placeholder={stage.icon}>
+              {stage.icon === "asset"
+                ? <Image src="/assets/aigc/master-humanoid-blueprint.jpg" alt="Master humanoid robot blueprint with front, side, back, and component studies." width={1110} height={1417} sizes="(max-width: 760px) calc(100vw - 88px), 28vw" />
+                : <><StageIllustration type={stage.icon} /><span>CONTENT COMING SOON</span></>}
+            </div>
           </section>)}
         </div>
         <div className="aigc-bottomline"><span>IDEAS WITHOUT LIMITS.</span><span>A NEW PERSPECTIVE, BY AGENTECH.</span></div>
