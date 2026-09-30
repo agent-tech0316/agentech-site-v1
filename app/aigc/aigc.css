@@ -103,7 +103,7 @@ body:has([data-aigc-page]) [data-site-mobile-drawer][aria-hidden="true"] { box-s
   [data-aigc-page] .aigc-stage-placeholder--art { height: 195px; }
   [data-aigc-page] .aigc-stage-placeholder--video { height: 195px; }
   [data-aigc-page] .aigc-blueprint-background { top: -76%; left: -5%; width: 110%; }
-  [data-aigc-page] .aigc-blueprint-robot { top: -24%; left: -36%; width: 176%; }
+  [data-aigc-page] .aigc-blueprint-robot { top: clamp(-135px, calc(47px - 24vw), -47px); left: -36%; width: 176%; }
   [data-aigc-page] .aigc-blueprint-detail { width: 31%; }
   [data-aigc-page] .aigc-blueprint-detail img { top: -15%; left: -246%; width: 360%; }
 }
