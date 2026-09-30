@@ -62,14 +62,57 @@ test("motion store rails and grid adapt without creating page overflow", async (
   assert.equal(declarations(css, ".categoryRail")["overflow-x"], "auto");
   assert.equal(declarations(css, ".catalogGrid")["grid-template-columns"], "repeat(3, minmax(0, 1fr))");
   assert.equal(
-    declarations(css, ".catalogGrid", "(max-width: 900px)")["grid-template-columns"],
+    declarations(css, ".catalogGrid", "(max-width: 1023px)")["grid-template-columns"],
     "repeat(2, minmax(0, 1fr))"
   );
-  assert.equal(declarations(css, ".catalogGrid", "(max-width: 639px)")["grid-template-columns"], "1fr");
+  assert.equal(declarations(css, ".catalogGrid", "(max-width: 767px)")["grid-template-columns"], "1fr");
   assert.equal(declarations(css, ".viewButton")["min-height"], "44px");
   assert.equal(declarations(css, ".modal").overflow, "auto");
   assert.equal(
-    declarations(css, ".categoryRail", "(max-width: 639px)")["padding-bottom"],
+    declarations(css, ".categoryRail", "(max-width: 767px)")["padding-bottom"],
     "max(4px, env(safe-area-inset-bottom))"
   );
+});
+
+test("Motion Store reuses EAIS foundations and stays dark under the site light preference", async () => {
+  const [store, css, reference] = await Promise.all([
+    readWorkspaceFile("components/motion-store/motion-store.tsx"),
+    readWorkspaceFile("components/motion-store/motion-store.module.css"),
+    readWorkspaceFile("app/agentech-products/eais/eais-showcase.module.css")
+  ]);
+
+  assert.match(store, /referenceStyles\.topBar/);
+  assert.match(store, /referenceStyles\.searchShell/);
+  assert.match(store, /referenceStyles\.content/);
+  assert.match(store, /ROBOT MOTION LIBRARY/);
+  assert.match(store, /02 \/ LIBRARY/);
+  assert.match(declarations(css, ".store").composes, /^darkPalette from /);
+  assert.equal(declarations(reference, ".darkPalette")["--canvas"], "#080d14");
+  assert.equal(declarations(reference, ".darkPalette")["--surface"], "#101b29");
+  assert.doesNotMatch(css, /data-theme="light"/);
+  assert.match(declarations(css, ".card").composes, /^featureCard from /);
+  assert.match(declarations(css, ".viewButton").composes, /^outlineAction from /);
+  assert.equal(declarations(css, ".catalogGrid", "(min-width: 1380px)")["grid-template-columns"], undefined);
+});
+
+test("Market Index shares the existing catalog, filter state, and search input", async () => {
+  const [store, css] = await Promise.all([
+    readWorkspaceFile("components/motion-store/motion-store.tsx"),
+    readWorkspaceFile("components/motion-store/motion-store.module.css")
+  ]);
+  assert.match(store, /data-motion-market-index/);
+  assert.match(store, /aria-label="Market index"/);
+  assert.match(store, /motionCategories\.map/);
+  assert.match(store, /motionCatalog\.filter\(\(motion\) => motion\.category === label\)\.length/);
+  assert.match(store, /motionCatalog\.length\.toString\(\)\.padStart\(3, "0"\)/);
+  assert.match(store, /featuredMotions\.length/);
+  assert.match(store, /SEARCH THE LIBRARY/);
+  assert.equal((store.match(/<input\b/g) ?? []).length, 1, "Index search must reuse the existing input");
+  assert.match(store, /searchRef\.current\?\.focus/);
+  assert.match(store, /aria-current=/);
+  assert.match(store, /IntersectionObserver/);
+  assert.equal(declarations(css, ".store")["grid-template-columns"], "230px minmax(0, 1fr)");
+  assert.equal(declarations(css, ".marketIndex").position, "sticky");
+  assert.equal(declarations(css, ".layoutGutter")["--index-top"], "max(180px, 35dvh)");
+  assert.equal(declarations(css, ".layoutGutter", "(max-width: 1023px)").display, "none");
 });

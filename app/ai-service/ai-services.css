@@ -1,74 +1,75 @@
-[data-ai-services] { padding-bottom: 64px; }
-[data-ai-services] .ais-heading { padding: 45px 0 36px; }
-[data-ai-services] .ais-heading h1 { margin-bottom: 20px; font-family: var(--font-sans), sans-serif; font-size: clamp(42px, 4.4vw, 62px); font-weight: 500; line-height: 1.1; letter-spacing: -.055em; }
-[data-ai-services] .ais-heading > p:last-child { color: var(--wl-muted); font-size: 16px; line-height: 1.75; margin-bottom: 0; }
-[data-ai-services] .ais-offerings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
-[data-ai-services] .ais-card { display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--wl-line); border-radius: 16px; background: var(--wl-panel); }
-[data-ai-services] .ais-preview { position: relative; display: flex; align-items: center; justify-content: center; height: 290px; overflow: hidden; }
-[data-ai-services] .ais-preview:focus-visible { outline-offset: -5px; }
-[data-ai-services] .ais-website-preview { background: #dfe6dc; padding: 34px 34px 0; }
-[data-ai-services] .ais-browser { align-self: flex-start; width: 100%; border: 1px solid #bec8b8; border-radius: 8px; overflow: hidden; box-shadow: 0 15px 30px #27332517; transform: rotate(-2deg); }
-[data-ai-services] .ais-browser-bar { display: flex; justify-content: space-between; padding: 9px 13px; font-family: var(--font-mono), monospace; font-size: 7px; color: #53614e; background: #f7f8f3; }
-[data-ai-services] .ais-card-content { display: flex; flex: 1; flex-direction: column; padding: 28px 30px 20px; }
-[data-ai-services] .ais-card-label { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 21px; font-family: var(--font-mono), monospace; font-size: 10px; color: var(--wl-muted); }
-[data-ai-services] .ais-status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid var(--wl-line); border-radius: 20px; color: var(--wl-muted); font: 11px/1.5 var(--font-sans), sans-serif; }
-[data-ai-services] .ais-status::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-[data-ai-services] .ais-status-available { color: #a8d2ad; border-color: #3e5845; }
-:root[data-theme="light"] [data-ai-services] .ais-status-available { color: #38613e; border-color: #c2d5bf; }
-[data-ai-services] .ais-card h2 { font-family: var(--font-sans), sans-serif; font-size: clamp(25px, 2.4vw, 32px); letter-spacing: -.045em; margin-bottom: 13px; line-height: 1.25; }
-[data-ai-services] .ais-card-content > p { color: var(--wl-muted); font-size: 14px; line-height: 1.8; max-width: 430px; margin-bottom: 23px; }
-[data-ai-services] .ais-card-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; color: var(--wl-muted); font-size: 11px; min-height: 28px; margin-top: auto; margin-bottom: 24px; }
-[data-ai-services] .ais-card-facts strong { color: var(--wl-text); font-size: 20px; font-weight: 500; }
-[data-ai-services] .ais-card-facts small { color: var(--wl-muted); font-size: 10px; }
-[data-ai-services] .ais-card-link { display: flex; align-items: center; justify-content: space-between; min-height: 52px; gap: 18px; border-top: 1px solid var(--wl-line); font-size: 13px; font-weight: 600; }
-[data-ai-services] .ais-card-link > span { font-size: 23px; font-weight: 400; }
-[data-ai-services] .ais-card-link:hover, [data-ai-services] .ais-agency > a:hover { color: var(--wl-accent); }
-[data-ai-services] .ais-agency { display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-top: 44px; padding-block: 32px; border-top: 1px solid var(--wl-line); }
-[data-ai-services] .ais-agency .wl-eyebrow { margin-bottom: 10px; color: var(--wl-muted); font-size: 9px; }
-[data-ai-services] .ais-agency h2 { margin: 0; font: 500 22px/1.5 var(--font-sans), sans-serif; letter-spacing: -.025em; }
-[data-ai-services] .ais-agency > a { display: flex; align-items: center; gap: 24px; font-size: 12px; min-height: 44px; }
+[data-ai-services] { min-width: 0; }
+[data-ai-services] .ais-intro { max-width: 760px; padding: clamp(52px, 7vw, 88px) 0 42px; }
+[data-ai-services] .ais-intro h1 { margin: 13px 0 18px; color: var(--ink); font-family: var(--font-brand), sans-serif; font-size: clamp(38px, 4vw, 58px); font-weight: 600; letter-spacing: -.06em; line-height: .98; }
+[data-ai-services] .ais-intro > p:last-child { max-width: 45ch; margin: 0; color: var(--muted); font-family: var(--font-sans), sans-serif; font-size: 15px; line-height: 1.65; }
+[data-ai-services] .ais-services-section { padding-top: 42px; }
+[data-ai-services] .ais-offerings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+[data-ai-services] .ais-card { display: flex; min-height: 100%; flex-direction: column; cursor: default; }
+[data-ai-services] .ais-preview { display: flex; height: 224px; align-items: center; justify-content: center; background: var(--surface-raised); }
+[data-ai-services] .ais-preview:focus-visible, [data-ai-services] .ais-card-action:focus-visible, [data-ai-services] .ais-agency-action:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+[data-ai-services] .ais-website-preview { padding: 28px 28px 0; background: #dfe6dc; }
+[data-ai-services] .ais-browser { width: 100%; align-self: flex-start; overflow: hidden; border: 1px solid #bec8b8; border-radius: 8px; box-shadow: 0 15px 30px #27332517; transform: rotate(-2deg); transition: transform 340ms cubic-bezier(.2, .8, .2, 1); }
+[data-ai-services] .ais-card:hover .ais-browser { transform: rotate(-2deg) scale(1.035); }
+[data-ai-services] .ais-browser-bar { display: flex; justify-content: space-between; padding: 8px 11px; background: #f7f8f3; color: #53614e; font-family: var(--font-mono), monospace; font-size: 7px; }
+[data-ai-services] .ais-card-content { flex: 1; align-content: start; }
+[data-ai-services] .ais-card-content > h3 { margin: 0; font: inherit; }
+[data-ai-services] .ais-card-label { display: flex; align-items: center; justify-content: space-between; gap: 15px; color: var(--accent); font-family: var(--font-sans), sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .11em; line-height: 1.5; text-transform: uppercase; }
+[data-ai-services] .ais-status { display: inline-flex; min-height: 28px; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); letter-spacing: 0; text-transform: none; }
+[data-ai-services] .ais-status::before { width: 5px; height: 5px; border-radius: 50%; background: currentColor; content: ""; }
+[data-ai-services] .ais-status-available { border-color: color-mix(in srgb, #8fcea0 38%, transparent); color: #9bd3a8; }
+:root[data-theme="light"] [data-ai-services] .ais-status-available { border-color: #bfd5c4; color: #38613e; }
+[data-ai-services] .ais-card-content > em { min-height: 3.5em; }
+[data-ai-services] .ais-card-facts { display: flex; min-height: 36px; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-top: 4px; color: var(--muted); font-family: var(--font-sans), sans-serif; font-size: 11px; line-height: 1.5; }
+[data-ai-services] .ais-card-facts strong { color: var(--ink); font-family: var(--font-sans), sans-serif; font-size: 18px; font-weight: 600; letter-spacing: -.025em; }
+[data-ai-services] .ais-card-facts small { color: var(--muted); font-family: var(--font-sans), sans-serif; font-size: 9px; letter-spacing: 0; }
+[data-ai-services] .ais-card-action { justify-self: start; margin-top: auto; padding-top: 4px; }
+[data-ai-services] .ais-card-action b { transition: border-color 180ms ease, color 180ms ease; }
+[data-ai-services] .ais-card-action:hover b { border-color: var(--accent); color: var(--accent); }
 [data-ai-services] .ais-app-preview { background: #dedfed; color: #33384c; }
-[data-ai-services] .ais-app-study { width: 100%; padding: 27px 34px 17px; }
-[data-ai-services] .ais-app-window { display: flex; width: 100%; height: 224px; border: 1px solid #c1c4d7; border-radius: 10px; background: #f8f8fc; box-shadow: 0 15px 30px #31325016; overflow: hidden; transform: rotate(2deg); }
-[data-ai-services] .ais-app-sidebar { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; width: 25%; flex-shrink: 0; padding: 14px; border-right: 1px solid #e0e2ed; font-size: 8px; color: #7d8398; }
-[data-ai-services] .ais-app-symbol { color: #4f5472; font-size: 26px; line-height: 1; font-weight: 600; margin-bottom: 11px; }
+[data-ai-services] .ais-app-study { width: 100%; padding: 21px 26px 12px; transition: transform 340ms cubic-bezier(.2, .8, .2, 1); }
+[data-ai-services] .ais-card:hover .ais-app-study { transform: scale(1.035); }
+[data-ai-services] .ais-app-window { display: flex; width: 100%; height: 174px; overflow: hidden; border: 1px solid #c1c4d7; border-radius: 10px; background: #f8f8fc; box-shadow: 0 15px 30px #31325016; transform: rotate(2deg); }
+[data-ai-services] .ais-app-sidebar { display: flex; width: 25%; flex-shrink: 0; flex-direction: column; align-items: flex-start; gap: 10px; padding: 11px; border-right: 1px solid #e0e2ed; color: #7d8398; font-size: 7px; }
+[data-ai-services] .ais-app-symbol { margin-bottom: 7px; color: #4f5472; font-size: 22px; font-weight: 600; line-height: 1; }
 [data-ai-services] .ais-app-selected { color: #4e577c; font-weight: 600; }
 [data-ai-services] .ais-app-sidebar-bottom { margin-top: auto; font-size: 7px; }
-[data-ai-services] .ais-app-main { flex: 1; min-width: 0; padding: 15px 19px; }
-[data-ai-services] .ais-app-top { display: flex; justify-content: space-between; align-items: center; font-size: 8px; color: #7d8398; }
-[data-ai-services] .ais-app-avatar { display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; color: #686e95; background: #e7e8f3; }
-[data-ai-services] .ais-app-title { margin: 9px 0 13px; font-size: 21px; line-height: 1.2; letter-spacing: -.04em; }
-[data-ai-services] .ais-app-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-[data-ai-services] .ais-app-tiles > div { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 9px; border: 1px solid #e0e2ed; border-radius: 6px; background: #fff; font-size: 8px; }
-[data-ai-services] .ais-app-tile-icon { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; font-size: 15px; background: #e8e9f6; color: #838ebd; }
-[data-ai-services] .ais-app-tiles i { flex: 0 0 80%; height: 4px; margin-top: 3px; border-radius: 4px; background: #edeef3; }
-[data-ai-services] .ais-app-flow { display: flex; align-items: center; justify-content: center; margin-top: 15px; }
-[data-ai-services] .ais-app-flow span { width: 9px; height: 9px; border: 2px solid #a9afd0; border-radius: 50%; }
+[data-ai-services] .ais-app-main { min-width: 0; flex: 1; padding: 12px 15px; }
+[data-ai-services] .ais-app-top { display: flex; align-items: center; justify-content: space-between; color: #7d8398; font-size: 7px; }
+[data-ai-services] .ais-app-avatar { display: grid; width: 17px; height: 17px; place-items: center; border-radius: 50%; background: #e7e8f3; color: #686e95; }
+[data-ai-services] .ais-app-title { margin: 7px 0 10px; font-size: 18px; letter-spacing: -.04em; line-height: 1.15; }
+[data-ai-services] .ais-app-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+[data-ai-services] .ais-app-tiles > div { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 7px; border: 1px solid #e0e2ed; border-radius: 6px; background: #fff; font-size: 7px; }
+[data-ai-services] .ais-app-tile-icon { display: grid; width: 18px; height: 18px; place-items: center; border-radius: 5px; background: #e8e9f6; color: #838ebd; font-size: 13px; }
+[data-ai-services] .ais-app-tiles i { height: 3px; flex: 0 0 78%; margin-top: 2px; border-radius: 4px; background: #edeef3; }
+[data-ai-services] .ais-app-flow { display: flex; align-items: center; justify-content: center; margin-top: 11px; }
+[data-ai-services] .ais-app-flow span { width: 7px; height: 7px; border: 2px solid #a9afd0; border-radius: 50%; }
 [data-ai-services] .ais-app-flow i { width: 30%; height: 1px; background: #dce0ef; }
-[data-ai-services] .ais-study-caption { display: block; margin-top: 16px; text-align: center; font: 7px var(--font-mono), monospace; letter-spacing: .12em; color: #666c85; }
-[data-ai-services] .ais-breadcrumb { display: flex; align-items: center; gap: 13px; padding-block: 24px; border-bottom: 1px solid var(--wl-line); color: var(--wl-muted); font-size: 11px; }
-[data-ai-services] .ais-breadcrumb a { display: inline-flex; align-items: center; min-height: 24px; color: var(--wl-text); }
-[data-ai-services] .ais-app-hero { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 65px; padding-block: 80px 50px; }
-[data-ai-services] .ais-app-hero h1 { font: 500 clamp(40px, 4.5vw, 64px)/1.1 var(--font-sans), sans-serif; letter-spacing: -.06em; margin: 25px 0; }
-[data-ai-services] .ais-app-description { max-width: 380px; font-size: 14px; line-height: 1.85; color: var(--wl-muted); }
-[data-ai-services] .ais-app-hero-visual { border-radius: 18px; padding-block: 45px; }
-@media (max-width: 800px) {
-  [data-ai-services] .ais-heading { padding-top: 45px; }
-  [data-ai-services] .ais-offerings, [data-ai-services] .ais-app-hero { grid-template-columns: minmax(0, 1fr); }
-  [data-ai-services] .ais-card-content { padding: 24px 24px 16px; }
-  [data-ai-services] .ais-agency { align-items: flex-start; flex-direction: column; gap: 14px; }
-  [data-ai-services] .ais-app-hero { padding-block: 40px; gap: 36px; }
-  [data-ai-services] .ais-breadcrumb a { min-height: 44px; }
+[data-ai-services] .ais-study-caption { display: block; margin-top: 11px; color: #666c85; font-family: var(--font-mono), monospace; font-size: 7px; letter-spacing: .12em; text-align: center; }
+[data-ai-services] .ais-agency { padding-bottom: clamp(55px, 7vw, 98px); }
+[data-ai-services] .ais-agency-grid { grid-template-columns: minmax(0, 1fr); }
+[data-ai-services] .ais-agency-grid article { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px 28px; }
+[data-ai-services] .ais-agency-grid article > span, [data-ai-services] .ais-agency-grid article > h3 { grid-column: 1; }
+[data-ai-services] .ais-agency-action { display: inline-flex; min-height: 44px; grid-column: 2; grid-row: 1 / span 2; align-items: center; align-self: center; gap: 18px; padding: 0 13px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); font-family: var(--font-sans), sans-serif; font-size: 11px; font-weight: 700; transition: border-color 180ms ease, color 180ms ease; }
+[data-ai-services] .ais-agency-action:hover { border-color: var(--accent); color: var(--accent); }
+
+@media (max-width: 767px) {
+  [data-ai-services] .ais-intro { padding: 46px 0 34px; }
+  [data-ai-services] .ais-intro h1 { font-size: clamp(38px, 12vw, 52px); }
+  [data-ai-services] .ais-services-section { padding-top: 36px; }
+  [data-ai-services] .ais-offerings { grid-template-columns: 1fr; }
+  [data-ai-services] .ais-card-content > em { min-height: 0; }
+  [data-ai-services] .ais-agency-grid article { grid-template-columns: 1fr; }
+  [data-ai-services] .ais-agency-action { grid-column: 1; grid-row: auto; justify-self: start; margin-top: 8px; }
 }
-@media (max-width: 540px) {
-  [data-ai-services] .ais-preview { height: 250px; }
-  [data-ai-services] .ais-website-preview { padding: 28px 22px 0; }
-  [data-ai-services] .ais-app-study { padding: 20px 18px 17px; }
-  [data-ai-services] .ais-app-window { height: 196px; }
-  [data-ai-services] .ais-app-sidebar { padding: 10px; }
-  [data-ai-services] .ais-app-main { padding: 12px; }
-  [data-ai-services] .ais-app-title { font-size: 19px; }
-  [data-ai-services] .ais-app-tiles > div { padding: 6px; }
-  [data-ai-services] .ais-card-facts { column-gap: 12px; }
-  [data-ai-services] .ais-app-hero-visual { padding-block: 25px; }
+
+@media (max-width: 430px) {
+  [data-ai-services] .ais-preview { height: 210px; }
+  [data-ai-services] .ais-website-preview { padding: 24px 18px 0; }
+  [data-ai-services] .ais-app-study { padding-inline: 15px; }
+  [data-ai-services] .ais-card-label { align-items: flex-start; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-ai-services] .ais-browser, [data-ai-services] .ais-app-study, [data-ai-services] .ais-card-action b, [data-ai-services] .ais-agency-action { transition: none; }
+  [data-ai-services] .ais-card:hover .ais-browser, [data-ai-services] .ais-card:hover .ais-app-study { transform: none; }
 }

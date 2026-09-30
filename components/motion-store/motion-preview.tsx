@@ -29,7 +29,7 @@ export function MotionPreviewView({ preview, name, featured = false }: MotionPre
         alt={`${name} motion preview`}
         width={1280}
         height={960}
-        sizes={featured ? "(min-width: 1024px) 620px, 72vw" : "(min-width: 1380px) 25vw, (min-width: 640px) 50vw, 100vw"}
+        sizes={featured ? "(min-width: 1024px) 28vw, (min-width: 768px) 45vw, 78vw" : "(min-width: 1024px) 28vw, (min-width: 768px) 45vw, 100vw"}
       />
     );
   }

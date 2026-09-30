@@ -26,29 +26,32 @@ function StageIllustration({ type }: { type: typeof creativeStages[number]["icon
 export default function AIGCPage() {
   return (
     <div data-aigc-page>
-      <div className="aigc-wrap">
-        <div className="aigc-topline">
-          <span>AGENTECH / CREATIVE SERVICES</span>
-          <span className="aigc-status"><span aria-hidden="true" /> IN DEVELOPMENT</span>
-        </div>
-        <section className="aigc-hero" aria-labelledby="aigc-title">
-          <div className="aigc-intro">
-            <p className="aigc-eyebrow">ARTIFICIAL INTELLIGENCE<br />GENERATED CONTENT</p>
-            <h1 id="aigc-title">AIGC<span aria-hidden="true">.</span></h1>
-            <h2>Creativity,<br /><em>reimagined.</em></h2>
-            <p className="aigc-description">A new space for ideas to take shape.<br />Human imagination. AI-powered creation.</p>
-            <div className="aigc-note">
-              <span className="aigc-note-mark" aria-hidden="true">↗</span>
-              <div><strong>Something new is taking shape.</strong><p>Our creative services are in development.<br />More details are on the way.</p></div>
-            </div>
-            <Link className="aigc-back" href="/ai-service">Explore AI development <span aria-hidden="true">↗</span></Link>
+      <section className="aigc-hero-shell" data-aigc-hero aria-labelledby="aigc-title">
+        <div className="aigc-hero-grid" data-aigc-hero-grid aria-hidden="true" />
+        <div className="aigc-hero-content" data-aigc-hero-content>
+          <div className="aigc-topline">
+            <span>AGENTECH / CREATIVE SERVICES</span>
+            <span className="aigc-status"><span aria-hidden="true" /> IN DEVELOPMENT</span>
           </div>
-          <figure className="aigc-art" data-aigc-art>
-            <Image src="/assets/aigc/orange-glass-concept.webp" alt="AI-generated concept: a translucent orange glass sculpture suspended over a brushed silver plinth in warm sunlight." fill priority sizes="(max-width: 760px) 100vw, 55vw" />
-            <div className="aigc-art-heading" aria-hidden="true"><span>IMAGINATION<br />TAKES FORM.</span><span className="aigc-art-cross">✳</span></div>
-            <figcaption><span>STUDY 001 / LIGHT & FORM</span><span>AI-GENERATED CONCEPT</span></figcaption>
-          </figure>
-        </section>
+          <div className="aigc-hero">
+            <div className="aigc-intro">
+              <p className="aigc-eyebrow">ARTIFICIAL INTELLIGENCE<br />GENERATED CONTENT</p>
+              <h1 id="aigc-title">AIGC<span aria-hidden="true">.</span></h1>
+              <h2>Creativity,<br /><em>reimagined.</em></h2>
+              <p className="aigc-description">A new space for ideas to take shape.<br />Human imagination. AI-powered creation.</p>
+              <div className="aigc-note">
+                <span className="aigc-note-mark" aria-hidden="true">↗</span>
+                <div><strong>Something new is taking shape.</strong><p>Our creative services are in development.<br />More details are on the way.</p></div>
+              </div>
+              <Link className="aigc-back" href="/ai-service">Explore AI development <span aria-hidden="true">→</span></Link>
+            </div>
+            <figure className="aigc-art" data-aigc-art data-aigc-hero-visual>
+              <Image src="/assets/aigc/aigc-golf-robot-hero.png" alt="Wireframe humanoid robot progressing through a golf swing with an orange motion trajectory." fill priority sizes="(max-width: 760px) 100vw, 64vw" />
+            </figure>
+          </div>
+        </div>
+      </section>
+      <div className="aigc-wrap aigc-content-wrap">
         <nav className="aigc-stage-nav" aria-label="AIGC content sections">
           {creativeStages.map((stage) => <a key={stage.id} href={`#${stage.id}`}><span>{stage.number}</span>{stage.title}<span aria-hidden="true">↘</span></a>)}
         </nav>

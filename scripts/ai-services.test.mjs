@@ -16,7 +16,9 @@ function loadComponent(relativePath) {
     fileName: filename
   });
   const module = { exports: {} };
-  const resolve = id => id.endsWith(".css") ? {} : id.startsWith("@/")
+  const resolve = id => id.endsWith(".module.css")
+    ? { default: new Proxy({}, { get: (_target, key) => String(key) }) }
+    : id.endsWith(".css") ? {} : id.startsWith("@/")
     ? loadComponent(`../${id.slice(2)}.tsx`) : require(id);
   new Function("require", "module", "exports", outputText)(resolve, module, module.exports);
   return module.exports;
@@ -50,6 +52,19 @@ test("AI Services introduces both subpages in the requested order", () => {
   assert.match(cards[0][2], /href="\/ai-website"/);
   assert.match(cards[1][2], /href="\/ai-app-dev"/);
   assert.match(cards[1][2], /Coming soon/);
+});
+
+test("AI Services reuses the EAIS product-system primitives", () => {
+  const page = readFileSync(fileURLToPath(new URL("../app/ai-service/page.tsx", import.meta.url)), "utf8");
+  const styles = readFileSync(fileURLToPath(new URL("../app/ai-service/ai-services.css", import.meta.url)), "utf8");
+
+  assert.match(page, /import referenceStyles from "\.\.\/agentech-products\/eais\/eais-showcase\.module\.css"/);
+  for (const primitive of ["page", "sidebar", "content", "topBar", "eyebrow", "sectionHeader", "featureCard", "featureImage", "featureCardCopy", "processGrid"]) {
+    assert.match(page, new RegExp(`referenceStyles\\.${primitive}`), `missing EAIS ${primitive} primitive`);
+  }
+  assert.match(styles, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(styles, /height:\s*224px/);
+  assert.match(styles, /@media\s*\(max-width:\s*767px\)[\s\S]*grid-template-columns:\s*1fr/);
 });
 
 test("the app subpage states its availability and returns to AI Services", () => {

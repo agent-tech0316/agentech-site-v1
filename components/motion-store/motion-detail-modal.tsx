@@ -87,7 +87,7 @@ export function MotionDetailModal({ motion, onClose }: MotionDetailModalProps) {
 
         <div className={styles.modalContent}>
           <p className={styles.modalEyebrow}>{motion.category}</p>
-          <h2 id={titleId} className={styles.modalTitle}>{motion.name}</h2>
+          <h2 id={titleId}>{motion.name}</h2>
           <p className={styles.modalDescription}>{motion.description}</p>
           <dl className={styles.metadataGrid}>
             {metadata.map(([label, value]) => (
