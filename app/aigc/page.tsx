@@ -58,10 +58,12 @@ export default function AIGCPage() {
             <div className="aigc-stage-meta"><span>{stage.number} / AIGC</span><span>COMING SOON</span></div>
             <h3 id={`${stage.id}-title`}>{stage.title}</h3>
             <p>{stage.description}</p>
-            <div className={`aigc-stage-placeholder${stage.icon === "asset" ? " aigc-stage-placeholder--art" : ""}`} data-aigc-placeholder={stage.icon}>
+            <div className={`aigc-stage-placeholder${stage.icon === "asset" ? " aigc-stage-placeholder--art" : stage.icon === "animation" ? " aigc-stage-placeholder--video" : ""}`} data-aigc-placeholder={stage.icon}>
               {stage.icon === "asset"
                 ? <Image src="/assets/aigc/master-humanoid-blueprint.jpg" alt="Master humanoid robot blueprint with front, side, back, and component studies." width={1110} height={1417} sizes="(max-width: 760px) calc(100vw - 88px), 28vw" />
-                : <><StageIllustration type={stage.icon} /><span>CONTENT COMING SOON</span></>}
+                : stage.icon === "animation"
+                  ? <video src="/assets/aigc/full-animation-showcase.mp4" aria-label="Full animation showcase" autoPlay loop muted playsInline controls preload="metadata" />
+                  : <><StageIllustration type={stage.icon} /><span>CONTENT COMING SOON</span></>}
             </div>
           </section>)}
         </div>
