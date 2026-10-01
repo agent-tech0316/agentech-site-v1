@@ -29,13 +29,13 @@ The database test runs the actual migration in disposable PGlite Postgres, inclu
 
 ## Deployment order — requires publication authorization
 
-1. Apply `supabase/migrations/20260930213609_desktop_sessions.sql` to Agentech Website (`xwqvnyyzevyqusdddwbu`). Verify anon/authenticated cannot read the private tables or execute the RPCs. Do not grant those roles access.
+1. Apply `supabase/migrations/20261001005658_desktop_sessions.sql` to Agentech Website (`xwqvnyyzevyqusdddwbu`). Verify anon/authenticated cannot read the private tables or execute the RPCs. Do not grant those roles access.
 2. Publish this website commit. Confirm `/api/desktop-auth/session` responds with JSON 401 without credentials. Complete one live sign-in/logout with a user-operated test account; never put passwords in logs or chat.
 3. Deploy the matching Agentech backend. It requires both the existing AI access code and the desktop session (`X-Agentech-Session`). It verifies the session through the fixed website endpoint before billing or contacting a model provider. Its `/healthz` stays public.
 4. Test funded chat with the real account and existing access code. Confirm allowance is unchanged by rejected authentication. Personal Codex/Gemini connections require app login but keep their own billing.
 5. Distribute/install the matching Windows app only after these checks. Existing Build48 clients lack the new session header and cannot use the updated funded backend, so coordinate their update.
 
-Schedule `select public.desktop_session_cleanup();` hourly using a privileged database job. Each run deletes at most 1,000 expired/revoked sessions and 1,000 expired rate-limit buckets. If volume exceeds that, run it more often. The function is not callable by public clients.
+The companion migration `20261001010031_desktop_session_cleanup_schedule.sql` enables pg_cron and schedules `select public.desktop_session_cleanup();` hourly. Each run deletes at most 1,000 expired/revoked sessions and 1,000 expired rate-limit buckets. If volume exceeds that, run it more often. The function is not callable by public clients. Migration filenames match the versions recorded during production deployment through Supabase MCP.
 
 ## Desktop privacy and operation
 

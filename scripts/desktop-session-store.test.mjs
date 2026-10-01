@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {PGlite} from '@electric-sql/pglite';
-const migration=fs.readFileSync(new URL('../supabase/migrations/20260930213609_desktop_sessions.sql',import.meta.url),'utf8');
+const migration=fs.readFileSync(new URL('../supabase/migrations/20261001005658_desktop_sessions.sql',import.meta.url),'utf8');
 let db;
 test.before(async()=>{db=new PGlite();await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
 create table public.agentech_accounts(email text primary key); insert into public.agentech_accounts values ('user@example.com'); grant select on public.agentech_accounts to service_role;`);await db.exec(migration);});
@@ -32,4 +32,3 @@ test('atomic throttling allows five attempts then rejects the sixth',async()=>{
  for(let i=0;i<5;i++)assert.equal((await db.query('select * from public.desktop_login_attempt($1,5)',['d'.repeat(64)])).rows[0].allowed,true);
  const row=(await db.query('select * from public.desktop_login_attempt($1,5)',['d'.repeat(64)])).rows[0];assert.equal(row.allowed,false);assert.ok(row.retry_after>0);
 });
-
