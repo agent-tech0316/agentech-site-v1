@@ -63,6 +63,7 @@ export async function supabaseRequest<T>(table: string, options: SupabaseOptions
       Prefer: options.prefer ?? "return=representation"
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    signal: AbortSignal.timeout(10_000),
     cache: "no-store"
   });
 

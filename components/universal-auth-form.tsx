@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { accountSessionEvent, clearAccountSession, getAccountSession, setAccountSession } from "@/lib/account-session";
+import { initialAuthMode } from "@/lib/auth-entry-mode";
 
 type AuthMode = "signin" | "signup" | "forgot";
 type SignupStep = "email" | "verify";
@@ -20,7 +21,7 @@ export function UniversalAuthForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const explicitNext = searchParams.get("next");
-  const [mode, setMode] = useState<AuthMode>("signup");
+  const [mode, setMode] = useState<AuthMode>(() => initialAuthMode(searchParams.get('mode')));
   const [signupStep, setSignupStep] = useState<SignupStep>("email");
   const [resetStep, setResetStep] = useState<ResetStep>("email");
   const [email, setEmail] = useState("");
