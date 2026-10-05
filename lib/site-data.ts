@@ -44,7 +44,7 @@ export const navigation: NavItem[] = [
     columns: [
       { label: "EAIC", href: "/agentech-products/eaic" },
       { label: "EAIS", href: "/agentech-products/eais" },
-      { label: "MOTION STORE", href: "/skill-market" },
+      { label: "SKILLS MARKET", href: "/skill-market" },
       { label: "NAVI STORE", href: "/agentech-education/what-can-we-learn-from-navi" }
     ]
   },

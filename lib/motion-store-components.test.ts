@@ -74,7 +74,7 @@ test("motion store rails and grid adapt without creating page overflow", async (
   );
 });
 
-test("Motion Store reuses EAIS foundations and stays dark under the site light preference", async () => {
+test("Skills Market reuses EAIS foundations while exposing scoped Light and unchanged Dark palettes", async () => {
   const [store, css, reference] = await Promise.all([
     readWorkspaceFile("components/motion-store/motion-store.tsx"),
     readWorkspaceFile("components/motion-store/motion-store.module.css"),
@@ -87,32 +87,47 @@ test("Motion Store reuses EAIS foundations and stays dark under the site light p
   assert.match(store, /ROBOT MOTION LIBRARY/);
   assert.match(store, /02 \/ LIBRARY/);
   assert.match(declarations(css, ".store").composes, /^darkPalette from /);
+  assert.equal(declarations(css, ".store")["color-scheme"], "dark");
   assert.equal(declarations(reference, ".darkPalette")["--canvas"], "#080d14");
   assert.equal(declarations(reference, ".darkPalette")["--surface"], "#101b29");
-  assert.doesNotMatch(css, /data-theme="light"/);
+  const light = declarations(css, ':global(:root[data-theme="light"]) .store');
+  assert.equal(light["--canvas"], "#f5f4f1");
+  assert.equal(light["--surface"], "#ffffff");
+  assert.equal(light["--ink"], "#111");
+  assert.equal(light["--muted"], "#5f6874");
+  assert.equal(light["--accent"], "#0c6f9d");
+  assert.equal(light["color-scheme"], "light");
+  assert.match(
+    declarations(css, ':global(:root[data-theme="light"]) .store .previewInner').background ?? "",
+    /var\(--surface-raised\)/
+  );
+  assert.match(
+    declarations(css, ':global(:root[data-theme="light"]) .store .previewGrid')["background-image"] ?? "",
+    /rgb\(45 72 92 \/ 8%\)/
+  );
+  assert.equal(
+    declarations(css, ':global(:root[data-theme="light"]) .store .modalBackdrop').background,
+    "rgb(28 37 45 / 32%)"
+  );
   assert.match(declarations(css, ".card").composes, /^featureCard from /);
   assert.match(declarations(css, ".viewButton").composes, /^outlineAction from /);
   assert.equal(declarations(css, ".catalogGrid", "(min-width: 1380px)")["grid-template-columns"], undefined);
 });
 
-test("Market Index shares the existing catalog, filter state, and search input", async () => {
+test("Skills Market removes the side index and lets the content use the full page width", async () => {
   const [store, css] = await Promise.all([
     readWorkspaceFile("components/motion-store/motion-store.tsx"),
     readWorkspaceFile("components/motion-store/motion-store.module.css")
   ]);
-  assert.match(store, /data-motion-market-index/);
-  assert.match(store, /aria-label="Market index"/);
-  assert.match(store, /motionCategories\.map/);
-  assert.match(store, /motionCatalog\.filter\(\(motion\) => motion\.category === label\)\.length/);
-  assert.match(store, /motionCatalog\.length\.toString\(\)\.padStart\(3, "0"\)/);
-  assert.match(store, /featuredMotions\.length/);
-  assert.match(store, /SEARCH THE LIBRARY/);
-  assert.equal((store.match(/<input\b/g) ?? []).length, 1, "Index search must reuse the existing input");
-  assert.match(store, /searchRef\.current\?\.focus/);
-  assert.match(store, /aria-current=/);
-  assert.match(store, /IntersectionObserver/);
-  assert.equal(declarations(css, ".store")["grid-template-columns"], "230px minmax(0, 1fr)");
-  assert.equal(declarations(css, ".marketIndex").position, "sticky");
-  assert.equal(declarations(css, ".layoutGutter")["--index-top"], "max(180px, 35dvh)");
-  assert.equal(declarations(css, ".layoutGutter", "(max-width: 1023px)").display, "none");
+  assert.doesNotMatch(store, /data-motion-market-index/);
+  assert.doesNotMatch(store, /aria-label="Market (?:index|navigation)"/);
+  assert.doesNotMatch(store, /MARKET INDEX/);
+  assert.doesNotMatch(store, /SEARCH THE LIBRARY/);
+  assert.doesNotMatch(store, /IntersectionObserver/);
+  assert.equal((store.match(/data-motion-category-rail/g) ?? []).length, 1, "Keep only the existing library category rail");
+  assert.equal((store.match(/<input\b/g) ?? []).length, 1, "Keep the single top search input");
+  assert.equal(declarations(css, ".store").display, "block");
+  assert.equal(declarations(css, ".store")["grid-template-columns"], undefined);
+  assert.deepEqual(declarations(css, ".layoutGutter"), {});
+  assert.deepEqual(declarations(css, ".marketIndex"), {});
 });

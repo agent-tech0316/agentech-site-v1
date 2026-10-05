@@ -21,6 +21,7 @@ async function measure(tab, reference) {
     const card = reference ? "[data-eais-work-card]" : "[data-motion-card-variant=featured]";
     return {
       canvas: style(reference ? "[data-eais-public-page]" : "[data-motion-store]"),
+      content: style(reference ? "#eais-home" : "[data-motion-content]"),
       heading: style(reference ? "[data-eais-featured-work] h2" : "#featured-motions-title"),
       introHeading: reference ? null : style("#motion-store-title"),
       search: style(reference ? "[data-eais-search] label" : "[data-motion-search] label"),
@@ -47,9 +48,8 @@ export async function checkMotionStoreAlignment(tab, referenceTab, viewport, art
   for (const region of ["search", "searchInput", "card", "title", "description", "action"]) {
     for (const key of styleProperties) assert.equal(motion[region][key], reference[region][key], region + " " + key);
   }
-  for (const region of ["search", "heading", "card"]) assert.ok(Math.abs(motion[region].x - reference[region].x) < 1, region + " horizontal alignment");
-  assert.ok(Math.abs(motion.card.width - reference.card.width) < 1, "Card width matches EAIS");
-  assert.equal(motion.preview.height, reference.preview.height, "Preview height matches EAIS");
+  assert.ok(motion.content.x < 100, "Skills Market content starts at the desktop page gutter");
+  assert.ok(motion.content.width > 1240, "Skills Market content uses the full desktop page width");
   assert.equal(motion.search.height, reference.search.height, "Search height matches EAIS");
   await writeFile(artifactDirectory + "/reference-desktop.jpg", await referenceTab.screenshot({ fullPage: false }));
   await writeFile(artifactDirectory + "/motion-desktop.jpg", await tab.screenshot({ fullPage: false }));
@@ -63,6 +63,16 @@ export async function checkMotionStoreAlignment(tab, referenceTab, viewport, art
       const categories = document.querySelector("[data-motion-category-rail]");
       return {
         overflow: document.documentElement.scrollWidth > innerWidth,
+        marketIndex: document.querySelectorAll("[data-motion-market-index]").length,
+        legacyCopy: [...document.querySelectorAll("[data-motion-store] *")]
+          .filter(node => node.children.length === 0)
+          .some(node => ["MARKET INDEX", "SEARCH THE LIBRARY"].includes(node.textContent?.trim())),
+        storeDisplay: getComputedStyle(document.querySelector("[data-motion-store]")).display,
+        storeColumns: getComputedStyle(document.querySelector("[data-motion-store]")).gridTemplateColumns,
+        content: (() => {
+          const rect = document.querySelector("[data-motion-content]").getBoundingClientRect();
+          return { left: rect.left, right: rect.right, width: rect.width };
+        })(),
         columns: getComputedStyle(grid).gridTemplateColumns.split(" ").length,
         featuredScrollable: rail.scrollWidth > rail.clientWidth,
         categoriesScrollable: categories.scrollWidth > categories.clientWidth,
@@ -72,6 +82,14 @@ export async function checkMotionStoreAlignment(tab, referenceTab, viewport, art
       };
     });
     assert.equal(layout.overflow, false, width + " page overflow");
+    assert.equal(layout.marketIndex, 0, width + " has no market index");
+    assert.equal(layout.legacyCopy, false, width + " has no retired sidebar copy");
+    assert.equal(layout.storeDisplay, "block", width + " store is no longer a sidebar grid");
+    assert.equal(layout.storeColumns, "none", width + " has no reserved sidebar column");
+    const maximumPageInset = width >= 1024 ? 100 : width >= 768 ? 60 : 20;
+    assert.ok(layout.content.left < maximumPageInset, width + " content starts at the page gutter");
+    assert.ok(layout.content.right > width - maximumPageInset, width + " content reaches the right gutter");
+    assert.ok(layout.content.width > width - maximumPageInset * 2, width + " content uses the available width");
     assert.equal(layout.columns, width >= 1024 ? 3 : width >= 768 ? 2 : 1);
     assert.equal(layout.featuredScrollable, true);
     if (width === 390) {
@@ -125,8 +143,9 @@ export async function checkMotionStoreAlignment(tab, referenceTab, viewport, art
   await viewport.set({ width: 1440, height: 1000 });
   await tab.reload();
   await tab.playwright.getByRole("radio", { name: "Light", exact: true }).click();
-  assert.equal(await tab.playwright.locator("[data-motion-store]").evaluate(node => getComputedStyle(node).backgroundColor), reference.canvas.backgroundColor, "Motion Store stays dark in light preference");
+  assert.equal(await tab.playwright.locator("[data-motion-store]").evaluate(node => getComputedStyle(node).backgroundColor), "rgb(245, 244, 241)", "Skills Market uses the warm Light canvas");
   await tab.playwright.getByRole("radio", { name: "Dark", exact: true }).click();
+  assert.equal(await tab.playwright.locator("[data-motion-store]").evaluate(node => getComputedStyle(node).backgroundColor), reference.canvas.backgroundColor, "Skills Market preserves the approved Dark canvas");
   const consoleErrors = await tab.dev.logs({ levels: ["error"], limit: 50 });
   assert.deepEqual(consoleErrors, []);
   const report = { status: "passed", desktop: { reference, motion }, responsive, consoleErrors };

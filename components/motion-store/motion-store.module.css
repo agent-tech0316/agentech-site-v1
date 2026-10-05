@@ -2,8 +2,7 @@
 
 .store {
   composes: darkPalette from "../../app/agentech-products/eais/eais-showcase.module.css";
-  display: grid;
-  grid-template-columns: 230px minmax(0, 1fr);
+  display: block;
   min-height: 100dvh;
   overflow-x: clip;
   background: var(--canvas);
@@ -11,79 +10,21 @@
   color-scheme: dark;
 }
 
-.layoutGutter {
-  --index-top: max(180px, 35dvh);
-  min-width: 0;
-  border-right: 1px solid var(--line);
+:global(:root[data-theme="light"]) .store {
+  --canvas: #f5f4f1;
+  --surface: #ffffff;
+  --surface-raised: #eaf0f7;
+  --ink: #111;
+  --muted: #5f6874;
+  --line: rgba(16, 30, 48, 0.15);
+  --accent: #0c6f9d;
+  --accent-ink: #fff;
+  color-scheme: light;
 }
-.marketIndex {
-  position: sticky;
-  top: var(--index-top);
-  max-height: calc(100dvh - var(--index-top) - 88px);
-  margin-top: calc(var(--index-top) - 72px);
-  margin-bottom: 88px;
-  overflow-y: auto;
-  padding: 0 18px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--line) transparent;
+
+:global(:root[data-theme="dark"]) .store {
+  background: var(--canvas);
 }
-.indexHeading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--line);
-}
-.indexEyebrow { composes: eyebrow from "../../app/agentech-products/eais/eais-showcase.module.css"; }
-.indexNumber { color: var(--muted); font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: .11em; }
-.indexRows { display: grid; margin-top: 12px; }
-.indexItem {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 44px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  text-align: left;
-  font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color 180ms ease;
-}
-.indexLabel { transition: transform 180ms ease; }
-.indexItem:hover { color: var(--ink); }
-.indexItem:hover .indexLabel { transform: translateX(2px); }
-.indexItem[aria-current], .indexItem[aria-current] .indexNumber, .indexItem:hover .indexNumber { color: var(--accent); }
-.indexItem:focus-visible, .indexSearch:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.indexSearch {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  min-height: 44px;
-  margin-top: 16px;
-  padding: 16px 0 0;
-  border: 0;
-  border-top: 1px solid var(--line);
-  background: transparent;
-  color: var(--muted);
-  font-family: var(--font-sans);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .11em;
-  text-align: left;
-  cursor: pointer;
-  transition: color 180ms ease;
-}
-.indexSearch span { color: var(--accent); }
-.indexSearch:hover { color: var(--ink); }
 .intro { padding: 36px 0 32px; border-bottom: 1px solid var(--line); }
 .introLead, .introSupport { max-width: 45ch; color: var(--muted); font-size: 13px; line-height: 1.65; }
 .introLead { margin-top: 18px; }
@@ -131,6 +72,11 @@
   transform: translateZ(0);
   transition: transform 340ms cubic-bezier(.2, .8, .2, 1);
 }
+:global(:root[data-theme="light"]) .store .previewInner {
+  background:
+    radial-gradient(circle at 66% 30%, rgb(12 111 157 / 13%), transparent 45%),
+    linear-gradient(145deg, var(--surface-raised), #fbfaf7);
+}
 .featuredPreview { aspect-ratio: 16 / 10; }
 .catalogPreview { aspect-ratio: 4 / 3; }
 .card:hover .previewInner { transform: scale(1.025); }
@@ -143,12 +89,19 @@
   background-size: 30px 30px;
   mask-image: linear-gradient(to bottom, transparent, black 25%, black 80%, transparent);
 }
+:global(:root[data-theme="light"]) .store .previewGrid {
+  background-image:
+    linear-gradient(rgb(45 72 92 / 8%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(45 72 92 / 8%) 1px, transparent 1px);
+}
 .previewInner svg { position: relative; z-index: 1; width: 88%; height: 88%; }
 .trajectoryGhost, .trajectory { fill: none; stroke-linecap: round; }
 .trajectoryGhost { stroke: rgb(145 223 255 / 10%); stroke-width: 12; }
 .trajectory { stroke: var(--accent); stroke-width: 2; stroke-dasharray: .035 .045; }
 .joints { fill: var(--canvas); stroke: rgb(170 184 200 / 72%); stroke-width: 2; }
 .joints path { fill: none; }
+:global(:root[data-theme="light"]) .store .trajectoryGhost { stroke: rgb(12 111 157 / 13%); }
+:global(:root[data-theme="light"]) .store .joints { stroke: rgb(66 78 88 / 58%); }
 .previewCode {
   position: absolute;
   right: 14px;
@@ -212,6 +165,7 @@
   background: rgb(4 9 16 / 74%);
   padding: 24px;
 }
+:global(:root[data-theme="light"]) .store .modalBackdrop { background: rgb(28 37 45 / 32%); }
 .modal {
   position: relative;
   display: grid;
@@ -225,7 +179,12 @@
   color: var(--ink);
   box-shadow: 0 28px 90px rgb(0 0 0 / 38%);
 }
+:global(:root[data-theme="light"]) .store .modal {
+  background: var(--surface);
+  box-shadow: 0 28px 90px rgb(28 37 45 / 24%);
+}
 .modalClose { composes: closeButton from "../../app/agentech-products/eais/eais-showcase.module.css"; }
+:global(:root[data-theme="light"]) .store .modalClose { background: var(--surface); }
 .modalPreview { display: grid; min-height: 470px; background: var(--surface-raised); border-right: 1px solid var(--line); }
 .modalPreview > img, .modalPreview > video { width: 100%; height: 100%; object-fit: contain; }
 .modalContent { composes: dialogCopy from "../../app/agentech-products/eais/eais-showcase.module.css"; }
@@ -244,8 +203,6 @@
 }
 
 @media (max-width: 1023px) {
-  .store { display: block; }
-  .layoutGutter { display: none; }
   .featuredCard { flex-basis: calc((100% - 14px) / 2); }
   .catalogGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -264,6 +221,4 @@
 @media (prefers-reduced-motion: reduce) {
   .previewInner, .card, .cardArrow { transition: none; }
   .card:hover, .card:hover .previewInner, .card:hover .cardArrow { transform: none; }
-  .indexItem, .indexLabel, .indexSearch { transition: none; }
-  .indexItem:hover .indexLabel { transform: none; }
 }

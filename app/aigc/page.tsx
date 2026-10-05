@@ -46,15 +46,58 @@ export default function AIGCPage() {
               <Link className="aigc-back" href="/ai-service">Explore AI development <span aria-hidden="true">→</span></Link>
             </div>
             <figure className="aigc-art" data-aigc-art data-aigc-hero-visual>
-              <Image src="/assets/aigc/aigc-golf-robot-hero.png" alt="Wireframe humanoid robot progressing through a golf swing with an orange motion trajectory." fill priority sizes="(max-width: 760px) 100vw, 64vw" />
+              <svg className="aigc-filter-defs" aria-hidden="true" focusable="false">
+                <defs>
+                  <filter id="aigc-gray-linework" x="-5%" y="-8%" width="110%" height="116%" colorInterpolationFilters="sRGB">
+                    <feColorMatrix in="SourceGraphic" type="luminanceToAlpha" result="line-mask" />
+                    <feComponentTransfer in="line-mask" result="line-mask-boost">
+                      <feFuncA type="gamma" amplitude="1.35" exponent=".7" offset="-.15" />
+                    </feComponentTransfer>
+                    <feFlood floodColor="#343637" floodOpacity="1" result="line-color" />
+                    <feComposite in="line-color" in2="line-mask-boost" operator="in" />
+                  </filter>
+                  <filter id="aigc-copper-effects" x="-10%" y="-15%" width="120%" height="130%" colorInterpolationFilters="sRGB">
+                    <feComponentTransfer in="SourceGraphic" result="copper-normalized">
+                      <feFuncR type="gamma" amplitude="1" exponent=".6" offset="0" />
+                      <feFuncG type="gamma" amplitude="1" exponent=".6" offset="0" />
+                      <feFuncB type="gamma" amplitude="1" exponent=".6" offset="0" />
+                      <feFuncA type="identity" />
+                    </feComponentTransfer>
+                    <feColorMatrix
+                      in="copper-normalized"
+                      type="matrix"
+                      values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  2.5 -1.3 -1.2 0 -0.16"
+                      result="copper-mask"
+                    />
+                    <feFlood floodColor="#b65326" floodOpacity="1" result="copper-color" />
+                    <feComposite
+                      in="copper-color"
+                      in2="copper-mask"
+                      operator="in"
+                      result="copper"
+                    />
+                    <feGaussianBlur in="copper" stdDeviation="1.8" result="copper-glow" />
+                    <feColorMatrix
+                      in="copper-glow"
+                      type="matrix"
+                      values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 .46 0"
+                      result="copper-glow-soft"
+                    />
+                    <feMerge>
+                      <feMergeNode in="copper-glow-soft" />
+                      <feMergeNode in="copper" />
+                      <feMergeNode in="copper" />
+                    </feMerge>
+                  </filter>
+                </defs>
+              </svg>
+              <Image data-aigc-art-layer="linework" src="/assets/aigc/aigc-golf-robot-hero.png" alt="Wireframe humanoid robot progressing through a golf swing with an orange motion trajectory." fill priority sizes="(max-width: 760px) 100vw, 64vw" />
+              <Image data-aigc-art-layer="effects" src="/assets/aigc/aigc-golf-robot-hero.png" alt="" aria-hidden="true" fill sizes="(max-width: 760px) 100vw, 64vw" />
             </figure>
           </div>
         </div>
       </section>
       <div className="aigc-wrap aigc-content-wrap">
-        <nav className="aigc-stage-nav" aria-label="AIGC content sections">
-          {creativeStages.map((stage) => <a key={stage.id} href={`#${stage.id}`}><span>{stage.number}</span>{stage.title}<span aria-hidden="true">↘</span></a>)}
-        </nav>
         <div className="aigc-stages-heading"><p className="aigc-eyebrow">FROM IDEA TO ANIMATION</p><h2>Three stages.<br />One creative journey.</h2><p>Explore each stage below.<br />Content and examples are coming soon.</p></div>
         <div className="aigc-stages" data-aigc-sections>
           {creativeStages.map((stage) => <section key={stage.id} id={stage.id} className="aigc-stage" aria-labelledby={`${stage.id}-title`}>

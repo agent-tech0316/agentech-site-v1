@@ -2,19 +2,30 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { AppDevelopmentPreview } from "@/components/app-development-preview";
 import { WebsiteConceptPreview } from "@/components/website-concept-preview";
+import { serviceProfilesEnabled } from "@/lib/service-profiles-server";
 import referenceStyles from "../agentech-products/eais/eais-showcase.module.css";
 import "../ai-website/website-launch.css";
 import "./ai-services.css";
 
+const pageTitle = "AI Services — Websites & App Development";
+const pageDescription = "Explore Agentech’s AI development services. Launch your business website with a clear scope and fixed price. App development is coming soon.";
+
 export const metadata: Metadata = {
-  title: "AI Services — Websites & App Development",
-  description: "Explore Agentech’s AI development services. Launch your business website with a clear scope and fixed price. App development is coming soon.",
-  alternates: { canonical: "/ai-service" }
+  title: pageTitle,
+  description: pageDescription,
+  alternates: { canonical: "/ai-service" },
+  openGraph: { title: pageTitle, description: pageDescription, url: "/ai-service", type: "website" },
+  twitter: { title: pageTitle, description: pageDescription }
 };
 
-const clientProfileHref = `/account/service-profiles?type=development-client${process.env.NODE_ENV === "development" ? "&preview=1" : ""}`;
-
 export default function AIServicePage() {
+  const clientProfilesAvailable = serviceProfilesEnabled();
+  const leadHref = clientProfilesAvailable
+    ? `/account/service-profiles?type=development-client${process.env.NODE_ENV === "development" ? "&preview=1" : ""}`
+    : "/ai-website#inquiry";
+  const leadNavigationLabel = clientProfilesAvailable ? "Client profile" : "Website inquiry";
+  const leadActionLabel = clientProfilesAvailable ? "Your app / website client profile" : "Start a website inquiry";
+
   return (
     <div className={`website-launch ${referenceStyles.page} ais-product-system`} data-ai-services>
       <aside className={referenceStyles.sidebar} aria-label="AI Services sections">
@@ -26,25 +37,25 @@ export default function AIServicePage() {
         <nav className={referenceStyles.navigation}>
           <a href="#services">Services <span aria-hidden="true">↘</span></a>
           <a href="#agency">Agency delivery <span aria-hidden="true">↘</span></a>
-          <Link href={clientProfileHref}>Client profile <span aria-hidden="true">↗</span></Link>
+          <Link href={leadHref}>{leadNavigationLabel} <span aria-hidden="true">↗</span></Link>
         </nav>
         <p className={referenceStyles.sideNote}>Websites for your next chapter. Applications for what comes next.</p>
       </aside>
 
-      <main className={referenceStyles.content}>
+      <div className={referenceStyles.content}>
         <details className={referenceStyles.mobileNavigation}>
           <summary>Explore AI Services <span aria-hidden="true">＋</span></summary>
           <nav>
             <a href="#services">Services</a>
             <a href="#agency">Agency delivery</a>
-            <Link href={clientProfileHref}>Client profile</Link>
+            <Link href={leadHref}>{leadNavigationLabel}</Link>
           </nav>
         </details>
 
         <div className={referenceStyles.topBar}>
           <p className={referenceStyles.previewLabel}>SERVICE / <span>AI DEVELOPMENT</span></p>
-          <Link className={referenceStyles.primaryAction} href={clientProfileHref}>
-            Your app / website client profile <span aria-hidden="true">↗</span>
+          <Link className={referenceStyles.primaryAction} href={leadHref}>
+            {leadActionLabel} <span aria-hidden="true">↗</span>
           </Link>
         </div>
 
@@ -110,7 +121,7 @@ export default function AIServicePage() {
             </article>
           </div>
         </section>
-      </main>
+      </div>
     </div>
   );
 }

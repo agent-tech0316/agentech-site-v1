@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { MotionStore } from "@/components/motion-store/motion-store";
 
 export const metadata: Metadata = {
-  title: "Motion Store",
+  title: "Skills Market",
   description: "Browse robot-ready motion from Agentech.",
   alternates: { canonical: "/skill-market" }
 };

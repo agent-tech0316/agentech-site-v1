@@ -8,7 +8,7 @@ async function readWorkspaceFile(path: string) {
   return readFile(new URL(path, workspaceRoot), "utf8").catch(() => "");
 }
 
-test("existing skill-market route renders the complete Motion Store composition", async () => {
+test("existing skill-market route renders the complete Skills Market composition", async () => {
   const [page, store] = await Promise.all([
     readWorkspaceFile("app/skill-market/page.tsx"),
     readWorkspaceFile("components/motion-store/motion-store.tsx")
@@ -16,8 +16,10 @@ test("existing skill-market route renders the complete Motion Store composition"
 
   assert.match(page, /<MotionStore\s*\/>/);
   assert.doesNotMatch(page, /PlaceholderPage/);
+  assert.match(page, /title:\s*"Skills Market"/);
+  assert.match(page, /canonical:\s*"\/skill-market"/);
   for (const copy of [
-    "MOTION STORE",
+    "SKILLS MARKET",
     "Motion, ready to move.",
     "A library of robot-ready movement.",
     "Browse, preview, and discover motion for your robot.",
@@ -27,6 +29,7 @@ test("existing skill-market route renders the complete Motion Store composition"
   ]) {
     assert.match(store, new RegExp(copy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+  assert.doesNotMatch(store, />MOTION STORE(?:\s|<)/);
   assert.match(store, /const filterCategories:[^=]+= \["All", \.\.\.motionCategories\]/);
   assert.match(store, /filterCategories\.map\(\(value\) =>/);
   assert.match(store, /filterMotions\(motionCatalog, query, category\)/);

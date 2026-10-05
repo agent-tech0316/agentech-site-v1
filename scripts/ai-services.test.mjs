@@ -16,7 +16,9 @@ function loadComponent(relativePath) {
     fileName: filename
   });
   const module = { exports: {} };
-  const resolve = id => id.endsWith(".module.css")
+  const resolve = id => id === "@/lib/service-profiles-server"
+    ? { serviceProfilesEnabled: () => process.env.NODE_ENV === "development" || process.env.AGENTECH_SERVICE_PROFILES_ENABLED === "1" }
+    : id.endsWith(".module.css")
     ? { default: new Proxy({}, { get: (_target, key) => String(key) }) }
     : id.endsWith(".css") ? {} : id.startsWith("@/")
     ? loadComponent(`../${id.slice(2)}.tsx`) : require(id);
@@ -52,6 +54,45 @@ test("AI Services introduces both subpages in the requested order", () => {
   assert.match(cards[0][2], /href="\/ai-website"/);
   assert.match(cards[1][2], /href="\/ai-app-dev"/);
   assert.match(cards[1][2], /Coming soon/);
+});
+
+test("AI Services keeps its public conversion path usable when client profiles are unavailable", () => {
+  const previousFlag = process.env.AGENTECH_SERVICE_PROFILES_ENABLED;
+  delete process.env.AGENTECH_SERVICE_PROFILES_ENABLED;
+  try {
+    const { default: Page } = loadComponent("../app/ai-service/page.tsx");
+    const html = renderToStaticMarkup(createElement(Page));
+    assert.match(html, /href="\/ai-website#inquiry"[^>]*>Start a website inquiry/);
+    assert.match(html, /href="\/ai-website#inquiry"[^>]*>Website inquiry/);
+    assert.doesNotMatch(html, /href="\/account\/service-profiles\?type=development-client"/);
+  } finally {
+    if (previousFlag === undefined) delete process.env.AGENTECH_SERVICE_PROFILES_ENABLED;
+    else process.env.AGENTECH_SERVICE_PROFILES_ENABLED = previousFlag;
+  }
+});
+
+test("AI Services preserves the client profile journey when the feature is enabled", () => {
+  const previousFlag = process.env.AGENTECH_SERVICE_PROFILES_ENABLED;
+  process.env.AGENTECH_SERVICE_PROFILES_ENABLED = "1";
+  try {
+    const { default: Page } = loadComponent("../app/ai-service/page.tsx");
+    const html = renderToStaticMarkup(createElement(Page));
+    assert.match(html, /href="\/account\/service-profiles\?type=development-client"[^>]*>Your app \/ website client profile/);
+    assert.match(html, /href="\/account\/service-profiles\?type=development-client"[^>]*>Client profile/);
+  } finally {
+    if (previousFlag === undefined) delete process.env.AGENTECH_SERVICE_PROFILES_ENABLED;
+    else process.env.AGENTECH_SERVICE_PROFILES_ENABLED = previousFlag;
+  }
+});
+
+test("AI Services relies on the root layout main landmark and self-identifies in social metadata", () => {
+  const { default: Page, metadata } = loadComponent("../app/ai-service/page.tsx");
+  const html = renderToStaticMarkup(createElement(Page));
+  assert.doesNotMatch(html, /<main\b/);
+  assert.equal(metadata.alternates.canonical, "/ai-service");
+  assert.equal(metadata.openGraph.url, "/ai-service");
+  assert.equal(metadata.openGraph.title, metadata.title);
+  assert.equal(metadata.twitter.title, metadata.title);
 });
 
 test("AI Services reuses the EAIS product-system primitives", () => {
