@@ -1,6 +1,6 @@
 # VORLD development
 
-VORLD is Agentech's Electron desktop app for AI chat, robot controls, cameras, and headband connections. This guide covers the Windows source for version 0.44.0, Build 50.
+VORLD is Agentech's Electron desktop app for AI chat, robot controls, cameras, and headband connections. This guide covers the Windows source for version 0.45.0, Build 51.
 
 ## Install the app
 
@@ -64,3 +64,7 @@ Agentech-funded chat uses a separately deployed backend. Keep company API keys i
 ## Update the website download
 
 Upload the tested installer as a GitHub release asset, verify its size and SHA-256, then update `lib/vorld-release.ts` in the Agentech website repository. The EAIC page reads its version and download URL from that file. Publish only after the release download works without signing in.
+
+## SDK availability audit
+
+See [the SDK audit](./VORLD-SDK-Audit.md) for the pinned GitHub comparison and bundled runtime version gaps. Run `npm.cmd run generate:sdk` to regenerate the supported catalog.
