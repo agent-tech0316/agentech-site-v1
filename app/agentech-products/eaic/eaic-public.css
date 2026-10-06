@@ -86,6 +86,12 @@
 
 .eaic-public-actions { display: flex; flex-wrap: wrap; gap: 1.75rem; margin-top: 2rem; }
 
+[data-eaic-public-page] [data-vorld-download] { display: grid; justify-items: start; gap: 0.35rem; margin-top: 1rem; }
+[data-eaic-public-page] [data-vorld-download] p { margin: 0.35rem 0 0; color: var(--eaic-muted); font-size: 0.75rem; line-height: 1.6; }
+[data-eaic-public-page] .eaic-public-development-guide { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; color: var(--eaic-ink); font-size: 0.75rem; text-underline-offset: 4px; }
+[data-eaic-public-page] .eaic-public-development-guide svg { width: 0.9rem; height: 0.9rem; }
+[data-eaic-public-page] .eaic-public-development-guide:focus-visible { outline: 2px solid var(--eaic-accent); outline-offset: 3px; }
+
 .eaic-public-button, .eaic-public-preview-link, .eaic-public-details-toggle {
   display: inline-flex;
   min-height: 44px;

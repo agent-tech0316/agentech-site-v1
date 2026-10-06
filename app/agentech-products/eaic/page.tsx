@@ -3,6 +3,7 @@ import Link from "next/link";
 import { EaicPublicExperience } from "@/components/eaic-public-experience";
 import { EaicWaveDemo } from "@/components/eaic-wave-demo";
 import { eaicHubPath } from "@/lib/eaic-hub";
+import { vorldRelease } from "@/lib/vorld-release";
 import "./eaic-public.css";
 
 export const metadata: Metadata = {
@@ -35,6 +36,14 @@ export default function EaicPublicPage() {
             <div className="eaic-public-actions">
               <Link href={eaicHubPath} data-eaic-public-hub-cta className="eaic-public-button eaic-public-button-primary">Start building <ArrowIcon /></Link>
               <a href="#capabilities" className="eaic-public-button eaic-public-button-secondary">Explore outcomes <ArrowIcon /></a>
+            </div>
+            <div data-vorld-download>
+              <a href={vorldRelease.downloadUrl} className="eaic-public-button eaic-public-button-primary">
+                Download VORLD for Windows
+                <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8"><path d="M12 3v12m-5-5 5 5 5-5M5 17v4h14v-4" /></svg>
+              </a>
+              <p>Windows x64 · v{vorldRelease.version} · Build {vorldRelease.build} · {vorldRelease.sizeLabel}</p>
+              <a href="/downloads/VORLD-Development-README.md" download className="eaic-public-development-guide">Development README <ArrowIcon /></a>
             </div>
             <p className="eaic-public-hero-note">Code · SDK reference · safety validation · supervised robot sessions</p>
           </div>
