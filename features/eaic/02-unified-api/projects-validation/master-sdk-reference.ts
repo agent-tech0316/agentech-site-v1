@@ -213,12 +213,13 @@ export const masterFunctions: AgentechFunction[] = [
   {
     name: "adjust_right_elbow",
     category: "Joint Adjustments",
-    signature: "Agentech.adjust_right_elbow(degrees, *, duration_seconds=None)",
+    signature: "Agentech.adjust_right_elbow(degrees, *, duration_seconds=None, torque=None)",
     summary: "Adjust the right elbow from Master's fresh standing current hold; positive values flex and negative values extend.",
     example: "Agentech.adjust_right_elbow(5, duration_seconds=2.0)",
     params: [
       { name: "degrees", type: "float", description: "Signed relative elbow adjustment: positive flexes and negative extends.", status: "available" },
-      { name: "duration_seconds", type: "float | None", description: "Optional validated movement duration in seconds.", defaultValue: "None", status: "available" }
+      { name: "duration_seconds", type: "float | None", description: "Optional validated movement duration in seconds.", defaultValue: "None", status: "available" },
+      { name: "torque", type: "float | None", description: "SDK feedforward effort from -24 to +24 N·m; positive assists and negative resists. Active owner allowance is required. Omit unused torque, since explicit zero still invokes admission. This catalog field does not enable torque in website Code Certification.", defaultValue: "None", status: "development" }
     ],
     platformNoteLabel: "Standing hold requirement",
     platformNote: "Starts from a fresh standing current hold and retains native balance ownership."

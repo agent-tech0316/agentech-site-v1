@@ -12,11 +12,15 @@ import { MasterActionReference } from "@/features/eaic/01-clients/eaic-hub/compo
 import { agentechLibraryTasks, getAgentechLibraryTask, type AgentechLibraryTaskSlug } from "@/features/eaic/01-clients/eaic-hub/contracts/agentech-library-tasks";
 import { eaicHubPath, getEaicHubTaskPath } from "@/features/eaic/01-clients/eaic-hub/contracts/eaic-hub";
 import {
-  masterDocumentationFunctions,
+  masterWebsiteFunctions,
   masterDocumentationStarterCode,
-  masterPostureFunctions,
+  masterSetupParams,
+  masterWebsitePostureFunctions,
+  masterProfileDisplaySyntax,
+  masterNativeModelEffort,
   masterJointGroupStarts
 } from "@/features/eaic/01-clients/eaic-hub/contracts/master-sdk-documentation";
+import { masterJointTorqueReference } from "@/features/eaic/01-clients/eaic-hub/contracts/master-joint-torque-reference";
 import { evaluateAgentechMovementSafety, type AgentechMovementSafety } from "@/lib/agentech-motion-safety";
 import { normalizeAgentechRobotModel, robotModelOptions, type AgentechRobotModel } from "@/features/eaic/02-unified-api/resources-runs/agentech-robot-model";
 import { LiveRobotCamera } from "@/features/eaic/05-delivery/live-results/components/live-robot-camera";
@@ -203,15 +207,17 @@ type SdkRobot = "aegis" | "navi" | "master";
 const masterPresentationOrder = new Map<AgentechFunction["category"], number>([
   ["Joint Adjustments", 0],
   ["Sensing", 1],
-  ["Actions", 2]
+  ["Actions", 2],
+  ["Custom Movements", 3]
 ]);
-const masterPresentationCategories = [...masterReferenceCategories].sort(
+const masterPresentationCategories = [...masterReferenceCategories, "Custom Movements" as const].sort(
   (left, right) => (masterPresentationOrder.get(left) ?? Number.MAX_SAFE_INTEGER) - (masterPresentationOrder.get(right) ?? Number.MAX_SAFE_INTEGER)
 );
 const masterPresentationTitles: Partial<Record<AgentechFunction["category"], string>> = {
   Sensing: "Posture Commands",
   "Joint Adjustments": "Joint Adjustment Commands",
-  Actions: "Action Commands"
+  Actions: "Action Commands",
+  "Custom Movements": "Custom Movements"
 };
 
 function sdkCategorySummaryLabel(category: AgentechFunction["category"], selectedRobot: SdkRobot) {
@@ -425,11 +431,51 @@ function previewDirection(args: string) {
   return args.match(/\bdirection\s*=\s*(["'])(left|right|up|down)\1/i)?.[2]?.toLowerCase() ?? "";
 }
 
-function profileSyntaxWithPlaceholders(syntax: string) {
-  return syntax.split(/(\bx\b|[-+]?(?:\d+(?:\.\d*)?|\.\d+))/g).map((part, index) =>
-    /^(?:x|[-+]?(?:\d+(?:\.\d*)?|\.\d+))$/.test(part)
-      ? <span key={`${part}-${index}`} data-sdk-profile-placeholder="true" className="font-normal text-[#4c1d95]">x</span>
-      : part
+function profileSyntaxWithPlaceholders(syntax: string, isMaster = false) {
+  return (isMaster ? masterProfileDisplaySyntax(syntax) : syntax)
+    .split(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b(?:x|True|False|None)\b|[-+]?(?:\d+(?:\.\d*)?|\.\d+))/g)
+    .map((part, index, parts) => {
+      if (/^(?:x|[-+]?(?:\d+(?:\.\d*)?|\.\d+))$/.test(part)) {
+        return <span key={`${part}-${index}`} data-sdk-profile-placeholder="true" className="font-normal text-[#4c1d95]">x</span>;
+      }
+      if ((/^["']/.test(part) && !/^\s*:/.test(parts[index + 1] ?? "")) || /^(?:True|False|None)$/.test(part)) {
+        return <span key={`${part}-${index}`} data-sdk-profile-value="true" className="font-normal text-[#4c1d95]">{part}</span>;
+      }
+      return part;
+    });
+}
+
+function profileDisplayLabel(label: string) {
+  return label.replace(/\bdegrees\b/g, "Degrees");
+}
+
+function profileDisplayDescription(description: string) {
+  return description.replace(/(^|[.!?]\s+)degrees\b/g, "$1Degrees");
+}
+
+function parameterRange(range: string, isMaster: boolean) {
+  const ranges = range.split(/;\s*/);
+  const compactLabels = ranges.every((entry) => (entry.match(/^([^:]+):/)?.[1].length ?? Infinity) <= 5);
+  const prefix = isMaster ? "(Range: " : "Range: ";
+  const suffix = isMaster ? ")" : "";
+  if (ranges.length === 1) {
+    return <span data-sdk-param-range="true" className="col-span-full min-w-0 break-words font-mono text-xs leading-5 text-[#1a73e8] [overflow-wrap:anywhere]">{prefix}{range}{suffix}</span>;
+  }
+  return (
+    <span data-sdk-param-range="true" className="col-span-full min-w-0 font-mono text-xs leading-5 text-[#1a73e8]">
+      <span className="block">Range: </span>
+      <span className="mt-1 grid gap-1">
+        {ranges.map((entry, index) => {
+          const match = entry.match(/^([^:]+):\s*(.*)$/);
+          return (
+            <span key={entry} data-sdk-param-range-axis={match?.[1]} className={`grid min-w-0 gap-x-3 ${compactLabels ? "grid-cols-[3rem_minmax(0,1fr)]" : "sm:grid-cols-[9rem_minmax(0,1fr)]"}`}>
+              {match ? <span className="font-interface text-[#526174]">{match[1]}: </span> : null}
+              <span className="min-w-0 break-words [overflow-wrap:anywhere]">{match?.[2] ?? entry}{index < ranges.length - 1 ? <span className="sr-only">; </span> : null}</span>
+            </span>
+          );
+        })}
+      </span>
+    </span>
   );
 }
 
@@ -1759,7 +1805,7 @@ function FocusedBrowseFunctionsSection() {
     "set_jump_angle"
   ]);
   const selectedFunctions = selectedRobot === "master"
-    ? masterDocumentationFunctions
+    ? masterWebsiteFunctions
     : selectedRobot === "navi"
       ? naviFunctions.map((item) => ({
           ...item,
@@ -1869,6 +1915,12 @@ function FocusedBrowseFunctionsSection() {
               <CopyCodeButton value={selectedStarterCode} className="absolute right-3 top-3" />
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1a73e8]">{selectedRobotLabel} setup</p>
               <pre className="mt-3 max-h-52 min-w-0 overflow-auto whitespace-pre-wrap font-mono text-xs leading-6 text-[#303134] [overflow-wrap:anywhere]">{selectedStarterCode}</pre>
+              {selectedRobot === "master" ? masterSetupParams.map((parameter) => (
+                <details key={parameter.name} data-sdk-setup-param={parameter.name} className="mt-3 min-w-0 border border-[#dce7f2] bg-white p-3">
+                  <summary className="cursor-pointer break-words font-mono text-xs text-[#006a5c] [overflow-wrap:anywhere]">{parameter.name} · default {parameter.defaultValue}</summary>
+                  <p className="mt-2 text-xs leading-5 text-[#526174]">{parameter.description}</p>
+                </details>
+              )) : null}
             </div>
           </div>
         </div>
@@ -1930,6 +1982,23 @@ function FocusedBrowseFunctionsSection() {
             <MasterHeartbeat />
             <MasterMotorMap />
             <MasterJointMotionGuide />
+            <details data-sdk-joint-torque-reference="true" className="mt-6 min-w-0 overflow-hidden rounded-[22px] border border-black/8 bg-white/70 p-5">
+              <summary className="cursor-pointer text-base font-medium text-[#111111]">Joint torque ranges · native model reference</summary>
+              <p className="mt-3 text-xs leading-5 text-[#526174]">Native model ranges, captured September 17, 2026. Physical runs cover all fourteen arm axes and all three waist axes.</p>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-[#dce7f2] text-[#526174]"><tr><th className="px-3 py-2 font-medium">Joint name</th><th className="px-3 py-2 font-medium">Native model torque limit · N·m</th></tr></thead>
+                  <tbody>
+                    {Object.entries(masterNativeModelEffort).map(([joint, effort]) => (
+                      <tr key={joint} data-sdk-joint-effort={joint} data-sdk-native-max-effort-nm={effort} className="border-b border-[#dce7f2] last:border-0">
+                        <td className="px-3 py-2 font-mono text-[#006a5c]">&quot;{joint}&quot;</td>
+                        <td className="px-3 py-2 font-mono text-[#1a73e8]">{`-${effort} to +${effort}`}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
           </>
         ) : null}
 
@@ -1937,7 +2006,7 @@ function FocusedBrowseFunctionsSection() {
           <div
             data-sdk-overview-grid="true"
             data-sdk-overview-count={groupedFunctions.length}
-            className={`mt-6 grid gap-px overflow-hidden rounded-[22px] border border-black/8 bg-black/8 shadow-[0_20px_55px_rgba(17,17,17,0.06)] ${selectedRobot === "master" ? "md:grid-cols-3" : "md:grid-cols-4"}`}
+            className="mt-6 grid gap-px overflow-hidden rounded-[22px] border border-black/8 bg-black/8 shadow-[0_20px_55px_rgba(17,17,17,0.06)] md:grid-cols-4"
           >
           {groupedFunctions.map((group) => (
             <a
@@ -2000,6 +2069,9 @@ function FocusedBrowseFunctionsSection() {
                         : "Expressive gestures and coordinated body motions. Timed actions return to standing automatically."}
                     </p>
                   ) : null}
+                  {group.category === "Custom Movements" ? (
+                    <p className="mt-2 text-sm leading-6 text-[#526174]">Golf and door movements that coordinate Master&apos;s arms and waist.</p>
+                  ) : null}
                   {group.category === "Joint Adjustments" ? (
                     <p className="mt-2 text-sm leading-6 text-[#526174]">
                       {selectedRobot === "master"
@@ -2026,7 +2098,7 @@ function FocusedBrowseFunctionsSection() {
                     ? masterActionFunctions.find((command) => command.name === item.name)
                     : undefined;
                   const postureDocumentation = selectedRobot === "master" && group.category === "Sensing"
-                    ? masterPostureFunctions.find((command) => command.name === item.name)
+                    ? masterWebsitePostureFunctions.find((command) => command.name === item.name)
                     : undefined;
                   const useMovementTrailingDescriptionLayout = group.category === "Movement"
                     && (selectedRobot === "aegis" || selectedRobot === "navi");
@@ -2034,6 +2106,9 @@ function FocusedBrowseFunctionsSection() {
                     || selectedRobot === "aegis"
                     || selectedRobot === "navi";
                   const useCompactFunctionLayout = useTrailingDescriptionLayout;
+                  const jointTorqueRows = selectedRobot === "master" ? masterJointTorqueReference(item.name) : [];
+                  const suppressTorqueStatus = selectedRobot === "master"
+                    && item.params.some((param) => param.name === "torque" && param.status === "development");
 
                   return (
                     <Fragment key={item.name}>
@@ -2093,7 +2168,7 @@ function FocusedBrowseFunctionsSection() {
                           : "md:justify-self-end"
                         }`}
                       >
-                        {item.status === "development" || item.params.some((param) => param.status === "development") ? (
+                        {item.status === "development" || item.params.some((param) => param.status === "development" && !(selectedRobot === "master" && param.name === "torque")) ? (
                           <span className="border border-[#d99a00] bg-[#fff8df] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-[#8a5b00]">Under development</span>
                         ) : null}
                         {item.creditUsage === "high" ? (
@@ -2136,6 +2211,25 @@ function FocusedBrowseFunctionsSection() {
                           </div>
                         ) : null}
                         {item.access?.tier === "premium" ? <PremiumFeaturePanel item={item} /> : null}
+                        {jointTorqueRows.length ? (
+                          <section data-sdk-function-joint-torque={item.name} className="mt-4 min-w-0 border border-[#c9d8e8] bg-white p-3">
+                            <p className="text-xs font-medium uppercase tracking-[0.14em] text-[#334155]">Joint torque limits</p>
+                            <p className="mt-2 text-xs leading-5 text-[#526174]">Native model ranges · N·m.</p>
+                            <div className="mt-3 overflow-x-auto">
+                              <table className="w-full text-left text-xs">
+                                <thead className="border-b border-[#dce7f2] text-[#526174]"><tr><th className="px-2 py-2 font-medium">Joint / axis</th><th className="px-2 py-2 font-medium">Native torque limit · N·m</th></tr></thead>
+                                <tbody>
+                                  {jointTorqueRows.map((row) => (
+                                    <tr key={row.joint} data-sdk-function-torque-joint={row.joint} data-sdk-native-max-effort-nm={row.maxEffortNm} className="border-b border-[#dce7f2] last:border-0">
+                                      <td className="px-2 py-2 text-[#334155]">{row.label}</td>
+                                      <td className="whitespace-nowrap px-2 py-2 font-mono text-[#1a73e8]">{`-${row.maxEffortNm} to +${row.maxEffortNm}`}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </section>
+                        ) : null}
                         {item.profiles?.length ? (
                           <div data-sdk-posture-configurations={postureDocumentation ? "true" : undefined} className="mt-4">
                             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2151,15 +2245,15 @@ function FocusedBrowseFunctionsSection() {
 
                                 return (
                                   <Fragment key={profile.name}>
-                                    <div className={`border p-3 ${profile.status === "development" ? "border-[#e1ad32] bg-[#fffaf0]" : "border-[#dce7f2] bg-white"}`}>
+                                    <div data-sdk-profile-card="true" className={`min-w-0 border p-3 ${profile.status === "development" && !suppressTorqueStatus ? "border-[#e1ad32] bg-[#fffaf0]" : "border-[#dce7f2] bg-white"}`}>
                                       <div className="flex flex-wrap items-center gap-2">
                                         <span data-sdk-typeface="interface" data-sdk-profile-number="true" className="grid h-5 w-5 place-items-center rounded-[6px] bg-[#eaf2fd] font-interface text-[10px] font-medium text-[#1a73e8]">{profileNumber}</span>
-                                        <span className="text-xs font-medium text-[#111111]">{profile.name}</span>
-                                        {profile.status === "development" ? <span className="border border-[#d99a00] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#8a5b00]">Under Development</span> : null}
+                                        <span data-sdk-profile-label="true" className="text-xs font-medium text-[#111111]">{profileDisplayLabel(profile.name)}</span>
+                                        {profile.status === "development" && !suppressTorqueStatus ? <span className="border border-[#d99a00] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#8a5b00]">Under Development</span> : null}
                                       </div>
-                                      <p data-sdk-typeface="code" data-sdk-profile-syntax="true" data-sdk-profile-format={profile.syntaxKind ?? "python"} data-sdk-profile-default={!postureDocumentation && profile.description ? "true" : undefined} className="mt-2 whitespace-pre-wrap overflow-x-auto font-mono text-xs leading-5 text-[#006a5c]">{profileSyntaxWithPlaceholders(profile.syntax)}</p>
+                                      <p data-sdk-typeface="code" data-sdk-profile-syntax="true" data-sdk-profile-format={profile.syntaxKind ?? "python"} data-sdk-profile-default={!postureDocumentation && profile.description && !/\b(?:speed|(?:max_)?duration_seconds)\s*=/.test(profile.syntax) ? "true" : undefined} className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-[#006a5c] [overflow-wrap:anywhere]">{profileSyntaxWithPlaceholders(profile.syntax, selectedRobot === "master")}</p>
                                       {profile.description ? (
-                                        <p data-sdk-profile-description="true" className="mt-2 text-xs leading-5 text-[#526174]">{profile.description}</p>
+                                        <p data-sdk-profile-description="true" className="mt-2 text-xs leading-5 text-[#526174]">{profileDisplayDescription(profile.description)}</p>
                                       ) : null}
                                       {profile.note ? (
                                         <p className="mt-3 border border-[#e1ad32] bg-[#fff8df] p-3 text-xs leading-5 text-[#704b00]">
@@ -2169,16 +2263,18 @@ function FocusedBrowseFunctionsSection() {
                                     </div>
 
                                     {profile.customDurationSyntax ? (
-                                      <div data-sdk-profile-variant="custom-duration" className={`border p-3 ${profile.status === "development" ? "border-[#e1ad32] bg-[#fffaf0]" : "border-[#dce7f2] bg-white"}`}>
+                                      <div data-sdk-profile-card="true" data-sdk-profile-variant="custom-duration" className={`min-w-0 border p-3 ${profile.status === "development" && !suppressTorqueStatus ? "border-[#e1ad32] bg-[#fffaf0]" : "border-[#dce7f2] bg-white"}`}>
                                         <div className="flex flex-wrap items-center gap-2">
                                           <span data-sdk-typeface="interface" data-sdk-profile-number="true" className="grid h-5 w-5 place-items-center rounded-[6px] bg-[#eaf2fd] font-interface text-[10px] font-medium text-[#1a73e8]">{profileNumber + 1}</span>
-                                          <span className="text-xs font-medium text-[#111111]">Custom duration</span>
+                                          <span data-sdk-profile-label="true" className="text-xs font-medium text-[#111111]">{profileDisplayLabel(profile.customDurationLabel ?? "Custom duration")}</span>
+                                          {profile.status === "development" && !suppressTorqueStatus ? <span className="border border-[#d99a00] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#8a5b00]">Under Development</span> : null}
                                         </div>
-                                        <p data-sdk-typeface="code" data-sdk-profile-syntax="true" data-sdk-profile-format={profile.syntaxKind ?? "python"} data-sdk-profile-custom-duration="true" className="mt-2 whitespace-pre-wrap overflow-x-auto font-mono text-xs leading-5 text-[#006a5c]">{profileSyntaxWithPlaceholders(profile.customDurationSyntax)}</p>
-                                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs leading-5">
+                                        <p data-sdk-typeface="code" data-sdk-profile-syntax="true" data-sdk-profile-format={profile.syntaxKind ?? "python"} data-sdk-profile-custom-duration="true" className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-5 text-[#006a5c] [overflow-wrap:anywhere]">{profileSyntaxWithPlaceholders(profile.customDurationSyntax, selectedRobot === "master")}</p>
+                                        {profile.customDurationDescription ? <p data-sdk-profile-description="true" className="mt-2 text-xs leading-5 text-[#526174]">{profileDisplayDescription(profile.customDurationDescription)}</p> : null}
+                                        {profile.customDurationPaidOnly !== false ? <div className="mt-2 flex flex-wrap items-center gap-2 text-xs leading-5">
                                           <span className="border border-[#1a73e8]/25 bg-[#eaf2fd] px-2 py-0.5 font-interface text-[10px] font-medium text-[#1a73e8]">Pricing TBD</span>
                                           <span className="text-[#526174]">Custom duration may require an extra fee or a higher-tier plan.</span>
-                                        </div>
+                                        </div> : null}
                                       </div>
                                     ) : null}
                                   </Fragment>
@@ -2186,6 +2282,7 @@ function FocusedBrowseFunctionsSection() {
                               })}
                             </div>
                             {postureDocumentation ? null : <p className="mt-2 text-xs leading-5 text-[#526174]">Do not combine selectors from different profiles. Optional modifiers shown inside a profile belong only to that structure.</p>}
+                            {selectedRobot === "master" && item.profiles.some((profile) => /\bx\b/.test(masterProfileDisplaySyntax(profile.syntax + (profile.customDurationSyntax ?? "")))) ? <p data-sdk-profile-input-note="true" className="mt-2 text-xs leading-5 text-[#526174]"><code data-sdk-profile-placeholder="true" className="font-mono text-[#4c1d95]">x</code> {item.name === "plan_upper_body_torque_assist" ? "is the independent value you choose for each field. Effort-map values are signed N·m in the native joint direction; bound-map values are positive N·m. Each quoted full joint name selects that joint. Duration and ramp are seconds. Positive and negative native torque signs specify joint direction. This is offline planning; replace every x before calculating the plan." : "is your independent value for each field. Angles are degrees, torque is N·m, time is seconds and speed is degrees/second. Angle maps contain degrees; torque maps contain N·m. Replace each x with your chosen value."}</p> : null}
                           </div>
                         ) : null}
                         {postureDocumentation?.configurationNote ? (
@@ -2198,22 +2295,26 @@ function FocusedBrowseFunctionsSection() {
                         <div className="mt-2 grid gap-2">
                           {item.params.length ? (
                             item.params.map((param) => (
-                              <details data-sdk-param-name={param.name} key={param.name} open={postureDocumentation ? true : undefined} className={`group/param border ${param.status === "development" ? "border-[#e1ad32] bg-[#fffaf0]" : param.status === "unsupported" ? "border-[#d88b8b] bg-[#fff5f5]" : "border-[#dce7f2] bg-white"}`}>
-                                <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 p-3 outline-none transition hover:bg-[#f8fbff] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#005bd6]/25">
+                              <details data-sdk-param-name={param.name} key={param.name} open={postureDocumentation ? true : undefined} className={`group/param border ${selectedRobot === "master" && param.name === "torque" ? "border-[#dce7f2] bg-white" : param.status === "development" ? "border-[#e1ad32] bg-[#fffaf0]" : param.status === "unsupported" ? "border-[#d88b8b] bg-[#fff5f5]" : "border-[#dce7f2] bg-white"}`}>
+                                <summary className="grid cursor-pointer list-none grid-cols-1 items-start gap-x-4 gap-y-2 p-3 outline-none transition hover:bg-[#f8fbff] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#005bd6]/25 sm:grid-cols-[minmax(0,1fr)_auto]">
+                                  <span data-sdk-param-header="true" className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 break-words [overflow-wrap:anywhere]">
                                   <span data-sdk-typeface="code" data-sdk-param-label="true" className="font-mono text-xs text-[#006a5c]">{param.name}</span>
                                   {selectedRobot === "master" && group.category === "Joint Adjustments" && ["roll", "pitch", "yaw"].includes(param.name) ? null : (
-                                    <span data-sdk-typeface="code" className="font-mono text-xs text-[#1a73e8]">{param.type}</span>
+                                    <span data-sdk-typeface="code" className="font-mono text-xs text-[#1a73e8]">{(param.allowedValues ?? postureDocumentation?.params.find((entry) => entry.name === param.name)?.allowedValues)?.length ? param.type.replace(/^string\s*\([^)]*\)$/, "string") : param.type}</span>
                                   )}
-                                  {postureDocumentation?.params.find((entry) => entry.name === param.name)?.allowedValues ? (
-                                    <span data-sdk-param-allowed-values="true" className="flex flex-wrap items-center gap-2 text-xs text-[#526174]">
+                                  {param.defaultValue ? <span data-sdk-typeface="code" className="font-mono text-xs text-[#a35d00]">default {param.defaultValue}</span> : null}
+                                  </span>
+                                  {(param.allowedValues ?? postureDocumentation?.params.find((entry) => entry.name === param.name)?.allowedValues) ? (
+                                    <span data-sdk-param-allowed-values="true" className="col-span-full flex min-w-0 flex-wrap items-center gap-2 text-xs text-[#526174]">
                                       <span>Allowed values:</span>
-                                      {postureDocumentation.params.find((entry) => entry.name === param.name)?.allowedValues?.map((value) => (
+                                      {(param.allowedValues ?? postureDocumentation?.params.find((entry) => entry.name === param.name)?.allowedValues)?.map((value) => (
                                         <code key={value} data-sdk-typeface="code" className="font-mono text-[#1a73e8]">{value}</code>
                                       ))}
                                     </span>
                                   ) : null}
-                                  {param.defaultValue ? <span data-sdk-typeface="code" className="font-mono text-xs text-[#a35d00]">default {param.defaultValue}</span> : null}
-                                  {param.status === "development" ? (
+                                  {param.allowedRange ? parameterRange(param.allowedRange, selectedRobot === "master") : null}
+                                  <span data-sdk-param-controls="true" className="row-start-2 flex items-center justify-between gap-2 whitespace-nowrap sm:col-start-2 sm:row-start-1 sm:justify-end">
+                                  {selectedRobot === "master" && param.name === "torque" ? null : param.status === "development" ? (
                                     <span className="border border-[#d99a00] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#8a5b00]">Under Development</span>
                                   ) : param.status === "unsupported" ? (
                                     <span className="border border-[#c93434] bg-white px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[#a51f1f]">Not Supported</span>
@@ -2226,16 +2327,10 @@ function FocusedBrowseFunctionsSection() {
                                     <span className="group-open/param:hidden">Details</span>
                                     <span className="hidden group-open/param:inline">Hide</span>
                                   </span>
+                                  </span>
                                 </summary>
                                 <div className="border-t border-inherit px-3 py-3">
                                   <p className="text-xs leading-5 text-[#334155]">{param.description}</p>
-                                  {param.allowedValues && !postureDocumentation ? (
-                                    <ul data-sdk-param-allowed-values="true" className="mt-2 grid gap-1 sm:grid-cols-2">
-                                      {param.allowedValues.map((value) => (
-                                        <li key={value}><code data-sdk-typeface="code" className="font-mono text-xs leading-5 text-[#1a73e8]">{value}</code></li>
-                                      ))}
-                                    </ul>
-                                  ) : null}
                                 </div>
                               </details>
                             ))

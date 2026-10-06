@@ -6,18 +6,19 @@ export type AgentechParam = {
   defaultValue?: string;
   description: string;
   allowedValues?: string[];
+  allowedRange?: string;
   status?: CapabilityStatus;
   paidOnly?: boolean;
 };
 
 export type AgentechFunction = {
   name: string;
-  category: "Movement" | "Athletics" | "Actions" | "Joint Adjustments" | "Posture" | "Configuration" | "Safety" | "Sensing";
+  category: "Movement" | "Athletics" | "Actions" | "Custom Movements" | "Joint Adjustments" | "Posture" | "Configuration" | "Safety" | "Sensing";
   signature: string;
   summary: string;
   example: string;
   params: AgentechParam[];
-  profiles?: { name: string; syntax: string; syntaxKind?: "parameter-map"; description?: string; customDurationSyntax?: string; number?: number; note?: string; noteLabel?: string; status?: CapabilityStatus }[];
+  profiles?: { name: string; syntax: string; syntaxKind?: "parameter-map"; description?: string; customDurationSyntax?: string; customDurationLabel?: string; customDurationDescription?: string; customDurationPaidOnly?: boolean; number?: number; note?: string; noteLabel?: string; status?: CapabilityStatus }[];
   verification?: string;
   platformNote?: string;
   platformNoteLabel?: string;

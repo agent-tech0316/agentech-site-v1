@@ -20,7 +20,7 @@
     "test:robot-stream-bridge": "node --test scripts/robot-stream-bridge.test.mjs",
     "test:navi-cli-gateway": "node --test scripts/navi-cli-gateway.test.mjs",
     "test:return-to-home-access": "node --test scripts/return-to-home-access-policy.test.mjs",
-    "test:sdk-reference": "node --test scripts/sdk-reference-consistency.test.mjs",
+    "test:sdk-reference": "node --test scripts/sdk-reference-consistency.test.mjs scripts/master-adjustment-profiles.test.mjs",
     "test:master-simulation-previews": "node --test scripts/master-simulation-previews.test.mjs",
     "test:aegis-device-results": "python -m unittest scripts/test_aegis_device_results.py -v",
     "test:aegis-gateway-spec": "python -m unittest scripts/test_aegis_gateway_spec.py -v",

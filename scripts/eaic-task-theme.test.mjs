@@ -6,6 +6,7 @@ import { createServer } from "node:net";
 import test from "node:test";
 import postcss from "postcss";
 import sharp from "sharp";
+import { loadTypeScriptModule } from "./test-utils/load-typescript-module.mjs";
 
 const taskRoutes = [
   ["Start Coding", "/agentech-products/eaic-hub/start-coding"],
@@ -27,6 +28,20 @@ let baseUrl = process.env.EAIC_THEME_TEST_BASE_URL ?? "";
 let serverProcess;
 let serverOutput = "";
 const pages = new Map();
+
+const handoffProfiles = JSON.parse(readFileSync(new URL("./fixtures/master-adjustment-handoff-profiles.json", import.meta.url), "utf8"));
+const sdkHtml = () => (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
+  .replaceAll("<!-- -->", "").replaceAll("&quot;", '"').replaceAll("&#x27;", "'");
+const sdkCard = (name) => {
+  const html = sdkHtml();
+  const start = html.indexOf('data-sdk-function-name="' + name + '"');
+  assert.ok(start >= 0, name + " must have one card");
+  const end = html.indexOf('data-sdk-function-name="', start + 1);
+  return html.slice(start, end < 0 ? undefined : end);
+};
+const plainSdk = (markup) => markup.replace(/<[^>]*>/g, "");
+const profileCount = (name) => name === "adjust_waist" ? 34 : name === "adjust_upper_body" ? 4 : name === "stiff" ? 3 : handoffProfiles[name].length;
+
 
 function reservePort() {
   return new Promise((resolve, reject) => {
@@ -192,7 +207,7 @@ test("keeps every robot's SDK controls together after a custom disclosure arrow"
   const compactMasterRows = [...html.matchAll(/data-sdk-function-name="([^"]+)"[^>]*><summary data-sdk-function-summary-layout="compact-leading"/g)]
     .map((match) => match[1]);
 
-  assert.equal(compactMasterRows.length, 38, "every Master command row should use the leading compact layout");
+  assert.equal(compactMasterRows.length, 45, "every Master command row should use the leading compact layout");
   assert.match(
     workbenchSource,
     /const useTrailingDescriptionLayout = selectedRobot === "master"[\s\S]*?\|\| selectedRobot === "aegis"[\s\S]*?\|\| selectedRobot === "navi"/,
@@ -220,20 +235,21 @@ test("keeps the six Navi Athletics commands while using the unified SDK row rend
   assert.match(workbenchSource, /const useCompactFunctionLayout = useTrailingDescriptionLayout/);
 });
 
-test("lays out the three Master SDK summary metrics in one equal-width desktop row", () => {
+test("lays out the four Master SDK summary metrics in one equal-width desktop row", () => {
   const html = pages.get("/agentech-products/eaic-hub/view-sdk") ?? "";
   assert.match(
     html,
-    /data-sdk-overview-grid="true"[^>]*data-sdk-overview-count="3"[^>]*md:grid-cols-3/,
+    /data-sdk-overview-grid="true"[^>]*data-sdk-overview-count="4"[^>]*md:grid-cols-4/,
   );
 });
 
-test("presents Master SDK groups as joint adjustment, posture, then action commands", () => {
+test("presents Master SDK groups as joint adjustment, posture, actions, then custom movements", () => {
   const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "").replaceAll("<!-- -->", "");
   const expectedGroups = [
     ["joint-adjustments", "Joint Adjustment Commands"],
     ["sensing", "Posture Commands"],
     ["actions", "Action Commands"],
+    ["custom-movements", "Custom Movements"],
   ];
   const overviewOffset = html.indexOf('data-sdk-overview-grid="true"');
   const firstSummaryOffset = html.indexOf('data-sdk-category-summary="true"');
@@ -258,258 +274,131 @@ test("presents Master SDK groups as joint adjustment, posture, then action comma
   }
 });
 
-test("documents the latest Master command set once per API without changing the three-group layout", () => {
-  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "").replaceAll("<!-- -->", "");
-  const decodedHtml = html.replaceAll("&quot;", '"').replaceAll("&#x27;", "'");
-  const compactCode = (value) => value.replace(/\s+/g, "").replace(/,\)/g, ")");
-  const groupStarts = [
-    html.indexOf('id="function-joint-adjustments"'),
-    html.indexOf('id="function-sensing"'),
-    html.indexOf('id="function-actions"'),
-  ];
-
-  assert.ok(groupStarts[0] >= 0 && groupStarts[0] < groupStarts[1] && groupStarts[1] < groupStarts[2]);
-  const jointHtml = html.slice(groupStarts[0], groupStarts[1]);
-  const postureHtml = html.slice(groupStarts[1], groupStarts[2]);
-  const actionHtml = html.slice(groupStarts[2]);
-  const functionNames = (fragment) => [...fragment.matchAll(/data-sdk-function-name="([^"]+)"/g)].map((match) => match[1]);
-  const postureNames = functionNames(postureHtml);
-  const jointNames = functionNames(jointHtml);
-  const actionNames = functionNames(actionHtml);
-
-  assert.deepEqual(postureNames, [
-    "enter_stand_hand_guide",
-    "restore_stand_hand_guide",
-    "restore_stand_default",
-    "status",
-  ]);
-  assert.deepEqual(jointNames, [
-    "adjust_right_elbow",
-    "adjust_left_elbow",
-    "adjust_both_elbows",
-    "adjust_elbow",
-    "move_elbows_to",
-    "adjust_right_shoulder",
-    "adjust_left_shoulder",
-    "adjust_right_wrist",
-    "adjust_left_wrist",
-    "adjust_wrist",
-    "adjust_waist",
-    "return_waist_to_neutral",
-    "adjust_upper_body",
-    "move_arms_to",
-    "mirror_arm_pose",
-    "move_mirrored_arms_to",
-  ]);
-  assert.equal(actionNames.length, 18, "the existing 18 actions should render once each");
-  assert.equal(actionNames.filter((name) => name === "stay").length, 1, "stay should render as one command card");
-  assert.equal(new Set([...postureNames, ...jointNames, ...actionNames]).size, 38, "all Master documentation cards should have unique API names");
-  assert.deepEqual(
-    [...jointHtml.matchAll(/data-master-joint-group="([^"]+)"/g)].map((match) => match[1]),
-    ["Elbows", "Shoulders", "Wrists", "Waist", "Upper Body"],
-  );
-  assert.match(postureHtml, /Commands for entering and restoring supported standing modes\./);
-  assert.match(jointHtml, /Fine control of Master’s shoulders, elbows, wrists, waist, and upper-body joints\./);
-  assert.match(actionHtml, /Predefined and coordinated arm, pose, and movement commands for Master\./);
-  const masterSetup = [...decodedHtml.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)]
-    .map(([, markup]) => markup.replace(/<[^>]*>/g, ""))
-    .find((code) => code.startsWith("from agentech import Agentech"));
-  assert.equal(masterSetup, 'from agentech import Agentech\nAgentech.use("master")');
+test("documents all Master APIs in four groups without duplicate function cards", () => {
+  const html = sdkHtml();
+  const starts = ["joint-adjustments", "sensing", "actions", "custom-movements"].map((group) => html.indexOf('id="function-' + group + '"'));
+  assert.ok(starts.every((start, i) => start >= 0 && (i === 0 || start > starts[i - 1])));
+  const names = (fragment) => [...fragment.matchAll(/data-sdk-function-name="([^"]+)"/g)].map((match) => match[1]);
+  const jointNames = names(html.slice(starts[0], starts[1]));
+  const postureNames = names(html.slice(starts[1], starts[2]));
+  const actionNames = names(html.slice(starts[2], starts[3]));
+  const customNames = names(html.slice(starts[3]));
+  assert.deepEqual(jointNames, ["adjust_right_elbow", "adjust_left_elbow", "adjust_both_elbows", "adjust_elbow", "move_elbows_to", "adjust_right_shoulder", "adjust_left_shoulder", "adjust_right_wrist", "adjust_left_wrist", "adjust_wrist", "adjust_waist", "return_waist_to_neutral", "undo_waist", "adjust_upper_body", "move_arms_to", "mirror_arm_pose", "move_mirrored_arms_to", "plan_upper_body_torque_assist"]);
+  assert.deepEqual(postureNames, ["enter_stand_hand_guide", "restore_stand_hand_guide", "restore_stand_default", "stiff", "status", "get_status", "action_catalog"]);
+  assert.equal(actionNames.length, 18);
+  assert.deepEqual(customNames, ["golf_put", "close_door"]);
+  assert.equal(new Set([...jointNames, ...postureNames, ...actionNames, ...customNames]).size, 45);
+  assert.deepEqual([...html.slice(starts[0], starts[1]).matchAll(/data-master-joint-group="([^"]+)"/g)].map((match) => match[1]), ["Elbows", "Shoulders", "Wrists", "Waist", "Upper Body", "Torque Planning"]);
+  for (const [group, count] of [["Joint Adjustments", 18], ["Sensing", 7], ["Actions", 18], ["Custom Movements", 2]]) {
+    assert.match(html, new RegExp('data-sdk-overview-category="' + group + '"[^>]*data-sdk-function-count="' + count + '"'));
+  }
+  assert.ok(html.includes('from agentech import Agentech\nAgentech.use("master")'));
+  assert.doesNotMatch(html, /data-sdk-setup-param="standing_elbow_torque_limit_nm"/);
   assert.doesNotMatch(html, /data-sdk-function-name="standing_actions\.teach"/);
-  assert.doesNotMatch(html, /data-sdk-function-name="action_catalog"/);
-  assert.doesNotMatch(html, /Agentech\.movement_b|data-sdk-function-name="movement_b"/);
-  assert.match(html, /data-sdk-overview-category="Sensing"[^>]*data-sdk-function-count="4"/);
-  assert.match(html, /data-sdk-overview-category="Joint Adjustments"[^>]*data-sdk-function-count="16"/);
-  assert.match(html, /data-sdk-overview-category="Actions"[^>]*data-sdk-function-count="18"/);
+});
 
-  for (const example of [
-    'Agentech.enter_stand_hand_guide("right")',
-    'Agentech.enter_stand_hand_guide("both")',
-    "Agentech.restore_stand_hand_guide()",
-    "Agentech.restore_stand_default()",
-    "Agentech.adjust_right_elbow(+5, duration_seconds=1.0)",
-    "Agentech.adjust_left_elbow(+5, duration_seconds=1.0)",
-    "Agentech.adjust_both_elbows(+30, duration_seconds=3.0)",
-    'Agentech.adjust_elbow("right", +5, duration_seconds=1.0)',
-    'Agentech.adjust_elbow("left", +5, duration_seconds=1.0)',
-    "Agentech.move_elbows_to(50, duration_seconds=8.0)",
-    'Agentech.adjust_right_shoulder("pitch", +5, duration_seconds=1.0)',
-    'Agentech.adjust_right_shoulder("roll", +5, duration_seconds=1.0)',
-    'Agentech.adjust_right_shoulder("yaw", +5, duration_seconds=1.0)',
-    'Agentech.adjust_left_shoulder("pitch", +5, duration_seconds=1.0)',
-    'Agentech.adjust_left_shoulder("roll", +5, duration_seconds=1.0)',
-    'Agentech.adjust_left_shoulder("yaw", +5, duration_seconds=1.0)',
-    'Agentech.adjust_right_wrist("roll", +5)',
-    'Agentech.adjust_right_wrist("pitch", +5)',
-    'Agentech.adjust_right_wrist("yaw", +5)',
-    "Agentech.adjust_right_wrist(roll=+5, pitch=-3, yaw=+2)",
-    "Agentech.adjust_right_wrist(+10)",
-    'Agentech.adjust_left_wrist("roll", +5)',
-    'Agentech.adjust_left_wrist("pitch", +5)',
-    'Agentech.adjust_left_wrist("yaw", +5)',
-    "Agentech.adjust_left_wrist(roll=+5, pitch=-3, yaw=+2)",
-    "Agentech.adjust_left_wrist(+10)",
-    "Agentech.adjust_wrist(roll=+5, pitch=-3, yaw=+2)",
-    'Agentech.adjust_waist("yaw", +10)',
-    "Agentech.stay(1.0)",
-  ]) {
-    assert.ok(compactCode(decodedHtml).includes(compactCode(example)), `${example} should be present as a Master usage example`);
+test("lists Golf and Close Door once under Custom Movements with current SDK calls", () => {
+  const html = sdkHtml();
+  const section = html.slice(html.indexOf('id="function-custom-movements"'));
+  for (const name of ["golf_put", "close_door"]) {
+    assert.equal([...html.matchAll(new RegExp('data-sdk-function-name="' + name + '"', 'g'))].length, 1, name);
+    assert.ok(section.includes('data-sdk-function-name="' + name + '"'));
   }
-  for (const multilineExampleFragment of [
-    "max_duration_seconds=8.0",
-    'waist={"yaw": +10}',
-    '"shoulder_pitch": -19.45',
-    'source_side="right"',
-    'source_side="left"',
-    "duration_seconds=20.0",
-  ]) {
-    assert.ok(decodedHtml.includes(multilineExampleFragment), `${multilineExampleFragment} should be present in the engineering examples`);
+  assert.doesNotMatch(html, /data-sdk-function-name="(?:door_close|putting)"/);
+  const golf = sdkCard("golf_put");
+  assert.match(plainSdk(golf), /Golf/);
+  assert.match(plainSdk(golf), /operator_ready=True/);
+  assert.match(plainSdk(golf), /mechanically_supported=True/);
+  assert.doesNotMatch(golf, /include_stroke/, "do not expose a parameter absent from the published SDK");
+  const door = sdkCard("close_door");
+  assert.match(plainSdk(door), /Agentech\.close_door\("right"\)/);
+  assert.match(plainSdk(door), /Agentech\.close_door\("left"\)/);
+  for (const name of ["arm_duration_seconds", "waist_max_duration_seconds"]) {
+    assert.ok(door.includes('data-sdk-param-name="' + name + '"'));
+    assert.ok(golf.includes('data-sdk-param-name="' + name + '"'));
   }
 });
 
-test("presents adjust_waist without duplicate axis parameter rows", () => {
-  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
-    .replaceAll("<!-- -->", "")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#x27;", "'");
-  const waistStart = html.indexOf('data-sdk-function-name="adjust_waist"');
-  const waistEnd = html.indexOf('data-sdk-function-name="return_waist_to_neutral"', waistStart);
-
-  assert.ok(waistStart >= 0 && waistEnd > waistStart, "the adjust_waist card should render before return_waist_to_neutral");
-  const waistHtml = html.slice(waistStart, waistEnd);
-  assert.match(waistHtml, />axis<\/span><span[^>]*>string \("roll", "pitch", "yaw"\)<\/span>/);
-  assert.match(waistHtml, />degrees<\/span><span[^>]*>number · dynamic limit<\/span>/);
-  assert.deepEqual(
-    [...waistHtml.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]),
-    ["axis", "degrees", "max_duration_seconds"],
-    "list the selector and angle once instead of repeating each axis as a parameter",
-  );
-  for (const numericAxis of ["yaw", "pitch", "roll"]) {
-    assert.doesNotMatch(
-      waistHtml,
-      new RegExp(`>${numericAxis}<\\/span><span[^>]*>number<\\/span>`),
-      `${numericAxis} should not repeat a number badge in its display row`,
-    );
-  }
-
-  const exampleStart = waistHtml.lastIndexOf(">Example<");
-  const exampleEnd = waistHtml.indexOf("</pre>", exampleStart);
-  assert.ok(exampleStart >= 0 && exampleEnd > exampleStart, "the adjust_waist card should render a primary Example block");
-  const exampleHtml = waistHtml.slice(exampleStart, exampleEnd);
-  assert.match(exampleHtml.replace(/\s+/g, "").replace(/,\)/g, ")"), /Agentech\.adjust_waist\("yaw",\+10\)/);
-  assert.doesNotMatch(exampleHtml, /"pitch"|"roll"|max_duration_seconds/);
+test("presents all waist axes, timeout and checked-start profiles without fake keyword rows", () => {
+  const card = sdkCard("adjust_waist");
+  assert.deepEqual([...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]), ["axis", "degrees", "yaw", "pitch", "roll", "max_duration_seconds", "expected_start_degrees", "torque"]);
+  assert.equal([...card.matchAll(/data-sdk-profile-syntax="true"/g)].length, 34);
+  assert.equal([...card.matchAll(/>Custom maximum duration</g)].length, 17);
+  assert.match(plainSdk(card), /dry-run does not validate/);
+  assert.ok(card.includes("Agentech.adjust_waist(yaw=5, pitch=-3, max_duration_seconds=8.0)"));
 });
 
-test("documents adjust_upper_body with shared axis and degrees parameters", () => {
-  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
-    .replaceAll("<!-- -->", "")
-    .replaceAll("&quot;", '"');
-  const start = html.indexOf('data-sdk-function-name="adjust_upper_body"');
-  const end = html.indexOf('data-sdk-function-name="move_arms_to"', start);
-  const card = html.slice(start, end);
-  const syntaxes = [...card.matchAll(/data-sdk-profile-syntax="true"[^>]*>([\s\S]*?)<\/p>/g)]
-    .map(([, markup]) => markup.replace(/<[^>]*>/g, ""));
-  const compact = (value) => value.replace(/\s+/g, "");
-
-  assert.deepEqual(
-    [...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]),
-    ["axis", "degrees", "duration_seconds"],
-  );
-  assert.match(card, />axis<\/span><span[^>]*>string \("yaw", "pitch", "roll"\)<\/span>/);
-  assert.equal(syntaxes.length, 2, "show the default-speed and custom-duration profiles");
-  for (const syntax of syntaxes) {
-    assert.ok(
-      compact(syntax).includes('waist={axis:x,degrees=x},both_elbows=degrees=x'),
-      "show the waist axis and degrees fields before the independent elbow angle",
-    );
-  }
-  assert.doesNotMatch(syntaxes[0], /duration_seconds/);
-  assert.match(syntaxes[1], /duration_seconds\s*=\s*x/);
-  assert.match(compact(card), /waist=\{"yaw":\+10\},both_elbows=\+30,duration_seconds=3\.0/);
+test("shows full upper-body mappings with four concise profiles", () => {
+  const card = sdkCard("adjust_upper_body");
+  assert.deepEqual([...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]), ["waist", "right_arm", "left_arm", "both_elbows", "duration_seconds", "torque"]);
+  assert.equal([...card.matchAll(/data-sdk-profile-number="true"/g)].length, 4);
+  assert.equal([...card.matchAll(/data-sdk-profile-syntax="true"/g)].length, 4);
+  assert.doesNotMatch(plainSdk(card), /\bInternal\b|\bProposed\b|Needs integration/i);
+  assert.match(plainSdk(card), /Any subset of arm joints/);
+  assert.match(plainSdk(card), /shoulder_pitch.*shoulder_roll.*shoulder_yaw.*elbow.*wrist_yaw.*wrist_pitch.*wrist_roll/);
+  assert.match(plainSdk(card), /Nonzero waist torque has no live receiver/);
+  const profiles = [...card.matchAll(/data-sdk-profile-syntax="true"[^>]*>([\s\S]*?)<\/p>/g)].map(([, markup]) => plainSdk(markup));
+  assert.ok(profiles.every((syntax) => !/torque=\{\s*"waist"/.test(syntax)), "coordinated profiles assign torque only to supported arm receivers");
+  assert.doesNotMatch(card, /axis: x|degrees = x|both_elbows = degrees/);
+  assert.match(plainSdk(card), /"right_arm": \{"shoulder_pitch": 20\}/);
+  assert.match(plainSdk(card), /"left_arm": \{"wrist_yaw": 20\}/);
 });
 
-test("uses shared axis and degrees parameters for every wrist command", () => {
-  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
-    .replaceAll("<!-- -->", "")
-    .replaceAll("&quot;", '"');
-  const commands = ["adjust_right_wrist", "adjust_left_wrist", "adjust_wrist"];
+test("renders all eleven forms and actual named-axis keywords for each wrist function", () => {
+  for (const name of ["adjust_right_wrist", "adjust_left_wrist", "adjust_wrist"]) {
+    const card = sdkCard(name);
+    assert.deepEqual([...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]), ["axis", "degrees", "roll", "pitch", "yaw", "torque"]);
+    assert.equal([...card.matchAll(/data-sdk-profile-syntax="true"/g)].length, 11);
+    assert.doesNotMatch(card, /data-sdk-profile-variant="custom-duration"/);
+  }
+  assert.match(plainSdk(sdkCard("adjust_wrist")), /Right-wrist compatibility alias/);
+});
 
-  for (const [index, command] of commands.entries()) {
-    const start = html.indexOf(`data-sdk-function-name="${command}"`);
-    const nextCommand = commands[index + 1];
-    const end = nextCommand
-      ? html.indexOf(`data-sdk-function-name="${nextCommand}"`, start)
-      : html.indexOf('data-sdk-function-name="adjust_waist"', start);
-    const card = html.slice(start, end);
-
-    assert.deepEqual(
-      [...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]),
-      ["axis", "degrees"],
-      `${command} should describe wrist axes through the shared selector and angle parameters`,
-    );
-    assert.match(card, />axis<\/span><span[^>]*>string \("roll", "pitch", "yaw"\)<\/span>/);
-    assert.doesNotMatch(card, /or number/);
-    for (const axis of ["roll", "pitch", "yaw"]) {
-      assert.ok(card.includes(`&quot;${axis}&quot;`) || card.includes(`"${axis}"`));
-      assert.doesNotMatch(card, new RegExp(`data-sdk-param-name="${axis}"`));
+test("shows numeric relative angle ranges in every Master adjustment parameter row", () => {
+  const relativeFields = {
+    adjust_right_elbow: ["degrees"], adjust_left_elbow: ["degrees"],
+    adjust_both_elbows: ["degrees"], adjust_elbow: ["degrees", "position"],
+    adjust_right_shoulder: ["degrees"], adjust_left_shoulder: ["degrees"],
+    adjust_right_wrist: ["degrees", "roll", "pitch", "yaw"],
+    adjust_left_wrist: ["degrees", "roll", "pitch", "yaw"],
+    adjust_wrist: ["degrees", "roll", "pitch", "yaw"],
+    adjust_waist: ["degrees", "yaw", "pitch", "roll"],
+    adjust_upper_body: ["waist", "both_elbows"],
+  };
+  for (const [name, fields] of Object.entries(relativeFields)) {
+    for (const field of fields) {
+      const row = sdkCard(name).match(new RegExp('<details data-sdk-param-name="' + field + '"[\\s\\S]*?<\\/details>'))?.[0] ?? "";
+      const summary = row.match(/<summary[^>]*>([\s\S]*?)<\/summary>/)?.[1] ?? "";
+      assert.match(plainSdk(summary), /Range: .*\d(?:\.\d+)? − current/, `${name}.${field}: numeric bounds are visible with Details closed`);
+      assert.doesNotMatch(plainSdk(summary), /Dynamic/, `${name}.${field}: no vague range label`);
+      assert.match(plainSdk(row), /Example.*°.*range.*°/i, `${name}.${field}: gives a concrete remaining-range example`);
     }
   }
 });
 
-test("uses one shared degrees definition for move_arms_to with a single position note", () => {
-  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
-    .replaceAll("<!-- -->", "")
-    .replaceAll("&quot;", '"');
-  const start = html.indexOf('data-sdk-function-name="move_arms_to"');
-  const end = html.indexOf('data-sdk-function-name="mirror_arm_pose"', start);
-  const card = html.slice(start, end);
-  const joints = ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_yaw", "wrist_pitch", "wrist_roll"];
-  assert.deepEqual(
-    [...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]),
-    ["joint", "degrees", "duration_seconds"],
-  );
-  const jointParam = card.slice(card.indexOf('data-sdk-param-name="joint"'), card.indexOf('data-sdk-param-name="degrees"'));
-  assert.match(jointParam, />joint<\/span><span[^>]*>string<\/span>/);
-  assert.deepEqual([...jointParam.matchAll(/<code[^>]*>"([^"]+)"<\/code>/g)].map((match) => match[1]), joints);
-  assert.doesNotMatch(card, />object<\/span>/);
-  for (const joint of joints) {
-    assert.ok(card.includes(`"${joint}":`), `${joint} stays in the profile and example`);
-  }
-  assert.match(card, /Absolute target angle for the named joint, in degrees/);
-  const profiles = [...card.matchAll(/data-sdk-profile-syntax="true"[^>]*>([\s\S]*?)<\/p>/g)].map(([, markup]) => markup.replace(/<[^>]*>/g, ""));
-  assert.equal(profiles.length, 2);
-  for (const syntax of profiles) {
-    assert.ok(syntax.startsWith("Agentech.move_arms_to("));
-    assert.doesNotMatch(syntax, /#/);
-    assert.doesNotMatch(syntax, /,\s*[)}]/);
-    for (const joint of joints) assert.equal(syntax.split(`"${joint}": degrees = x`).length - 1, 2);
-  }
-  assert.equal([...card.matchAll(/data-sdk-profile-format="parameter-map"/g)].length, 2);
-  assert.ok(card.includes('right={'));
-  assert.ok(card.includes('left={'));
+test("documents every partial arm selection using actual mapping fields and one zero-target note", () => {
+  const card = sdkCard("move_arms_to");
+  assert.deepEqual([...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]), ["left", "right", "duration_seconds"]);
+  assert.equal([...card.matchAll(/data-sdk-profile-syntax="true"/g)].length, 56);
   assert.equal([...card.matchAll(/data-sdk-joint-target-note="true"/g)].length, 1);
-  assert.equal([...card.matchAll(/0 is a position/g)].length, 1);
-  assert.equal([...card.matchAll(/Omitted joints keep their current commanded positions/g)].length, 1);
-  assert.match(card, /Set a joint to 0 explicitly to target zero degrees/);
-  assert.doesNotMatch(card, /Omit this joint to keep its current commanded target/);
-  assert.ok(card.indexOf('data-sdk-joint-target-note="true"') < card.indexOf('data-sdk-profile-syntax="true"'));
+  assert.match(plainSdk(card), /Omitted joints keep their current commanded positions/);
+  assert.match(plainSdk(card), /Set a joint to 0 explicitly/);
+  assert.match(plainSdk(card), /elbow domain excludes zero/);
+  for (const field of ["left", "right"]) {
+    const parameter = card.match(new RegExp('<details data-sdk-param-name="' + field + '"[\\s\\S]*?</details>'))?.[0] ?? "";
+    for (const key of ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_yaw", "wrist_pitch", "wrist_roll"]) assert.ok(parameter.includes('"' + key + '"'));
+    assert.match(plainSdk(parameter), /Any nonempty subset/);
+  }
 });
 
-test("explains that mirrored arm poses require all seven joints without zero-filling", () => {
-  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "").replaceAll("<!-- -->", "").replaceAll("&quot;", '"');
-  const start = html.indexOf('data-sdk-function-name="move_mirrored_arms_to"');
-  assert.ok(start >= 0);
-  const end = html.indexOf('data-sdk-function-name="', start + 1);
-  const card = html.slice(start, end < 0 ? undefined : end);
-  assert.match(card, /All seven joint targets are required/);
-  assert.match(card, /A missing joint causes an error; 0 explicitly targets zero degrees/);
-  assert.match(card, /Use move_arms_to\(\) for partial joint targets/);
-  assert.equal([...card.matchAll(/data-sdk-joint-target-note="true"/g)].length, 1);
-  assert.doesNotMatch(card, /data-sdk-param-name="pose"|>object<\/span>/);
-  assert.deepEqual([...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]), ["joint", "degrees", "duration_seconds"]);
-  const jointParam = card.slice(card.indexOf('data-sdk-param-name="joint"'), card.indexOf('data-sdk-param-name="degrees"'));
-  assert.match(jointParam, />joint<\/span><span[^>]*>string<\/span>/);
-  assert.deepEqual([...jointParam.matchAll(/<code[^>]*>"([^"]+)"<\/code>/g)].map((match) => match[1]), ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_yaw", "wrist_pitch", "wrist_roll"]);
+test("requires all seven mirrored targets and describes the complete target mapping", () => {
+  const card = sdkCard("move_mirrored_arms_to");
+  assert.match(plainSdk(card), /All seven joint targets are required/);
+  assert.match(plainSdk(card), /A missing joint causes an error/);
+  assert.match(plainSdk(card), /elbow domain excludes zero/);
+  assert.match(plainSdk(card), /Use move_arms_to\(\) for partial joint targets/);
+  assert.deepEqual([...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]), ["targets", "duration_seconds"]);
+  for (const key of ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_yaw", "wrist_pitch", "wrist_roll"]) assert.ok(card.includes('"' + key + '"'));
 });
 
 test("lists both mirror_arm_pose source-side strings in the parameter type", () => {
@@ -520,160 +409,48 @@ test("lists both mirror_arm_pose source-side strings in the parameter type", () 
   assert.match(card, />source_side<\/span><span[^>]*>string \("left", "right"\)<\/span>/);
 });
 
-test("keeps public setup examples and guidance free of dry-run settings", () => {
+test("keeps runnable setup examples free of dry-run configuration and private connection fields", () => {
   for (const [route, html] of pages) {
-    assert.doesNotMatch(html, /dry[_ -]?run|ssh_password/i, route);
-  }
-  const hubSource = readFileSync(
-    new URL("../features/eaic/01-clients/eaic-hub/components/agentech-library-home.tsx", import.meta.url),
-    "utf8",
-  );
-  for (const source of [workbenchSource, naviReferenceSource, hubSource]) {
-    assert.doesNotMatch(source, /dry[_ -]?run|ssh_password/i);
+    for (const [, example] of html.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)) assert.doesNotMatch(plainSdk(example), /dry_run\s*=|ssh_password|host\s*=/i, route);
+    assert.doesNotMatch(html, /ssh_password/i);
   }
 });
 
-test("renders valid multiline Python with grouped positional arguments and no trailing commas", () => {
-  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
-    .replaceAll("<!-- -->", "")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#x27;", "'");
+test("renders valid Python for every profile map and every copyable Master example", () => {
+  const html = sdkHtml();
   const jointHtml = html.slice(html.indexOf('id="function-joint-adjustments"'), html.indexOf('id="function-sensing"'));
-  const profileBlocks = [...jointHtml.matchAll(/<p[^>]*data-sdk-profile-syntax="true"([^>]*)>([\s\S]*?)<\/p>/g)];
-  const syntaxes = profileBlocks.map(([, , markup]) => markup.replace(/<[^>]*>/g, ""));
-  const pythonSyntaxes = profileBlocks.filter(([, attributes]) => !attributes.includes('data-sdk-profile-format="parameter-map"'))
-    .map(([, , markup]) => markup.replace(/<[^>]*>/g, ""));
-  assert.equal(syntaxes.length, 52, "check all 33 default profiles and 19 duration variants");
-  assert.equal(pythonSyntaxes.length, 39, "joint parameter maps describe fields; runnable examples remain Python");
-  const parameterMaps = profileBlocks.filter(([, attributes]) => attributes.includes('data-sdk-profile-format="parameter-map"'))
-    .map(([, , markup]) => markup.replace(/<[^>]*>/g, ""));
-  for (const syntax of parameterMaps) {
-    assert.match(syntax, /degrees = x/);
-    assert.doesNotMatch(syntax, /"[a-z_]+":\s*x|\b(?:roll|pitch|yaw|both_elbows)\s*=\s*x|,\s*[)}]/);
-    assert.doesNotMatch(syntax, /^degrees = x|#/);
-  }
-  const examples = [...jointHtml.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)]
-    .map(([, markup]) => markup.replace(/<[^>]*>/g, ""));
-  assert.equal(examples.length, 16, "check the runnable example in every joint command card");
-  const allExamples = [...html.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)]
-    .map(([, markup]) => markup.replace(/<[^>]*>/g, ""));
-  assert.equal(allExamples.length, 39, "check setup and the examples in all 38 Master cards");
-  // Parse only: never import the SDK or execute robot commands during this check.
-  const python = spawnSync(process.env.PYTHON_BINARY ?? "python3", ["-c", [
-    "import ast, json, re, sys",
-    "snippets = json.load(sys.stdin)",
-    "for snippet in snippets['all']:",
-    "    ast.parse(snippet, mode='exec')",
-    "    assert not re.search(r',\\s*[)}]', snippet), f'No final commas in any Master example: {snippet}'",
-    "for index, snippet in enumerate(snippets['joint']):",
-    "    tree = ast.parse(snippet, filename=f'Master snippet {index + 1}', mode='exec')",
-    "    assert not re.search(r',\\s*[)}]', snippet), f'No comma after the last argument or dictionary entry: {snippet}'",
-    "    for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):",
-    "        args = [*call.args, *call.keywords]",
-    "        if not args: continue",
-    "        multiline = call.end_lineno > call.lineno",
-    "        if len(call.keywords) > 1 or (call.args and call.keywords):",
-    "            assert multiline, f'Keep calls with multiple options in a readable layout: {snippet}'",
-    "        if not multiline: continue",
-    "        assert all(arg.lineno > call.lineno for arg in args), f'Arguments need separate indented lines: {snippet}'",
-    "        if len(call.args) == 2 and isinstance(call.args[0], ast.Constant) and isinstance(call.args[0].value, str):",
-    "            assert call.args[0].lineno == call.args[1].lineno, f'Keep the selector and angle together: {snippet}'",
-    "        keyword_lines = [arg.lineno for arg in call.keywords]",
-    "        assert len(set(keyword_lines)) == len(keyword_lines), f'Use one named argument per line: {snippet}'",
-    "        assert not set(keyword_lines).intersection(arg.lineno for arg in call.args), f'Put named options after the positional arguments: {snippet}'",
-    "        assert all(snippet.splitlines()[arg.lineno - 1].startswith('    ') for arg in args), snippet",
-    "        assert snippet.splitlines()[call.end_lineno - 1].strip() == ')', f'Put the closing parenthesis on its own line: {snippet}'",
-    "        assert all(line.strip() for line in snippet.splitlines()[call.lineno - 1:call.end_lineno]), f'Remove empty lines inside the call: {snippet}'",
-  ].join("\n")], { input: JSON.stringify({ all: allExamples, joint: [...pythonSyntaxes, ...examples] }), encoding: "utf8" });
+  const profiles = [...html.matchAll(/data-sdk-profile-syntax="true"[^>]*>([\s\S]*?)<\/p>/g)].map(([, markup]) => plainSdk(markup));
+  const examples = [...html.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)].map(([, markup]) => plainSdk(markup));
+  assert.equal([...jointHtml.matchAll(/data-sdk-profile-syntax="true"/g)].length, 223);
+  assert.ok(profiles.length >= 239, "validate custom movement profiles as well as existing profiles");
+  assert.equal(examples.length, 46);
+  const python = spawnSync(process.env.PYTHON_BINARY ?? "python", ["-c", "import ast,json,sys\nfor source in json.load(sys.stdin): ast.parse(source)"], { input: JSON.stringify([...profiles, ...examples]), encoding: "utf8" });
   assert.ifError(python.error);
   assert.equal(python.status, 0, python.stderr);
-  assert.doesNotMatch(jointHtml, /Display notation only|not executable Python/);
-  assert.ok(syntaxes.includes('Agentech.adjust_left_elbow(degrees = x)'), "keep a simple profile compact like Aegis");
-  assert.ok(examples.some((value) => value.includes('Agentech.adjust_left_wrist("roll", +5)')), "keep a short selector-and-angle call on one line");
-  assert.ok(examples.some((value) => value.includes('Agentech.adjust_elbow(\n    "left", +5,\n    duration_seconds=1.0\n)')), "group the side and angle, then show duration without a final comma");
-  const elbowHtml = jointHtml.slice(jointHtml.indexOf('data-sdk-function-name="adjust_elbow"'), jointHtml.indexOf('data-sdk-function-name="move_elbows_to"'));
-  assert.match(elbowHtml, />side<\/span><span[^>]*>string \("left", "right"\)<\/span>/);
-  const compactCode = (value) => value.replace(/\s+/g, "").replace(/,\)/g, ")");
-  for (const syntax of [
-    'Agentech.adjust_elbow(side = "right", degrees = x)',
-    'Agentech.adjust_right_shoulder(axis = "pitch", degrees = x)',
-    'Agentech.adjust_left_shoulder(axis = "yaw", degrees = x, duration_seconds = x)',
-    'Agentech.adjust_right_wrist(roll = degrees = x, pitch = degrees = x, yaw = degrees = x)',
-    'Agentech.adjust_left_wrist(degrees = x)',
-    'Agentech.adjust_waist(yaw = degrees = x, pitch = degrees = x, roll = degrees = x)',
-    'Agentech.adjust_upper_body(waist = {axis: x, degrees = x}, both_elbows = degrees = x)',
-    'Agentech.adjust_upper_body(waist = {axis: x, degrees = x}, both_elbows = degrees = x, duration_seconds = x)',
-  ]) {
-    assert.ok(syntaxes.some((value) => compactCode(value) === compactCode(syntax)), `${syntax} should retain the SDK argument structure`);
-  }
-  for (const command of ["move_arms_to", "move_mirrored_arms_to"]) {
-    const syntax = syntaxes.find((value) => value.includes(`Agentech.${command}(`));
-    assert.ok(syntax);
-    for (const joint of ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_yaw", "wrist_pitch", "wrist_roll"]) {
-      assert.ok(syntax.includes(`"${joint}": degrees = x`), `${command}: ${joint} should retain the requested value notation`);
-    }
-  }
+  for (const syntax of profiles) assert.doesNotMatch(syntax, /,\s*[)}]|degrees = x|axis: x/);
+  assert.match(workbenchSource, /\[overflow-wrap:anywhere\]/);
 });
 
-test("documents Master default-speed profiles and separates paid performances from pending duration pricing", () => {
-  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "")
-    .replaceAll("<!-- -->", "")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#x27;", "'");
-  const cards = [...html.matchAll(/data-sdk-function-name="([^"]+)"/g)];
-  const cardHtml = (name) => {
-    const cardIndex = cards.findIndex((match) => match[1] === name);
-    assert.ok(cardIndex >= 0, `${name} should render as a Master command card`);
-    const start = cards[cardIndex].index;
-    const end = cards[cardIndex + 1]?.index ?? html.length;
-    return html.slice(start, end);
-  };
-
-  for (const shoulder of ["adjust_right_shoulder", "adjust_left_shoulder"]) {
-    assert.match(cardHtml(shoulder), />axis<\/span><span[^>]*>string \("roll", "pitch", "yaw"\)<\/span>/);
+test("preserves existing duration pricing while distinguishing torque, speed, timeouts and proposed stiffness", () => {
+  const elbow = plainSdk(sdkCard("adjust_left_elbow"));
+  assert.match(elbow, /default timing/);
+  assert.match(elbow, /Custom duration may require an extra fee or a higher-tier plan/);
+  const waist = plainSdk(sdkCard("adjust_waist"));
+  assert.match(waist, /Custom maximum duration/);
+  assert.match(waist, /timeout, not a speed setting/);
+  const stiff = plainSdk(sdkCard("stiff"));
+  assert.equal([...sdkCard("stiff").matchAll(/data-sdk-profile-syntax="true"/g)].length, 3);
+  for (const level of ["hard", "medium", "soft"]) assert.ok(stiff.includes('Agentech.stiff(level="' + level + '")'));
+  assert.doesNotMatch(stiff, /Pricing TBD|extra fee|higher-tier plan/);
+  assert.equal([...sdkCard("stiff").matchAll(/>Under Development|>Internal</g)].length, 0);
+  assert.deepEqual([...sdkCard("stiff").matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]), ["level"]);
+  assert.doesNotMatch(stiff, /operator_ready|mechanically_supported|preflight|boolean/);
+  for (const name of ["speed", "torque"]) {
+    const row = sdkCard("adjust_elbow").match(new RegExp('<details data-sdk-param-name="' + name + '"[\\s\\S]*?</details>'))?.[0] ?? "";
+    assert.ok(row);
+    assert.doesNotMatch(row, /Pricing TBD/);
   }
-  for (const wrist of ["adjust_right_wrist", "adjust_left_wrist"]) {
-    assert.match(cardHtml(wrist), />axis<\/span><span[^>]*>string \("roll", "pitch", "yaw"\)<\/span>/);
-  }
-
-  const plain = (fragment) => fragment.replace(/<[^>]*>/g, "");
-  const leftElbow = plain(cardHtml("adjust_left_elbow"));
-  const compactLeftElbow = leftElbow.replace(/\s+/g, "").replace(/,\)/g, ")");
-  const defaultCall = compactLeftElbow.indexOf("Agentech.adjust_left_elbow(degrees=x)");
-  const explanation = compactLeftElbow.indexOf("Adjustleftelbowbyxdegrees,atdefaultspeed.");
-  const customCall = compactLeftElbow.indexOf("Agentech.adjust_left_elbow(degrees=x,duration_seconds=x)");
-  assert.ok(defaultCall >= 0 && explanation > defaultCall && customCall > explanation, "show default syntax, its explanation, then custom duration syntax");
-  assert.match(html, /Using code to run robot or Navi performances on this website requires payment\./);
-  assert.match(leftElbow, /Custom duration may require an extra fee or a higher-tier plan\./);
-  assert.match(leftElbow, /Pricing TBD/);
-  assert.doesNotMatch(html, /Paid users only|Top up to customize duration|Top up on this website to customize duration/);
-  assert.match(plain(cardHtml("adjust_right_shoulder")), /Adjust right shoulder pitch by x degrees, at default speed\./);
-  assert.match(plain(cardHtml("move_elbows_to")), /Move both elbows to x degrees, at default speed\./);
-  assert.match(plain(cardHtml("mirror_arm_pose")), /Mirror the right arm pose onto the left arm, at default speed\./);
-  assert.match(plain(cardHtml("adjust_left_wrist")), /Adjust left wrist roll by x degrees, at default speed\./);
-
-  const jointStart = html.indexOf('id="function-joint-adjustments"');
-  const jointEnd = html.indexOf('id="function-sensing"', jointStart);
-  const jointHtml = html.slice(jointStart, jointEnd);
-  const defaultSyntaxes = [...jointHtml.matchAll(/data-sdk-profile-default="true"[^>]*>([\s\S]*?)<\/p>/g)];
-  assert.equal(defaultSyntaxes.length, 33, "every joint profile should document default speed");
-  for (const [, syntax] of defaultSyntaxes) {
-    assert.doesNotMatch(plain(syntax), /(?:max_)?duration_seconds\s*=/);
-  }
-  assert.equal([...jointHtml.matchAll(/data-sdk-profile-description="true"/g)].length, 33);
-  assert.equal([...jointHtml.matchAll(/data-sdk-profile-custom-duration="true"/g)].length, 19);
-
-  const parameterRows = [...jointHtml.matchAll(/<details data-sdk-param-name="([^"]+)"[\s\S]*?<\/details>/g)];
-  assert.ok(parameterRows.length > 0);
-  for (const [row, name] of parameterRows) {
-    if (name === "duration_seconds" || name === "max_duration_seconds") {
-      assert.match(row, /Pricing TBD/);
-      assert.doesNotMatch(row, />Available</);
-    } else {
-      assert.doesNotMatch(row, /Pricing TBD/);
-    }
-  }
-  assert.doesNotMatch(jointHtml, /Adjustable by authorized users only/);
+  assert.match(sdkHtml(), /Using code to run robot or Navi performances on this website requires payment/);
 });
 
 test("explains Master Posture Commands once and exposes valid arm configurations without another disclosure", () => {
@@ -764,68 +541,244 @@ test("makes all 18 Master Action Commands readable with visible parameters and m
   }
 });
 
-test("renders the engineering Master usage variants as numbered parameter profiles", () => {
-  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "").replaceAll("<!-- -->", "");
-  const expectedProfiles = new Map([
-    ["enter_stand_hand_guide", ["Right arm", "Both arms"]],
-    ["adjust_right_elbow", ["Right elbow relative angle"]],
-    ["adjust_left_elbow", ["Left elbow relative angle"]],
-    ["adjust_both_elbows", ["Both elbows relative angle"]],
-    ["adjust_elbow", ["Select right elbow", "Select left elbow"]],
-    ["move_elbows_to", ["Both elbows target angle"]],
-    ["adjust_right_shoulder", ["Pitch axis", "Roll axis", "Yaw axis"]],
-    ["adjust_left_shoulder", ["Pitch axis", "Roll axis", "Yaw axis"]],
-    ["adjust_right_wrist", ["Roll axis", "Pitch axis", "Yaw axis", "Combined axes", "Single-value form"]],
-    ["adjust_left_wrist", ["Roll axis", "Pitch axis", "Yaw axis", "Combined axes", "Single-value form"]],
-    ["adjust_wrist", ["Combined wrist axes"]],
-    ["adjust_waist", ["Yaw axis", "Pitch axis", "Roll axis", "Combined waist axes"]],
-    ["return_waist_to_neutral", ["Return to neutral"]],
-    ["adjust_upper_body", ["Waist + both elbows"]],
-    ["move_arms_to", ["Right + left arm targets"]],
-    ["mirror_arm_pose", ["Mirror from right arm", "Mirror from left arm"]],
-    ["move_mirrored_arms_to", ["Mirrored arm target"]],
-  ]);
-
-  for (const [command, profileNames] of expectedProfiles) {
-    const commandOffset = html.indexOf(`data-sdk-function-name="${command}"`);
-    const nextCommandOffset = html.indexOf('data-sdk-function-name="', commandOffset + 1);
-    const commandHtml = html.slice(commandOffset, nextCommandOffset >= 0 ? nextCommandOffset : undefined);
-
-    assert.ok(commandOffset >= 0, `${command} should remain one Master command card`);
-    assert.match(commandHtml, /Parameter profiles/, `${command} should render the shared profile cards`);
-    for (const profileName of profileNames) {
-      assert.ok(commandHtml.includes(`>${profileName}<`), `${command} should render the ${profileName} profile`);
-    }
+test("renders every handoff request family in numbered cards using the existing format", () => {
+  for (const name of Object.keys(handoffProfiles).filter((name) => !["turn_head", "return_head_to_center", "center_head", "shake_head"].includes(name))) {
+    const card = sdkCard(name);
+    assert.match(card, /Parameter profiles/);
+    assert.match(card, /Choose one profile only/);
+    assert.equal([...card.matchAll(/data-sdk-profile-syntax="true"/g)].length, profileCount(name), name);
+    const numbers = [...card.matchAll(/data-sdk-profile-number="true"[^>]*>(\d+)<\/span>/g)].map(([, number]) => Number(number));
+    assert.deepEqual(numbers, Array.from({ length: profileCount(name) }, (_, index) => index + 1), name);
+    assert.match(card, />Example</);
+    assert.match(card, /Copy/);
   }
-
-  assert.equal(
-    [...expectedProfiles.values()].reduce((total, profiles) => total + profiles.length, 0),
-    35,
-    "the engineering examples should produce 38 profiles without creating more API cards",
-  );
 });
 
-test("numbers the custom-duration Master variant directly beneath its default profile", () => {
-  const html = (pages.get("/agentech-products/eaic-hub/view-sdk") ?? "").replaceAll("<!-- -->", "");
+test("numbers each duration companion immediately after its default profile", () => {
+  for (const name of ["adjust_right_elbow", "adjust_left_elbow", "move_arms_to", "move_mirrored_arms_to"]) {
+    const card = sdkCard(name);
+    const numbers = [...card.matchAll(/data-sdk-profile-number="true"[^>]*>(\d+)<\/span>/g)].map(([, number]) => Number(number));
+    assert.deepEqual(numbers, Array.from({ length: profileCount(name) }, (_, index) => index + 1));
+    const variants = [...card.matchAll(/<div[^>]*data-sdk-profile-variant="custom-duration"[^>]*>/g)];
+    assert.ok(variants.length);
+    for (const [tag] of variants) assert.doesNotMatch(tag, /\bborder-t\b/);
+  }
+});
 
-  for (const command of ["move_arms_to", "move_mirrored_arms_to"]) {
-    const commandOffset = html.indexOf(`data-sdk-function-name="${command}"`);
-    const nextCommandOffset = html.indexOf('data-sdk-function-name="', commandOffset + 1);
-    const commandHtml = html.slice(commandOffset, nextCommandOffset >= 0 ? nextCommandOffset : undefined);
-    const numbers = [...commandHtml.matchAll(/data-sdk-profile-number="true"[^>]*>(\d+)<\/span>/g)]
-      .map(([, number]) => number);
+test("uses the shared purple x convention for every Master profile with quoted joint mapping keys", () => {
+  const html = sdkHtml();
+  const profiles = [...html.matchAll(/data-sdk-profile-syntax="true"[^>]*>([\s\S]*?)<\/p>/g)].map(([, markup]) => markup);
+  assert.ok(profiles.length > 200);
+  for (const markup of profiles) {
+    assert.doesNotMatch(plainSdk(markup), /\b(?:delta|target|duration|max_duration|[a-z_]+_(?:delta|deltas|target|targets|start))\b/);
+    if (/\bx\b/.test(plainSdk(markup))) assert.match(markup, /data-sdk-profile-placeholder="true"[^>]*text-\[\#4c1d95\][^>]*>x<\/span>/);
+  }
+  const arms = sdkCard("move_arms_to");
+  assert.match(plainSdk(arms), /"elbow": x/);
+  assert.match(plainSdk(arms), /Angle maps contain degrees; torque maps contain N·m/);
+  for (const name of ["adjust_right_elbow", "adjust_left_elbow", "adjust_elbow"]) {
+    const card = sdkCard(name);
+    assert.match(plainSdk(card), /degrees=x/);
+    assert.ok(plainSdk(card).includes("-24 to +24"), `${name}: native joint range stays in the torque table`);
+  }
+});
 
-    assert.deepEqual(numbers, ["1", "2"], `${command} should number its default and custom-duration profiles 1 and 2`);
-    assert.match(
-      commandHtml,
-      /data-sdk-profile-variant="custom-duration"[^>]*\bborder\b[^>]*\bp-3\b[\s\S]*?data-sdk-profile-number="true"[^>]*>2<\/span>[\s\S]*?>Custom duration<\/span>/,
-      `${command} should label the second profile directly above its custom-duration syntax`,
-    );
-    assert.doesNotMatch(
-      commandHtml.match(/<div[^>]*data-sdk-profile-variant="custom-duration"[^>]*>/)?.[0] ?? "",
-      /\bborder-t\b/,
-      `${command} should render the second profile as a separate Aegis-format card`,
-    );
+test("capitalizes Degrees in every profile label and sentence opening", () => {
+  const html = sdkHtml();
+  const labels = [...html.matchAll(/data-sdk-profile-label="true"[^>]*>([\s\S]*?)<\/span>/g)].map(([, markup]) => plainSdk(markup));
+  assert.ok(labels.length > 200, "all default and duration profile headings use the shared display label");
+  assert.ok(labels.some((label) => /Right \/ Degrees \//.test(label)));
+  for (const label of labels) assert.doesNotMatch(label, /\bdegrees\b/);
+  const descriptions = [...html.matchAll(/data-sdk-profile-description="true"[^>]*>([\s\S]*?)<\/p>/g)].map(([, markup]) => plainSdk(markup));
+  for (const description of descriptions) assert.doesNotMatch(description, /^degrees\b|[.!?]\s+degrees\b/);
+  assert.ok(descriptions.some((description) => /^Degrees is a signed relative angle\./.test(description)));
+  assert.match(plainSdk(sdkCard("adjust_elbow")), /degrees=x/, "actual Python parameter names stay lowercase");
+  assert.match(plainSdk(sdkCard("adjust_elbow")), /abs\(degrees\) \/ speed/, "Python expressions stay lowercase");
+});
+
+test("highlights every profile's selected values in the same purple as x", () => {
+  const html = sdkHtml();
+  const profiles = [...html.matchAll(/data-sdk-profile-syntax="true"[^>]*>([\s\S]*?)<\/p>/g)].map(([, markup]) => markup);
+  assert.ok(profiles.length > 200);
+  let valueCount = 0;
+  for (const markup of profiles) {
+    const syntax = plainSdk(markup);
+    const values = [...syntax.matchAll(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b(?:True|False|None)\b/g)]
+      .filter((match) => !/^\s*:/.test(syntax.slice(match.index + match[0].length)))
+      .map(([value]) => value);
+    const highlighted = [...markup.matchAll(/<span[^>]*data-sdk-profile-value="true"[^>]*>([\s\S]*?)<\/span>/g)];
+    assert.deepEqual(highlighted.map(([, value]) => value), values, syntax);
+    for (const [span] of highlighted) assert.match(span, /text-\[\#4c1d95\]/);
+    valueCount += values.length;
+  }
+  assert.ok(valueCount > 50, "every side, axis, level and other selected literal is covered");
+  const styles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(styles, /\[data-sdk-profile-placeholder="true"\][\s\S]*?\[data-sdk-profile-value="true"\][\s\S]*?color:\s*#c4b5fd/, "values share x's dark-theme color");
+});
+
+test("lists each native joint maximum effort in a compact two-column torque table", () => {
+  const html = sdkHtml();
+  const expected = JSON.parse(readFileSync(new URL("./fixtures/master-native-model-effort.json", import.meta.url), "utf8"));
+  for (const [joint, effort] of Object.entries(expected.maxEffortNm)) {
+    assert.match(html, new RegExp('data-sdk-joint-effort="' + joint + '"[^>]*data-sdk-native-max-effort-nm="' + effort + '"'));
+    assert.match(plainSdk(html), new RegExp('-' + effort + ' to \\+' + effort));
+  }
+  assert.match(html, /data-sdk-joint-torque-reference="true"/);
+  assert.match(plainSdk(html), /Native model torque limit/);
+});
+
+test("uses the multiplication dot in every displayed torque unit", () => {
+  assert.match(plainSdk(sdkHtml()), /\(Range: -24 to \+24 N·m\)/);
+  assert.doesNotMatch(plainSdk(sdkHtml()), /N[.]m/, "parameter rows, tables, profiles and examples use N·m");
+});
+
+test("omits None from public Master parameter types and explains each stiffness profile", () => {
+  for (const [, summary] of sdkHtml().matchAll(/<details data-sdk-param-name="[^"]+"[\s\S]*?<summary[^>]*>([\s\S]*?)<\/summary>/g)) {
+    assert.doesNotMatch(plainSdk(summary), /\bNone\b/, "public parameter types show the values users enter");
+  }
+  const profiles = [...sdkCard("stiff").matchAll(/<p data-sdk-profile-description="true"[^>]*>([\s\S]*?)<\/p>/g)].map(([, profile]) => plainSdk(profile));
+  assert.equal(profiles.length, 3);
+  assert.match(profiles[0], /stiffness.*100.*50.*30.*N·m\/rad/i);
+  assert.match(profiles[1], /same.*Hard.*not an intermediate/i);
+  assert.match(profiles[2], /compliant.*12 N·m\/rad.*returns.*arms.*waist/i);
+});
+
+test("shows each parameter's allowed values only once", () => {
+  let choiceRows = 0;
+  for (const [, markup] of sdkHtml().matchAll(/<details data-sdk-param-name="[^"]+"[\s\S]*?<summary[^>]*>([\s\S]*?)<\/summary>/g)) {
+    const values = markup.match(/data-sdk-param-allowed-values="true"[^>]*>([\s\S]*?)<\/span>/)?.[1];
+    if (!values) continue;
+    choiceRows += 1;
+    assert.doesNotMatch(plainSdk(markup), /string\s*\(/, "type labels do not repeat an explicit allowed-values list");
+    for (const [, value] of markup.matchAll(/<code[^>]*>([\s\S]*?)<\/code>/g)) {
+      assert.equal(plainSdk(markup).split(plainSdk(value)).length - 1, 1, value + " appears once in its parameter heading");
+    }
+  }
+  assert.ok(choiceRows >= 2, "the shared row rule covers stiffness and hand guidance");
+  const level = sdkCard("stiff").match(/<details data-sdk-param-name="level"[\s\S]*?<\/summary>/)?.[0] ?? "";
+  assert.match(plainSdk(level), /levelstringAllowed values:.*"soft".*"medium".*"hard"/);
+});
+
+test("keeps every parameter header and its controls together above the range", () => {
+  const summaries = [...sdkHtml().matchAll(/<details data-sdk-param-name="[^"]+"[\s\S]*?<summary[^>]*>([\s\S]*?)<\/summary>/g)].map(([, markup]) => markup);
+  assert.ok(summaries.length > 60);
+  for (const summary of summaries) {
+    assert.match(summary, /data-sdk-param-header="true"/, "name, type and default share a header");
+    const controls = summary.match(/<span data-sdk-param-controls="true"[\s\S]*?<\/span>\s*<\/span>/)?.[0] ?? "";
+    assert.match(controls, /data-sdk-param-toggle="true"/, "Details stays with its status control");
+    if (summary.includes('data-sdk-param-available="true"')) assert.ok(controls.includes('data-sdk-param-available="true"'));
+  }
+});
+
+test("shows multi-axis ranges in separate labeled rows without losing numerical limits", () => {
+  const waist = sdkCard("adjust_upper_body").match(/<details data-sdk-param-name="waist"[\s\S]*?<\/summary>/)?.[0] ?? "";
+  assert.deepEqual([...waist.matchAll(/data-sdk-param-range-axis="([^"]+)"/g)].map(([, axis]) => axis), ["Yaw", "Pitch", "Roll"]);
+  assert.match(plainSdk(waist), /Range:.*Yaw:.*-196\.525 − current.*136\.479 − current.*Pitch:.*max\(-30, -17\.991 − current\).*Roll:.*max\(-15, -27\.96 − current\)/);
+  for (const name of ["adjust_right_shoulder", "adjust_left_shoulder", "adjust_right_wrist", "adjust_left_wrist", "adjust_wrist"]) {
+    const degrees = sdkCard(name).match(/<details data-sdk-param-name="degrees"[\s\S]*?<\/summary>/)?.[0] ?? "";
+    assert.equal([...degrees.matchAll(/data-sdk-param-range-axis="/g)].length, 3, name);
+  }
+  assert.match(plainSdk(sdkCard("adjust_right_elbow")), /\(Range: -24 to \+24 N·m\)/, "simple torque ranges remain explicit");
+});
+
+test("shows elbow torque ranges directly in parameter summaries without legacy wording", () => {
+  assert.ok(!/\blegacy\b/i.test(plainSdk(sdkHtml())), "public SDK preview has no legacy labels");
+  for (const name of ["adjust_right_elbow", "adjust_left_elbow", "adjust_elbow"]) {
+    const row = sdkCard(name).match(/<details data-sdk-param-name="torque"[\s\S]*?<\/details>/)?.[0] ?? "";
+    const summary = row.match(/<summary\b[^>]*>([\s\S]*?)<\/summary>/)?.[1] ?? "";
+    assert.ok(summary && plainSdk(summary).includes("torque"), `${name}: torque parameter remains visible`);
+    assert.match(summary, /data-sdk-param-range="true"/, `${name}: range is visible before opening Details`);
+    assert.match(plainSdk(summary), /Range: -24 to \+24 N·m/, `${name}: shows the current signed elbow range`);
+    assert.match(plainSdk(summary), /number/, `${name}: summary retains its numeric type`);
+    assert.doesNotMatch(plainSdk(summary), /\bNone\b/, `${name}: omit Python's null spelling from the displayed type`);
+    assert.doesNotMatch(summary, /data-sdk-param-available=|>Available</, `${name}: torque summary has no status badge`);
+    assert.ok(/-24 to \+24 N·m/.test(plainSdk(row)), `${name}: expanded details show the current elbow request ceiling`);
+    assert.doesNotMatch(plainSdk(row), /-2 to \+2 N·m/, `${name}: no stale blanket live cap`);
+  }
+});
+
+test("renders only native model ranges in every joint torque table", () => {
+  const html = sdkHtml();
+  const global = html.match(/<details data-sdk-joint-torque-reference="true"[\s\S]*?<\/details>/)?.[0] ?? "";
+  const sections = [...html.matchAll(/<section data-sdk-function-joint-torque="[^"]+"[\s\S]*?<\/section>/g)].map(([section]) => section);
+  assert.ok(global && sections.length >= 18, "global and per-function joint references stay visible");
+  for (const section of [global, ...sections]) {
+    const table = section.match(/<table\b[\s\S]*?<\/table>/)?.[0] ?? "";
+    assert.equal([...table.matchAll(/<th\b/g)].length, 2, "joint torque table has exactly two column headings");
+    for (const [, row] of table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g)) {
+      if (/<td\b/.test(row)) assert.equal([...row.matchAll(/<td\b/g)].length, 2, "joint torque data row has exactly two cells");
+    }
+    assert.ok(!/wrapper|argument|added effort|additional torque|admitted allowance/i.test(plainSdk(table)), "table only compares joint identity and native range");
+  }
+});
+
+test("shows torque variables without status badges in the eight existing adjustment cards", () => {
+  const { masterDocumentationFunctions } = loadTypeScriptModule("features/eaic/01-clients/eaic-hub/contracts/master-sdk-documentation.ts");
+  const expected = {
+    adjust_both_elbows: ["degrees", "duration_seconds"],
+    adjust_right_shoulder: ["axis", "degrees", "duration_seconds"],
+    adjust_left_shoulder: ["axis", "degrees", "duration_seconds"],
+    adjust_right_wrist: ["axis", "degrees", "roll", "pitch", "yaw"],
+    adjust_left_wrist: ["axis", "degrees", "roll", "pitch", "yaw"],
+    adjust_wrist: ["axis", "degrees", "roll", "pitch", "yaw"],
+    adjust_waist: ["axis", "degrees", "yaw", "pitch", "roll", "max_duration_seconds", "expected_start_degrees"],
+    adjust_upper_body: ["waist", "right_arm", "left_arm", "both_elbows", "duration_seconds"],
+  };
+  for (const [name, params] of Object.entries(expected)) {
+    const card = sdkCard(name);
+    const functionSummary = card.match(/<summary\b[^>]*>([\s\S]*?)<\/summary>/)?.[1] ?? "";
+    const controls = functionSummary.match(/data-sdk-function-controls="true"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "";
+    assert.equal(plainSdk(controls).trim().toLowerCase(), "details", `${name}: function header has only its disclosure control`);
+    assert.doesNotMatch(plainSdk(card), /\bInternal\b|\bProposed\b|Needs integration|Under development/i, `${name}: torque card has no status wording`);
+    assert.deepEqual([...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map(([, param]) => param), [...params, "torque"], `${name}: retains current parameters and torque`);
+    const torque = card.match(/<details data-sdk-param-name="torque"[\s\S]*?<\/details>/)?.[0] ?? "";
+    assert.ok(torque, `${name}: torque input remains visible`);
+    const profiles = [...card.matchAll(/data-sdk-profile-syntax="true"[^>]*>([\s\S]*?)<\/p>/g)].map(([, markup]) => plainSdk(markup));
+    assert.equal(profiles.length, profileCount(name), `${name}: existing form count is preserved`);
+    for (const syntax of profiles) assert.ok(name === "adjust_waist" ? !/\btorque\s*=/.test(syntax) : /\btorque\s*=\s*(?:x|\{)/.test(syntax), `${name}: profiles expose the supported running arguments`);
+    const profileHeaders = [...card.matchAll(/<div data-sdk-profile-card="true"[\s\S]*?<p data-sdk-typeface="code"/g)].map(([header]) => header);
+    assert.equal(profileHeaders.length, profiles.length, `${name}: every rendered form has one card`);
+    for (const header of profileHeaders) assert.equal([...header.matchAll(/<span\b/g)].length, 2, `${name}: profile header has its number and label only`);
+    const examples = [...card.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)].map(([, markup]) => plainSdk(markup));
+    assert.deepEqual(examples, [masterDocumentationFunctions.find((item) => item.name === name).example], `${name}: current movement example stays unchanged`);
+  }
+});
+
+test("renders every Master torque range in its parameter summary without a status badge", () => {
+  const rows = [...sdkHtml().matchAll(/<details data-sdk-param-name="torque"[\s\S]*?<\/details>/g)].map(([row]) => row);
+  assert.equal(rows.length, 11, "all existing and added torque fields remain visible");
+  for (const row of rows) {
+    const summary = row.match(/<summary\b[^>]*>([\s\S]*?)<\/summary>/)?.[1] ?? "";
+    const toggle = summary.indexOf('<span data-sdk-param-toggle="true"');
+    assert.ok(toggle >= 0, "torque keeps its details control");
+    assert.match(summary.slice(0, toggle), /data-sdk-param-range="true"/, "torque range is visible before the details control");
+    assert.doesNotMatch(summary, /data-sdk-param-available=/, "torque keeps its compact row without a status badge");
+    assert.doesNotMatch(plainSdk(row), /\bInternal\b|\bProposed\b|Needs integration|Under development/i);
+  }
+  assert.match(sdkHtml(), /data-sdk-param-available="true"/, "other parameter status badges stay visible");
+  for (const name of ["adjust_right_shoulder", "adjust_left_shoulder", "adjust_both_elbows", "adjust_upper_body"]) {
+    const summary = sdkCard(name).match(/<details data-sdk-param-name="torque"[\s\S]*?<summary[^>]*>([\s\S]*?)<\/summary>/)?.[1] ?? "";
+    assert.match(plainSdk(summary), name === "adjust_upper_body" ? /Shoulder, elbow, wrist yaw: -24 to \+24 N·m.*Wrist pitch\/roll: -2\.2 to \+2\.2 N·m/ : /Range: -24 to \+24 N·m/, `${name}: signed range stays visible`);
+  }
+  for (const name of ["adjust_right_wrist", "adjust_left_wrist", "adjust_wrist"]) {
+    const summary = sdkCard(name).match(/<details data-sdk-param-name="torque"[\s\S]*?<summary[^>]*>([\s\S]*?)<\/summary>/)?.[1] ?? "";
+    assert.match(plainSdk(summary), /Yaw: -24 to \+24; pitch\/roll: -2\.2 to \+2\.2 N·m/, `${name}: each axis retains its range`);
+  }
+});
+
+test("shows all-joint torque planning and twenty-newton-metre capability with correct map units", () => {
+  const card = sdkCard("plan_upper_body_torque_assist");
+  const text = plainSdk(card);
+  assert.equal([...card.matchAll(/data-sdk-profile-syntax="true"/g)].length, 22);
+  assert.deepEqual([...card.matchAll(/data-sdk-param-name="([^"]+)"/g)].map((match) => match[1]), ["arm_effort_nm", "waist_effort_nm", "max_additional_effort_nm", "duration_seconds", "ramp_seconds", "limit_source"]);
+  assert.equal([...card.matchAll(/data-sdk-function-torque-joint=/g)].length, 17);
+  assert.match(text, /20 N·m requests were checked offline/);
+  assert.match(text, /Effort-map values are signed N·m/);
+  assert.match(text, /bound-map values are positive N·m/);
+  assert.doesNotMatch(text, /its x value is degrees|extra fee|higher-tier plan/);
+  assert.match(text, /"left_elbow_joint": 20/);
+  for (const name of ["adjust_left_shoulder", "adjust_right_shoulder", "adjust_left_wrist", "adjust_right_wrist", "adjust_waist"]) {
+    assert.match(sdkCard(name), /data-sdk-function-joint-torque=/);
   }
 });
 
@@ -947,7 +900,8 @@ test("highlights the completion warning with the boundary palette while keeping 
   assert.match(warning, /text-\[#55430a\]/);
   assert.match(warning, /shadow-\[inset_3px_0_0_#c99a00\]/);
   assert.match(warning, /\bpy-2\b(?!\.)/, "the completion row should keep its original vertical padding");
-  assert.equal((html.match(/data-safety-limit-kind="standard"/g) ?? []).length, 3);
+  assert.equal((html.match(/data-safety-limit-kind="standard"/g) ?? []).length, 2);
+  assert.equal((html.match(/data-safety-limit-kind="completion-verification"/g) ?? []).length, 1);
   assert.doesNotMatch(html, /data-safety-limit-kind="temporary-boundary"/, "the Master completion warning is not a temporary boundary");
 
   assert.deepEqual(

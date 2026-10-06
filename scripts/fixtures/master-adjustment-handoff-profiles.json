@@ -1,0 +1,1188 @@
+{
+  "adjust_right_elbow": [
+    {
+      "name": "Relative degrees at default timing",
+      "syntax": "Agentech.adjust_right_elbow(degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Relative degrees with custom duration",
+      "syntax": "Agentech.adjust_right_elbow(degrees=delta, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Relative degrees with assisting torque at default timing",
+      "syntax": "Agentech.adjust_right_elbow(degrees=delta, torque=torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Relative degrees with assisting torque with custom duration",
+      "syntax": "Agentech.adjust_right_elbow(degrees=delta, torque=torque, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Relative degrees with resisting torque at default timing",
+      "syntax": "Agentech.adjust_right_elbow(degrees=delta, torque=-torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Relative degrees with resisting torque with custom duration",
+      "syntax": "Agentech.adjust_right_elbow(degrees=delta, torque=-torque, duration_seconds=duration)",
+      "status": "SDK request"
+    }
+  ],
+  "adjust_left_elbow": [
+    {
+      "name": "Relative degrees at default timing",
+      "syntax": "Agentech.adjust_left_elbow(degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Relative degrees with custom duration",
+      "syntax": "Agentech.adjust_left_elbow(degrees=delta, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Relative degrees with assisting torque at default timing",
+      "syntax": "Agentech.adjust_left_elbow(degrees=delta, torque=torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Relative degrees with assisting torque with custom duration",
+      "syntax": "Agentech.adjust_left_elbow(degrees=delta, torque=torque, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Relative degrees with resisting torque at default timing",
+      "syntax": "Agentech.adjust_left_elbow(degrees=delta, torque=-torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Relative degrees with resisting torque with custom duration",
+      "syntax": "Agentech.adjust_left_elbow(degrees=delta, torque=-torque, duration_seconds=duration)",
+      "status": "SDK request"
+    }
+  ],
+  "adjust_elbow": [
+    {
+      "name": "Right / degrees / default / omit torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / degrees / default / assist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", degrees=delta, torque=torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / degrees / default / resist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", degrees=delta, torque=-torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / degrees / duration / omit torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", degrees=delta, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / degrees / duration / assist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", degrees=delta, duration_seconds=duration, torque=torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / degrees / duration / resist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", degrees=delta, duration_seconds=duration, torque=-torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / degrees / speed / omit torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", degrees=delta, speed=speed)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / degrees / speed / assist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", degrees=delta, speed=speed, torque=torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / degrees / speed / resist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", degrees=delta, speed=speed, torque=-torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / position / default / omit torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", position=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / position / default / assist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", position=delta, torque=torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / position / default / resist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", position=delta, torque=-torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / position / duration / omit torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", position=delta, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / position / duration / assist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", position=delta, duration_seconds=duration, torque=torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / position / duration / resist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", position=delta, duration_seconds=duration, torque=-torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / position / speed / omit torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", position=delta, speed=speed)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / position / speed / assist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", position=delta, speed=speed, torque=torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right / position / speed / resist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"right\", position=delta, speed=speed, torque=-torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / degrees / default / omit torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / degrees / default / assist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", degrees=delta, torque=torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / degrees / default / resist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", degrees=delta, torque=-torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / degrees / duration / omit torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", degrees=delta, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / degrees / duration / assist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", degrees=delta, duration_seconds=duration, torque=torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / degrees / duration / resist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", degrees=delta, duration_seconds=duration, torque=-torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / degrees / speed / omit torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", degrees=delta, speed=speed)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / degrees / speed / assist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", degrees=delta, speed=speed, torque=torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / degrees / speed / resist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", degrees=delta, speed=speed, torque=-torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / position / default / omit torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", position=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / position / default / assist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", position=delta, torque=torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / position / default / resist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", position=delta, torque=-torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / position / duration / omit torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", position=delta, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / position / duration / assist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", position=delta, duration_seconds=duration, torque=torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / position / duration / resist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", position=delta, duration_seconds=duration, torque=-torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / position / speed / omit torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", position=delta, speed=speed)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / position / speed / assist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", position=delta, speed=speed, torque=torque)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left / position / speed / resist torque",
+      "syntax": "Agentech.adjust_elbow(side=\"left\", position=delta, speed=speed, torque=-torque)",
+      "status": "SDK request"
+    }
+  ],
+  "adjust_both_elbows": [
+    {
+      "name": "Both elbows relative degrees at default timing",
+      "syntax": "Agentech.adjust_both_elbows(degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Both elbows relative degrees with custom duration",
+      "syntax": "Agentech.adjust_both_elbows(degrees=delta, duration_seconds=duration)",
+      "status": "SDK request"
+    }
+  ],
+  "move_elbows_to": [
+    {
+      "name": "Both elbows absolute target at default timing",
+      "syntax": "Agentech.move_elbows_to(degrees=target)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Both elbows absolute target with custom duration",
+      "syntax": "Agentech.move_elbows_to(degrees=target, duration_seconds=duration)",
+      "status": "SDK request"
+    }
+  ],
+  "adjust_right_shoulder": [
+    {
+      "name": "Pitch at default timing",
+      "syntax": "Agentech.adjust_right_shoulder(axis=\"pitch\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch with custom duration",
+      "syntax": "Agentech.adjust_right_shoulder(axis=\"pitch\", degrees=delta, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll at default timing",
+      "syntax": "Agentech.adjust_right_shoulder(axis=\"roll\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll with custom duration",
+      "syntax": "Agentech.adjust_right_shoulder(axis=\"roll\", degrees=delta, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Yaw at default timing",
+      "syntax": "Agentech.adjust_right_shoulder(axis=\"yaw\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Yaw with custom duration",
+      "syntax": "Agentech.adjust_right_shoulder(axis=\"yaw\", degrees=delta, duration_seconds=duration)",
+      "status": "SDK request"
+    }
+  ],
+  "adjust_left_shoulder": [
+    {
+      "name": "Pitch at default timing",
+      "syntax": "Agentech.adjust_left_shoulder(axis=\"pitch\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch with custom duration",
+      "syntax": "Agentech.adjust_left_shoulder(axis=\"pitch\", degrees=delta, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll at default timing",
+      "syntax": "Agentech.adjust_left_shoulder(axis=\"roll\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll with custom duration",
+      "syntax": "Agentech.adjust_left_shoulder(axis=\"roll\", degrees=delta, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Yaw at default timing",
+      "syntax": "Agentech.adjust_left_shoulder(axis=\"yaw\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Yaw with custom duration",
+      "syntax": "Agentech.adjust_left_shoulder(axis=\"yaw\", degrees=delta, duration_seconds=duration)",
+      "status": "SDK request"
+    }
+  ],
+  "adjust_right_wrist": [
+    {
+      "name": "Roll named axes",
+      "syntax": "Agentech.adjust_right_wrist(roll=roll_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch named axes",
+      "syntax": "Agentech.adjust_right_wrist(pitch=pitch_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Yaw named axes",
+      "syntax": "Agentech.adjust_right_wrist(yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Pitch named axes",
+      "syntax": "Agentech.adjust_right_wrist(roll=roll_delta, pitch=pitch_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Yaw named axes",
+      "syntax": "Agentech.adjust_right_wrist(roll=roll_delta, yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch + Yaw named axes",
+      "syntax": "Agentech.adjust_right_wrist(pitch=pitch_delta, yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Pitch + Yaw named axes",
+      "syntax": "Agentech.adjust_right_wrist(roll=roll_delta, pitch=pitch_delta, yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll axis and degrees selector",
+      "syntax": "Agentech.adjust_right_wrist(axis=\"roll\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch axis and degrees selector",
+      "syntax": "Agentech.adjust_right_wrist(axis=\"pitch\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Yaw axis and degrees selector",
+      "syntax": "Agentech.adjust_right_wrist(axis=\"yaw\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Same delta on all three axes",
+      "syntax": "Agentech.adjust_right_wrist(delta)",
+      "status": "SDK request"
+    }
+  ],
+  "adjust_left_wrist": [
+    {
+      "name": "Roll named axes",
+      "syntax": "Agentech.adjust_left_wrist(roll=roll_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch named axes",
+      "syntax": "Agentech.adjust_left_wrist(pitch=pitch_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Yaw named axes",
+      "syntax": "Agentech.adjust_left_wrist(yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Pitch named axes",
+      "syntax": "Agentech.adjust_left_wrist(roll=roll_delta, pitch=pitch_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Yaw named axes",
+      "syntax": "Agentech.adjust_left_wrist(roll=roll_delta, yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch + Yaw named axes",
+      "syntax": "Agentech.adjust_left_wrist(pitch=pitch_delta, yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Pitch + Yaw named axes",
+      "syntax": "Agentech.adjust_left_wrist(roll=roll_delta, pitch=pitch_delta, yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll axis and degrees selector",
+      "syntax": "Agentech.adjust_left_wrist(axis=\"roll\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch axis and degrees selector",
+      "syntax": "Agentech.adjust_left_wrist(axis=\"pitch\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Yaw axis and degrees selector",
+      "syntax": "Agentech.adjust_left_wrist(axis=\"yaw\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Same delta on all three axes",
+      "syntax": "Agentech.adjust_left_wrist(delta)",
+      "status": "SDK request"
+    }
+  ],
+  "adjust_wrist": [
+    {
+      "name": "Roll named axes",
+      "syntax": "Agentech.adjust_wrist(roll=roll_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch named axes",
+      "syntax": "Agentech.adjust_wrist(pitch=pitch_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Yaw named axes",
+      "syntax": "Agentech.adjust_wrist(yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Pitch named axes",
+      "syntax": "Agentech.adjust_wrist(roll=roll_delta, pitch=pitch_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Yaw named axes",
+      "syntax": "Agentech.adjust_wrist(roll=roll_delta, yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch + Yaw named axes",
+      "syntax": "Agentech.adjust_wrist(pitch=pitch_delta, yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Pitch + Yaw named axes",
+      "syntax": "Agentech.adjust_wrist(roll=roll_delta, pitch=pitch_delta, yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll axis and degrees selector",
+      "syntax": "Agentech.adjust_wrist(axis=\"roll\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch axis and degrees selector",
+      "syntax": "Agentech.adjust_wrist(axis=\"pitch\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Yaw axis and degrees selector",
+      "syntax": "Agentech.adjust_wrist(axis=\"yaw\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Same delta on all three axes",
+      "syntax": "Agentech.adjust_wrist(delta)",
+      "status": "SDK request"
+    }
+  ],
+  "adjust_waist": [
+    {
+      "name": "Roll named axes with default maximum duration",
+      "syntax": "Agentech.adjust_waist(roll=roll_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll named axes with custom maximum duration",
+      "syntax": "Agentech.adjust_waist(roll=roll_delta, max_duration_seconds=max_duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch named axes with default maximum duration",
+      "syntax": "Agentech.adjust_waist(pitch=pitch_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch named axes with custom maximum duration",
+      "syntax": "Agentech.adjust_waist(pitch=pitch_delta, max_duration_seconds=max_duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Yaw named axes with default maximum duration",
+      "syntax": "Agentech.adjust_waist(yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Yaw named axes with custom maximum duration",
+      "syntax": "Agentech.adjust_waist(yaw=yaw_delta, max_duration_seconds=max_duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Pitch named axes with default maximum duration",
+      "syntax": "Agentech.adjust_waist(roll=roll_delta, pitch=pitch_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Pitch named axes with custom maximum duration",
+      "syntax": "Agentech.adjust_waist(roll=roll_delta, pitch=pitch_delta, max_duration_seconds=max_duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Yaw named axes with default maximum duration",
+      "syntax": "Agentech.adjust_waist(roll=roll_delta, yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Yaw named axes with custom maximum duration",
+      "syntax": "Agentech.adjust_waist(roll=roll_delta, yaw=yaw_delta, max_duration_seconds=max_duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch + Yaw named axes with default maximum duration",
+      "syntax": "Agentech.adjust_waist(pitch=pitch_delta, yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch + Yaw named axes with custom maximum duration",
+      "syntax": "Agentech.adjust_waist(pitch=pitch_delta, yaw=yaw_delta, max_duration_seconds=max_duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Pitch + Yaw named axes with default maximum duration",
+      "syntax": "Agentech.adjust_waist(roll=roll_delta, pitch=pitch_delta, yaw=yaw_delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll + Pitch + Yaw named axes with custom maximum duration",
+      "syntax": "Agentech.adjust_waist(roll=roll_delta, pitch=pitch_delta, yaw=yaw_delta, max_duration_seconds=max_duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Yaw selector with default maximum duration",
+      "syntax": "Agentech.adjust_waist(axis=\"yaw\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Yaw selector with custom maximum duration",
+      "syntax": "Agentech.adjust_waist(axis=\"yaw\", degrees=delta, max_duration_seconds=max_duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch selector with default maximum duration",
+      "syntax": "Agentech.adjust_waist(axis=\"pitch\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Pitch selector with custom maximum duration",
+      "syntax": "Agentech.adjust_waist(axis=\"pitch\", degrees=delta, max_duration_seconds=max_duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll selector with default maximum duration",
+      "syntax": "Agentech.adjust_waist(axis=\"roll\", degrees=delta)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll selector with custom maximum duration",
+      "syntax": "Agentech.adjust_waist(axis=\"roll\", degrees=delta, max_duration_seconds=max_duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Roll with checked starting pose",
+      "syntax": "Agentech.adjust_waist(roll=roll_delta, expected_start_degrees={\"roll\": roll_start})",
+      "status": "Engineering start check"
+    },
+    {
+      "name": "Pitch with checked starting pose",
+      "syntax": "Agentech.adjust_waist(pitch=pitch_delta, expected_start_degrees={\"pitch\": pitch_start})",
+      "status": "Engineering start check"
+    },
+    {
+      "name": "Yaw with checked starting pose",
+      "syntax": "Agentech.adjust_waist(yaw=yaw_delta, expected_start_degrees={\"yaw\": yaw_start})",
+      "status": "Engineering start check"
+    },
+    {
+      "name": "Roll + Pitch with checked starting pose",
+      "syntax": "Agentech.adjust_waist(roll=roll_delta, pitch=pitch_delta, expected_start_degrees={\"roll\": roll_start, \"pitch\": pitch_start})",
+      "status": "Engineering start check"
+    },
+    {
+      "name": "Roll + Yaw with checked starting pose",
+      "syntax": "Agentech.adjust_waist(roll=roll_delta, yaw=yaw_delta, expected_start_degrees={\"roll\": roll_start, \"yaw\": yaw_start})",
+      "status": "Engineering start check"
+    },
+    {
+      "name": "Pitch + Yaw with checked starting pose",
+      "syntax": "Agentech.adjust_waist(pitch=pitch_delta, yaw=yaw_delta, expected_start_degrees={\"pitch\": pitch_start, \"yaw\": yaw_start})",
+      "status": "Engineering start check"
+    },
+    {
+      "name": "Roll + Pitch + Yaw with checked starting pose",
+      "syntax": "Agentech.adjust_waist(roll=roll_delta, pitch=pitch_delta, yaw=yaw_delta, expected_start_degrees={\"roll\": roll_start, \"pitch\": pitch_start, \"yaw\": yaw_start})",
+      "status": "Engineering start check"
+    }
+  ],
+  "return_waist_to_neutral": [
+    {
+      "name": "Default maximum duration",
+      "syntax": "Agentech.return_waist_to_neutral()",
+      "status": "SDK request"
+    },
+    {
+      "name": "Custom maximum duration",
+      "syntax": "Agentech.return_waist_to_neutral(max_duration_seconds=max_duration)",
+      "status": "SDK request"
+    }
+  ],
+  "undo_waist": [
+    {
+      "name": "Verified movement with default maximum duration",
+      "syntax": "Agentech.undo_waist(movement)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Verified movement with custom maximum duration",
+      "syntax": "Agentech.undo_waist(movement, max_duration_seconds=max_duration)",
+      "status": "SDK request"
+    }
+  ],
+  "adjust_upper_body": [
+    {
+      "name": "Waist",
+      "syntax": "Agentech.adjust_upper_body(waist=waist_deltas)",
+      "status": "Plan only / Under Development"
+    },
+    {
+      "name": "Right Arm",
+      "syntax": "Agentech.adjust_upper_body(right_arm=right_deltas)",
+      "status": "Plan only / Under Development"
+    },
+    {
+      "name": "Left Arm",
+      "syntax": "Agentech.adjust_upper_body(left_arm=left_deltas)",
+      "status": "Plan only / Under Development"
+    },
+    {
+      "name": "Waist + Right Arm",
+      "syntax": "Agentech.adjust_upper_body(waist=waist_deltas, right_arm=right_deltas)",
+      "status": "Plan only / Under Development"
+    },
+    {
+      "name": "Waist + Left Arm",
+      "syntax": "Agentech.adjust_upper_body(waist=waist_deltas, left_arm=left_deltas)",
+      "status": "Plan only / Under Development"
+    },
+    {
+      "name": "Right Arm + Left Arm",
+      "syntax": "Agentech.adjust_upper_body(right_arm=right_deltas, left_arm=left_deltas)",
+      "status": "Plan only / Under Development"
+    },
+    {
+      "name": "Waist + Right Arm + Left Arm",
+      "syntax": "Agentech.adjust_upper_body(waist=waist_deltas, right_arm=right_deltas, left_arm=left_deltas)",
+      "status": "Plan only / Under Development"
+    },
+    {
+      "name": "Both elbows without waist",
+      "syntax": "Agentech.adjust_upper_body(both_elbows=delta)",
+      "status": "Plan only / Under Development"
+    },
+    {
+      "name": "Waist roll plus both elbows at default timing",
+      "syntax": "Agentech.adjust_upper_body(waist={\"roll\": roll_delta}, both_elbows=delta)",
+      "status": "Existing live route; qualification applies"
+    },
+    {
+      "name": "Waist roll plus both elbows with custom duration",
+      "syntax": "Agentech.adjust_upper_body(waist={\"roll\": roll_delta}, both_elbows=delta, duration_seconds=duration)",
+      "status": "Existing live route; qualification applies"
+    },
+    {
+      "name": "Waist pitch plus both elbows at default timing",
+      "syntax": "Agentech.adjust_upper_body(waist={\"pitch\": pitch_delta}, both_elbows=delta)",
+      "status": "Existing live route; qualification applies"
+    },
+    {
+      "name": "Waist pitch plus both elbows with custom duration",
+      "syntax": "Agentech.adjust_upper_body(waist={\"pitch\": pitch_delta}, both_elbows=delta, duration_seconds=duration)",
+      "status": "Existing live route; qualification applies"
+    },
+    {
+      "name": "Waist yaw plus both elbows at default timing",
+      "syntax": "Agentech.adjust_upper_body(waist={\"yaw\": yaw_delta}, both_elbows=delta)",
+      "status": "Existing live route; qualification applies"
+    },
+    {
+      "name": "Waist yaw plus both elbows with custom duration",
+      "syntax": "Agentech.adjust_upper_body(waist={\"yaw\": yaw_delta}, both_elbows=delta, duration_seconds=duration)",
+      "status": "Existing live route; qualification applies"
+    },
+    {
+      "name": "Waist roll + pitch plus both elbows at default timing",
+      "syntax": "Agentech.adjust_upper_body(waist={\"roll\": roll_delta, \"pitch\": pitch_delta}, both_elbows=delta)",
+      "status": "Existing live route; qualification applies"
+    },
+    {
+      "name": "Waist roll + pitch plus both elbows with custom duration",
+      "syntax": "Agentech.adjust_upper_body(waist={\"roll\": roll_delta, \"pitch\": pitch_delta}, both_elbows=delta, duration_seconds=duration)",
+      "status": "Existing live route; qualification applies"
+    },
+    {
+      "name": "Waist roll + yaw plus both elbows at default timing",
+      "syntax": "Agentech.adjust_upper_body(waist={\"roll\": roll_delta, \"yaw\": yaw_delta}, both_elbows=delta)",
+      "status": "Existing live route; qualification applies"
+    },
+    {
+      "name": "Waist roll + yaw plus both elbows with custom duration",
+      "syntax": "Agentech.adjust_upper_body(waist={\"roll\": roll_delta, \"yaw\": yaw_delta}, both_elbows=delta, duration_seconds=duration)",
+      "status": "Existing live route; qualification applies"
+    },
+    {
+      "name": "Waist pitch + yaw plus both elbows at default timing",
+      "syntax": "Agentech.adjust_upper_body(waist={\"pitch\": pitch_delta, \"yaw\": yaw_delta}, both_elbows=delta)",
+      "status": "Existing live route; qualification applies"
+    },
+    {
+      "name": "Waist pitch + yaw plus both elbows with custom duration",
+      "syntax": "Agentech.adjust_upper_body(waist={\"pitch\": pitch_delta, \"yaw\": yaw_delta}, both_elbows=delta, duration_seconds=duration)",
+      "status": "Existing live route; qualification applies"
+    },
+    {
+      "name": "Waist roll + pitch + yaw plus both elbows at default timing",
+      "syntax": "Agentech.adjust_upper_body(waist={\"roll\": roll_delta, \"pitch\": pitch_delta, \"yaw\": yaw_delta}, both_elbows=delta)",
+      "status": "Existing live route; qualification applies"
+    },
+    {
+      "name": "Waist roll + pitch + yaw plus both elbows with custom duration",
+      "syntax": "Agentech.adjust_upper_body(waist={\"roll\": roll_delta, \"pitch\": pitch_delta, \"yaw\": yaw_delta}, both_elbows=delta, duration_seconds=duration)",
+      "status": "Existing live route; qualification applies"
+    }
+  ],
+  "move_arms_to": [
+    {
+      "name": "Right shoulder pitch at default timing",
+      "syntax": "Agentech.move_arms_to(right={\"shoulder_pitch\": target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right shoulder pitch with custom duration",
+      "syntax": "Agentech.move_arms_to(right={\"shoulder_pitch\": target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right shoulder roll at default timing",
+      "syntax": "Agentech.move_arms_to(right={\"shoulder_roll\": target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right shoulder roll with custom duration",
+      "syntax": "Agentech.move_arms_to(right={\"shoulder_roll\": target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right shoulder yaw at default timing",
+      "syntax": "Agentech.move_arms_to(right={\"shoulder_yaw\": target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right shoulder yaw with custom duration",
+      "syntax": "Agentech.move_arms_to(right={\"shoulder_yaw\": target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right elbow at default timing",
+      "syntax": "Agentech.move_arms_to(right={\"elbow\": target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right elbow with custom duration",
+      "syntax": "Agentech.move_arms_to(right={\"elbow\": target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right wrist yaw at default timing",
+      "syntax": "Agentech.move_arms_to(right={\"wrist_yaw\": target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right wrist yaw with custom duration",
+      "syntax": "Agentech.move_arms_to(right={\"wrist_yaw\": target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right wrist pitch at default timing",
+      "syntax": "Agentech.move_arms_to(right={\"wrist_pitch\": target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right wrist pitch with custom duration",
+      "syntax": "Agentech.move_arms_to(right={\"wrist_pitch\": target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right wrist roll at default timing",
+      "syntax": "Agentech.move_arms_to(right={\"wrist_roll\": target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right wrist roll with custom duration",
+      "syntax": "Agentech.move_arms_to(right={\"wrist_roll\": target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right all shoulder axes at default timing",
+      "syntax": "Agentech.move_arms_to(right={\"shoulder_pitch\": shoulder_pitch_target, \"shoulder_roll\": shoulder_roll_target, \"shoulder_yaw\": shoulder_yaw_target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right all shoulder axes with custom duration",
+      "syntax": "Agentech.move_arms_to(right={\"shoulder_pitch\": shoulder_pitch_target, \"shoulder_roll\": shoulder_roll_target, \"shoulder_yaw\": shoulder_yaw_target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right all wrist axes at default timing",
+      "syntax": "Agentech.move_arms_to(right={\"wrist_yaw\": wrist_yaw_target, \"wrist_pitch\": wrist_pitch_target, \"wrist_roll\": wrist_roll_target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right all wrist axes with custom duration",
+      "syntax": "Agentech.move_arms_to(right={\"wrist_yaw\": wrist_yaw_target, \"wrist_pitch\": wrist_pitch_target, \"wrist_roll\": wrist_roll_target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right all seven joints at default timing",
+      "syntax": "Agentech.move_arms_to(right={\"shoulder_pitch\": shoulder_pitch_target, \"shoulder_roll\": shoulder_roll_target, \"shoulder_yaw\": shoulder_yaw_target, \"elbow\": elbow_target, \"wrist_yaw\": wrist_yaw_target, \"wrist_pitch\": wrist_pitch_target, \"wrist_roll\": wrist_roll_target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right all seven joints with custom duration",
+      "syntax": "Agentech.move_arms_to(right={\"shoulder_pitch\": shoulder_pitch_target, \"shoulder_roll\": shoulder_roll_target, \"shoulder_yaw\": shoulder_yaw_target, \"elbow\": elbow_target, \"wrist_yaw\": wrist_yaw_target, \"wrist_pitch\": wrist_pitch_target, \"wrist_roll\": wrist_roll_target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right arbitrary partial joint selection at default timing",
+      "syntax": "Agentech.move_arms_to(right=right_targets)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Right arbitrary partial joint selection with custom duration",
+      "syntax": "Agentech.move_arms_to(right=right_targets, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left shoulder pitch at default timing",
+      "syntax": "Agentech.move_arms_to(left={\"shoulder_pitch\": target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left shoulder pitch with custom duration",
+      "syntax": "Agentech.move_arms_to(left={\"shoulder_pitch\": target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left shoulder roll at default timing",
+      "syntax": "Agentech.move_arms_to(left={\"shoulder_roll\": target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left shoulder roll with custom duration",
+      "syntax": "Agentech.move_arms_to(left={\"shoulder_roll\": target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left shoulder yaw at default timing",
+      "syntax": "Agentech.move_arms_to(left={\"shoulder_yaw\": target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left shoulder yaw with custom duration",
+      "syntax": "Agentech.move_arms_to(left={\"shoulder_yaw\": target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left elbow at default timing",
+      "syntax": "Agentech.move_arms_to(left={\"elbow\": target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left elbow with custom duration",
+      "syntax": "Agentech.move_arms_to(left={\"elbow\": target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left wrist yaw at default timing",
+      "syntax": "Agentech.move_arms_to(left={\"wrist_yaw\": target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left wrist yaw with custom duration",
+      "syntax": "Agentech.move_arms_to(left={\"wrist_yaw\": target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left wrist pitch at default timing",
+      "syntax": "Agentech.move_arms_to(left={\"wrist_pitch\": target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left wrist pitch with custom duration",
+      "syntax": "Agentech.move_arms_to(left={\"wrist_pitch\": target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left wrist roll at default timing",
+      "syntax": "Agentech.move_arms_to(left={\"wrist_roll\": target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left wrist roll with custom duration",
+      "syntax": "Agentech.move_arms_to(left={\"wrist_roll\": target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left all shoulder axes at default timing",
+      "syntax": "Agentech.move_arms_to(left={\"shoulder_pitch\": shoulder_pitch_target, \"shoulder_roll\": shoulder_roll_target, \"shoulder_yaw\": shoulder_yaw_target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left all shoulder axes with custom duration",
+      "syntax": "Agentech.move_arms_to(left={\"shoulder_pitch\": shoulder_pitch_target, \"shoulder_roll\": shoulder_roll_target, \"shoulder_yaw\": shoulder_yaw_target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left all wrist axes at default timing",
+      "syntax": "Agentech.move_arms_to(left={\"wrist_yaw\": wrist_yaw_target, \"wrist_pitch\": wrist_pitch_target, \"wrist_roll\": wrist_roll_target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left all wrist axes with custom duration",
+      "syntax": "Agentech.move_arms_to(left={\"wrist_yaw\": wrist_yaw_target, \"wrist_pitch\": wrist_pitch_target, \"wrist_roll\": wrist_roll_target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left all seven joints at default timing",
+      "syntax": "Agentech.move_arms_to(left={\"shoulder_pitch\": shoulder_pitch_target, \"shoulder_roll\": shoulder_roll_target, \"shoulder_yaw\": shoulder_yaw_target, \"elbow\": elbow_target, \"wrist_yaw\": wrist_yaw_target, \"wrist_pitch\": wrist_pitch_target, \"wrist_roll\": wrist_roll_target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left all seven joints with custom duration",
+      "syntax": "Agentech.move_arms_to(left={\"shoulder_pitch\": shoulder_pitch_target, \"shoulder_roll\": shoulder_roll_target, \"shoulder_yaw\": shoulder_yaw_target, \"elbow\": elbow_target, \"wrist_yaw\": wrist_yaw_target, \"wrist_pitch\": wrist_pitch_target, \"wrist_roll\": wrist_roll_target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left arbitrary partial joint selection at default timing",
+      "syntax": "Agentech.move_arms_to(left=left_targets)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Left arbitrary partial joint selection with custom duration",
+      "syntax": "Agentech.move_arms_to(left=left_targets, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Both elbows at default timing",
+      "syntax": "Agentech.move_arms_to(right={\"elbow\": right_target}, left={\"elbow\": left_target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Both elbows with custom duration",
+      "syntax": "Agentech.move_arms_to(right={\"elbow\": right_target}, left={\"elbow\": left_target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Both shoulders at default timing",
+      "syntax": "Agentech.move_arms_to(right=right_shoulder_targets, left=left_shoulder_targets)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Both shoulders with custom duration",
+      "syntax": "Agentech.move_arms_to(right=right_shoulder_targets, left=left_shoulder_targets, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Both wrists at default timing",
+      "syntax": "Agentech.move_arms_to(right=right_wrist_targets, left=left_wrist_targets)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Both wrists with custom duration",
+      "syntax": "Agentech.move_arms_to(right=right_wrist_targets, left=left_wrist_targets, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Both full arms at default timing",
+      "syntax": "Agentech.move_arms_to(right=right_full_targets, left=left_full_targets)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Both full arms with custom duration",
+      "syntax": "Agentech.move_arms_to(right=right_full_targets, left=left_full_targets, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Different joints on each side at default timing",
+      "syntax": "Agentech.move_arms_to(right={\"elbow\": right_target}, left={\"wrist_yaw\": left_target})",
+      "status": "SDK request"
+    },
+    {
+      "name": "Different joints on each side with custom duration",
+      "syntax": "Agentech.move_arms_to(right={\"elbow\": right_target}, left={\"wrist_yaw\": left_target}, duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Independent partial selections at default timing",
+      "syntax": "Agentech.move_arms_to(right=right_targets, left=left_targets)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Independent partial selections with custom duration",
+      "syntax": "Agentech.move_arms_to(right=right_targets, left=left_targets, duration_seconds=duration)",
+      "status": "SDK request"
+    }
+  ],
+  "mirror_arm_pose": [
+    {
+      "name": "Mirror from right at default timing",
+      "syntax": "Agentech.mirror_arm_pose(source_side=\"right\")",
+      "status": "SDK request"
+    },
+    {
+      "name": "Mirror from right with custom duration",
+      "syntax": "Agentech.mirror_arm_pose(source_side=\"right\", duration_seconds=duration)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Mirror from left at default timing",
+      "syntax": "Agentech.mirror_arm_pose(source_side=\"left\")",
+      "status": "SDK request"
+    },
+    {
+      "name": "Mirror from left with custom duration",
+      "syntax": "Agentech.mirror_arm_pose(source_side=\"left\", duration_seconds=duration)",
+      "status": "SDK request"
+    }
+  ],
+  "move_mirrored_arms_to": [
+    {
+      "name": "Complete mirrored seven-joint target at default timing",
+      "syntax": "Agentech.move_mirrored_arms_to(targets)",
+      "status": "SDK request"
+    },
+    {
+      "name": "Complete mirrored seven-joint target with custom duration",
+      "syntax": "Agentech.move_mirrored_arms_to(targets, duration_seconds=duration)",
+      "status": "SDK request"
+    }
+  ],
+  "stiff": [
+    {
+      "name": "Soft / both at default timing",
+      "syntax": "Agentech.stiff(level=\"soft\", side=\"both\")",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Soft / both with custom duration",
+      "syntax": "Agentech.stiff(level=\"soft\", side=\"both\", duration_seconds=duration)",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Soft / right at default timing",
+      "syntax": "Agentech.stiff(level=\"soft\", side=\"right\")",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Soft / right with custom duration",
+      "syntax": "Agentech.stiff(level=\"soft\", side=\"right\", duration_seconds=duration)",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Soft / left at default timing",
+      "syntax": "Agentech.stiff(level=\"soft\", side=\"left\")",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Soft / left with custom duration",
+      "syntax": "Agentech.stiff(level=\"soft\", side=\"left\", duration_seconds=duration)",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Medium / both at default timing",
+      "syntax": "Agentech.stiff(level=\"medium\", side=\"both\")",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Medium / both with custom duration",
+      "syntax": "Agentech.stiff(level=\"medium\", side=\"both\", duration_seconds=duration)",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Medium / right at default timing",
+      "syntax": "Agentech.stiff(level=\"medium\", side=\"right\")",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Medium / right with custom duration",
+      "syntax": "Agentech.stiff(level=\"medium\", side=\"right\", duration_seconds=duration)",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Medium / left at default timing",
+      "syntax": "Agentech.stiff(level=\"medium\", side=\"left\")",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Medium / left with custom duration",
+      "syntax": "Agentech.stiff(level=\"medium\", side=\"left\", duration_seconds=duration)",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Hard / both at default timing",
+      "syntax": "Agentech.stiff(level=\"hard\", side=\"both\")",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Hard / both with custom duration",
+      "syntax": "Agentech.stiff(level=\"hard\", side=\"both\", duration_seconds=duration)",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Hard / right at default timing",
+      "syntax": "Agentech.stiff(level=\"hard\", side=\"right\")",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Hard / right with custom duration",
+      "syntax": "Agentech.stiff(level=\"hard\", side=\"right\", duration_seconds=duration)",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Hard / left at default timing",
+      "syntax": "Agentech.stiff(level=\"hard\", side=\"left\")",
+      "status": "Proposed API / Under Development"
+    },
+    {
+      "name": "Hard / left with custom duration",
+      "syntax": "Agentech.stiff(level=\"hard\", side=\"left\", duration_seconds=duration)",
+      "status": "Proposed API / Under Development"
+    }
+  ]
+}

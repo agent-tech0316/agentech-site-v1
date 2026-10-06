@@ -1,0 +1,26 @@
+{
+  "capturedOn": "2026-09-17",
+  "source": "/agibot/software/mc_param/robot/lx2501_3_t2d5/robot_model.yaml",
+  "sourceSha256": "614b0644976204e4f458f2c3a9d6f92f9a463730ddcaec5bc1cbdd9748727670",
+  "maxEffortNm": {
+    "waist_yaw_joint": 120,
+    "waist_pitch_joint": 48,
+    "waist_roll_joint": 48,
+    "head_yaw_joint": 2.6,
+    "head_pitch_joint": 0.6,
+    "left_shoulder_pitch_joint": 36,
+    "left_shoulder_roll_joint": 36,
+    "left_shoulder_yaw_joint": 24,
+    "left_elbow_joint": 24,
+    "left_wrist_yaw_joint": 24,
+    "left_wrist_pitch_joint": 4.8,
+    "left_wrist_roll_joint": 4.8,
+    "right_shoulder_pitch_joint": 36,
+    "right_shoulder_roll_joint": 36,
+    "right_shoulder_yaw_joint": 24,
+    "right_elbow_joint": 24,
+    "right_wrist_yaw_joint": 24,
+    "right_wrist_pitch_joint": 4.8,
+    "right_wrist_roll_joint": 4.8
+  }
+}

@@ -883,7 +883,8 @@ select {
   border-color: #008a7a !important;
 }
 
-:root[data-theme="dark"] .eaic-task-theme [data-sdk-profile-placeholder="true"] {
+:root[data-theme="dark"] .eaic-task-theme [data-sdk-profile-placeholder="true"],
+:root[data-theme="dark"] .eaic-task-theme [data-sdk-profile-value="true"] {
   color: #c4b5fd !important;
 }
 
