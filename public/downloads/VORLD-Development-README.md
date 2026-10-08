@@ -1,6 +1,6 @@
 # VORLD development
 
-VORLD is Agentech's Electron desktop app for AI chat, robot controls, cameras, and headband connections. This guide covers the Windows source for version 0.45.0, Build 51.
+VORLD is Agentech's Electron desktop app for AI chat, robot controls, cameras, and headband connections. This guide covers the Windows source for version 0.46.0, Build 52.
 
 ## Install the app
 
@@ -8,7 +8,7 @@ Download the Windows x64 installer from https://www.agent-tech.ai/agentech-produ
 
 ## Run from source
 
-You need Windows x64, Node.js 24 with npm, and the VORLD app source supplied by Agentech. The installer and the website repository's automatic GitHub source archives do not contain the desktop development project.
+You need Windows x64 and Node.js 24 with npm. The desktop source is in `apps/vorld/desktop` in the Agentech SDK repository. The installer and the website repository's automatic GitHub source archives do not contain the desktop development project. Native Windows runtime bundles are supplied separately for packaging.
 
 Open PowerShell in the app source folder containing `package.json` and `main.cjs`:
 
@@ -67,4 +67,12 @@ Upload the tested installer as a GitHub release asset, verify its size and SHA-2
 
 ## SDK availability audit
 
-See [the SDK audit](./VORLD-SDK-Audit.md) for the pinned GitHub comparison and bundled runtime version gaps. Run `npm.cmd run generate:sdk` to regenerate the supported catalog.
+See `SDK-AUDIT.md` for the pinned GitHub comparison and bundled runtime version gaps. Run `npm.cmd run generate:sdk` to regenerate the supported catalog.
+
+## Product showcase
+
+Open **Showcase** in the sidebar, select a product, confirm the current supported robot and clear arm paths, then choose **Showcase**. The configured local Spatial Memory service coordinates the recorded reach, palms-up presentation, product rotation, and OBS zoom. **Return to stand hand guide** uses the same service to restore both arms and all waist axes and return the scene.
+
+The scene service must already run at `http://127.0.0.1:8768/`, with its matching Master SDK/controller deployment, a measured visual calibration, and the OBS bridge. VORLD does not install or replace a robot controller when opened. **Open scene editor** opens that local setup for products and background changes. An unavailable service keeps physical controls disabled. Timed-out commands are never automatically resent. The existing SDK Library remains available for the bundled general-purpose API; Showcase uses the separately calibrated scene service so product and camera timing stay together.
+
+Build 52 adds Showcase and its guarded local-service integration. Software verification does not qualify a new physical trajectory; follow the scene installation's recorded validation status.
