@@ -17,8 +17,8 @@
     "delete:news:source": "node scripts/delete-news-entry.mjs --mode source",
     "list:news": "node scripts/delete-news-entry.mjs --list",
     "robot:stream-bridge": "node scripts/robot-stream-bridge.mjs",
-    "test:robot-stream-bridge": "node --test scripts/robot-stream-bridge.test.mjs",
-    "test:navi-cli-gateway": "node --test scripts/navi-cli-gateway.test.mjs",
+    "test:robot-stream-bridge": "node --test scripts/robot-stream-bridge.test.mjs scripts/navi-session-handoff.test.mjs",
+    "test:navi-cli-gateway": "python -m unittest scripts.test_trusted_navi_runner -q && node --test scripts/navi-cli-gateway.test.mjs",
     "test:return-to-home-access": "node --test scripts/return-to-home-access-policy.test.mjs",
     "test:sdk-reference": "node --test scripts/sdk-reference-consistency.test.mjs scripts/master-adjustment-profiles.test.mjs",
     "test:master-simulation-previews": "node --test scripts/master-simulation-previews.test.mjs",
@@ -40,11 +40,13 @@
     "test:master-live-camera-gateway": "node --test scripts/master-live-camera-gateway.test.mjs",
     "test:master-live-test": "node --test scripts/master-live-test-access.test.mjs scripts/master-live-test-route.test.mjs scripts/master-live-test-ui.test.mjs",
     "test:master-heartbeat": "node --experimental-strip-types --test lib/master-heartbeat.test.ts scripts/master-heartbeat-route.test.mjs scripts/master-heartbeat-store.test.mjs scripts/master-heartbeat-ui.test.mjs",
-    "test": "npm run test:aegis-gateway-spec && npm run test:aegis-device-results && npm run test:aegis-runner && npm run test:session-device-results && npm run test:device-results-ui && npm run test:account-profile-selection && npm run test:site-header-visibility && npm run test:robotics-mobile-products && npm run test:robot-stream-bridge && npm run test:navi-cli-gateway && npm run test:return-to-home-access && npm run test:sdk-reference && npm run test:master-simulation-previews && npm run test:master-motor-map && npm run test:master-live-camera && npm run test:master-live-test && npm run test:master-heartbeat && npm run test:auth-sign-in",
+    "test": "npm run test:aegis-gateway-spec && npm run test:aegis-device-results && npm run test:aegis-runner && npm run test:session-device-results && npm run test:device-results-ui && npm run test:account-profile-selection && npm run test:site-header-visibility && npm run test:robotics-mobile-products && npm run test:robot-stream-bridge && npm run test:navi-cli-gateway && npm run test:return-to-home-access && npm run test:sdk-reference && npm run test:master-simulation-previews && npm run test:master-motor-map && npm run test:master-live-camera && npm run test:master-live-test && npm run test:master-heartbeat && npm run test:auth-sign-in && npm run test:robot-stream-operations && npm run test:master-session-recordings",
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "typecheck": "tsc --noEmit",
-    "check": "npm run lint && npm run typecheck && npm run build && npm run test:talents-page"
+    "check": "npm run lint && npm run typecheck && npm run build && npm run test:talents-page",
+    "test:robot-stream-operations": "node --test scripts/robot-stream-operations.test.mjs scripts/robot-stream-process.test.mjs scripts/obs-low-latency-policy.test.mjs",
+    "test:master-session-recordings": "node --experimental-strip-types --test lib/master-session-recordings.test.ts scripts/master-session-recordings-route.test.mjs && node scripts/test-master-recording-schema.mjs"
   },
   "dependencies": {
     "@foxglove/rosmsg": "5.0.5",

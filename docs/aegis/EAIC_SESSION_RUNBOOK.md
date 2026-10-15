@@ -104,7 +104,7 @@ During the authorized window, run the deployed bridge normally. For a bridge
 repair use:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/restart-robot-stream-gateway.ps1
+powershell -ExecutionPolicy Bypass -File scripts/restart-robot-stream-gateway.ps1 -ConfirmNoDueSession
 ```
 
 That script restarts only the exact Gateway bridge process. It never restarts
@@ -112,6 +112,37 @@ Windows, the robot, OBS or Camo. The watchdog retains one bridge and one OBS
 process; duplicate OBS fails closed instead of competing for the camera. The
 default bridge poll is `1000 ms` and may be configured down to `500 ms` without
 creating duplicate capture owners.
+
+Before passing `-ConfirmNoDueSession`, verify that Hub/Supabase has no due,
+staged or active booking. Both restart entry points check local session and
+cleanup state, reject active trusted runners, require one persistent watchdog
+and one bridge at the exact configured path, and wait for a replacement PID.
+Expired bookings that never launched do not block a repair solely because
+their execution result still says `pending`.
+
+For an authorized OBS profile change, first check its read-only status:
+
+```powershell
+node scripts/obs-stream-status.mjs
+.\scripts\configure-robot-stream-low-latency.ps1 -Apply -ObsProfileDirectory "<active profile directory>"
+```
+
+The configuration command requires an inactive stream and recording, verifies
+the selected active profile and its Advanced NVENC CBR encoder, saves a backup,
+then restarts OBS hidden. It verifies 1280x720 at 30 fps and reads back the
+3500 kbps configuration, one-second keyframes, preset `p3`, tune `ull`, disabled
+multipass/lookahead and zero B-frames. It does not start a stream. Changing these
+settings requires an authorized maintenance window; publication of this script
+does not apply it to a Gateway. Measure actual glass-to-glass latency during a
+separately authorized session.
+
+The focused sources [stand preflight](examples/aegis-stand-preflight.py),
+[backward smoke](examples/aegis-backward-smoke.py), and
+[forward/backward smoke](examples/aegis-forward-backward-smoke.py) can be compiled
+for review with the same offline translator. They are separate supervised
+checks, not evidence that a physical run has passed. The trusted runner rejects
+missing, non-finite or boolean locomotion measurements and persists failures;
+its minimum displacement check does not certify precise path tracking.
 
 ## 6. Expected trusted result
 

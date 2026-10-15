@@ -33,4 +33,6 @@ review_submissions/
 .master-heartbeat-runtime/
 .worktrees/
 .vercel
+supabase/.temp/
+.robot-stream-backups/
 .env*

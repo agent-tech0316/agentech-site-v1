@@ -10,7 +10,9 @@ $nvencTestPath = Join-Path $obsWorkingDirectory "obs-nvenc-test.exe"
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $nvencHealthScript = Join-Path $scriptDirectory "obs-nvenc-health.mjs"
 $obsLogDirectory = Join-Path $env:APPDATA "obs-studio\logs"
-$safeModeMarker = Join-Path $env:APPDATA "obs-studio\safe_mode"
+$obsConfigRoot = [IO.Path]::GetFullPath((Join-Path $env:APPDATA "obs-studio"))
+$safeModeMarker = Join-Path $obsConfigRoot "safe_mode"
+$uncleanShutdownMarker = Join-Path $obsConfigRoot ".sentinel"
 $logDirectory = "C:\AgentechRobotGateway\.robot-stream-logs"
 $logPath = Join-Path $logDirectory "ensure-obs-running.log"
 
@@ -79,11 +81,24 @@ if (Test-Path -LiteralPath $safeModeMarker) {
   Remove-Item -LiteralPath $safeModeMarker -Force
   Add-Content -LiteralPath $logPath -Value "[$(Get-Date -Format o)] Cleared the stale unclean-shutdown marker before launching OBS normally."
 }
+if (Test-Path -LiteralPath $uncleanShutdownMarker) {
+  $marker = Get-Item -LiteralPath $uncleanShutdownMarker -Force
+  $resolvedMarker = (Resolve-Path -LiteralPath $uncleanShutdownMarker).ProviderPath
+  $resolvedRoot = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $obsConfigRoot).ProviderPath)
+  $markerParent = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($resolvedMarker))
+  if (($marker.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+      -not $markerParent.Equals($resolvedRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to remove an OBS marker outside the exact OBS configuration directory."
+  }
+  Remove-Item -LiteralPath $resolvedMarker -Recurse -Force
+  Add-Content -LiteralPath $logPath -Value "[$(Get-Date -Format o)] Cleared the exact OBS unclean-shutdown sentinel before launch."
+}
 
 Start-Process `
   -FilePath $obsPath `
   -WorkingDirectory $obsWorkingDirectory `
-  -ArgumentList @("--minimize-to-tray")
+  -ArgumentList @("--minimize-to-tray") `
+  -WindowStyle Hidden
 
 $deadline = (Get-Date).AddSeconds(75)
 do {

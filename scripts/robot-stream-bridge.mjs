@@ -1,9 +1,14 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { createHash, createHmac } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 import OBSWebSocket from "obs-websocket-js";
+import {
+  naviLaunchBlocker, parseNaviCleanupResult, loadGatewayState, saveGatewayState,
+  selectNaviResetBaseline, reconcileNaviCleanupOutcome,
+} from "./navi-session-handoff.mjs";
 import { ensureStreamWithRecovery } from "./obs-stream-recovery.mjs";
 import {
   endSessionCleanupPolicy,
@@ -27,6 +32,8 @@ for (const key of ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ROBOT_HOST", "R
 const here = dirname(fileURLToPath(import.meta.url));
 const runtimeDir = join(here, "..", ".robot-stream-runtime");
 const stateFile = join(runtimeDir, "state.json");
+// Written only by a trusted supervised handoff, never by cached bridge state.
+const supervisedNaviBaselineFile = join(runtimeDir, "navi-supervised-baseline.json");
 const compiler = join(here, "compile-robot-plan.py");
 const trustedRunner = join(here, "trusted-robot-runner.py");
 const deviceResultsSerializer = join(here, "aegis-device-results.py");
@@ -43,7 +50,8 @@ const robotPython = process.env.ROBOT_PYTHON || "python3";
 const localPython = process.env.ROBOT_LOCAL_PYTHON || "python";
 const naviHost = process.env.AGENTECH_NAVI_HOST || "192.168.4.65";
 const naviPort = process.env.AGENTECH_NAVI_PORT || "9090";
-const agentechSdkRoot = process.env.AGENTECH_SDK_ROOT || "";
+// Navi's verified deployment is isolated from the older Aegis gateway package.
+const agentechSdkRoot = process.env.AGENTECH_NAVI_SDK_ROOT || process.env.AGENTECH_SDK_ROOT || join(here, "..", "navi-sdk");
 const sshKey = process.env.ROBOT_SSH_KEY;
 const requestedPollMs = Number(process.env.ROBOT_STREAM_POLL_MS || 1000);
 const pollMs = Number.isFinite(requestedPollMs)
@@ -56,11 +64,19 @@ const activeStatuses = new Set(["requested", "confirmed", "approved", "scheduled
 const claimableStatuses = ["requested", "confirmed", "approved", "scheduled", "pending"];
 
 mkdirSync(runtimeDir, { recursive: true });
-let state = { sessions: {} };
-try { state = JSON.parse(readFileSync(stateFile, "utf8")); } catch {}
+let state = loadGatewayState(stateFile);
 let obs;
 const obsRecoveryState = { lastAttemptAt: 0 };
 const obsRecoveryCooldownMs = 5 * 60 * 1000;
+
+async function boundedObs(operation) {
+  let timer;
+  try {
+    return await Promise.race([operation, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("OBS response timed out")), 3000);
+    })]);
+  } finally { clearTimeout(timer); }
+}
 
 async function obsCall(requestType, requestData) {
   let lastError;
@@ -68,9 +84,9 @@ async function obsCall(requestType, requestData) {
     try {
       if (!obs) {
         obs = new OBSWebSocket();
-        await obs.connect(obsUrl, obsPassword);
+        await boundedObs(obs.connect(obsUrl, obsPassword));
       }
-      return await obs.call(requestType, requestData);
+      return await boundedObs(obs.call(requestType, requestData));
     } catch (error) {
       lastError = error;
       try { await obs?.disconnect(); } catch {}
@@ -80,7 +96,19 @@ async function obsCall(requestType, requestData) {
   throw lastError;
 }
 
-function saveState() { writeFileSync(stateFile, JSON.stringify(state, null, 2)); }
+function saveState() { saveGatewayState(stateFile, state); }
+function refreshNaviResetBaseline() {
+  let supervised;
+  try { supervised = JSON.parse(readFileSync(supervisedNaviBaselineFile, "utf8")); }
+  catch (error) { if (error.code !== "ENOENT") throw error; }
+  return selectNaviResetBaseline({verified_at:state.naviResetVerifiedAt,result:state.naviResetResult}, supervised, Date.now());
+}
+
+function createNaviSessionOwner(id) {
+  const attempt_id = randomUUID();
+  return {attempt_id, pid:null, result_file:join(runtimeDir,`navi-${id}-${attempt_id}.cleanup.json`),
+    owner_file:join(runtimeDir,`navi-${id}-${attempt_id}.owner.json`)};
+}
 function normalized(value) { return String(value || "").replaceAll(" ", "_").toLowerCase(); }
 function robotModel(value) {
   const model = normalized(value);
@@ -89,13 +117,15 @@ function robotModel(value) {
   throw new Error(`unsupported robot model: ${value}`);
 }
 function naviEnvironment() {
-  return { ...process.env, AGENTECH_NAVI_HOST: naviHost, AGENTECH_NAVI_PORT: naviPort, AGENTECH_SDK_ROOT: agentechSdkRoot };
+  return { ...process.env, AGENTECH_NAVI_HOST: naviHost, AGENTECH_NAVI_PORT: naviPort, AGENTECH_SDK_ROOT: agentechSdkRoot,
+    AGENTECH_NAVI_OWNER_LOCK:join(runtimeDir,"navi-owner.lock") };
 }
 function sshArgs() { return [...(sshKey ? ["-i", sshKey] : []), "-o", "BatchMode=yes", "-o", "ConnectTimeout=8"]; }
-function run(program, args, options = {}) { return execFileSync(program, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...options }); }
+function run(program, args, options = {}) { return execFileSync(program, args, { encoding: "utf8", timeout: 20000, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], ...options }); }
 
 async function request(table, query, options = {}) {
   const response = await fetch(`${supabaseUrl}/rest/v1/${table}?${query}`, {
+    signal: AbortSignal.timeout(8000),
     method: options.method || "GET",
     headers: {
       apikey: supabaseKey,
@@ -277,7 +307,7 @@ async function claimSession(session) {
   const statuses = claimableStatuses.join(",");
   const claimed = await request(
     "agentech_robot_sessions",
-    `id=eq.${encodeURIComponent(session.id)}&session_status=in.(${statuses})&select=id`,
+    `id=eq.${encodeURIComponent(session.id)}&session_status=in.(${statuses})&scheduled_end=gt.${encodeURIComponent(new Date().toISOString())}&select=id`,
     { method: "PATCH", body: { session_status: "running" } }
   );
   return claimed?.length === 1;
@@ -285,24 +315,69 @@ async function claimSession(session) {
 
 async function launch(session) {
   const item = state.sessions[session.id];
+  if (!Number.isFinite(Date.parse(item.end)) || Date.now() >= Date.parse(item.end)) return;
+  if (item.executionModel === "navi") {
+    let blocker;
+    let baseline;
+    try {
+      baseline = refreshNaviResetBaseline();
+      blocker = naviLaunchBlocker(state.sessions, session.id, Date.now(), baseline.verified_at);
+    } catch (error) { blocker = error.message; }
+    if (!blocker) {
+      try {
+        run(localPython, [trustedNaviRunner, "--check-home-ready"], {
+          env:{...naviEnvironment(),AGENTECH_NAVI_EXPECTED_RESET_RUN_ID:baseline.result.run_id}, timeout:20000 });
+      } catch (error) { blocker = `Navi live readiness check failed: ${error.message}`; }
+    }
+    if (blocker) {
+      if (item.launchBlockedReason !== blocker) {
+        item.launchBlockedReason = blocker;
+        saveState();
+        console.error(`[robot-stream] session ${session.id} waiting: ${blocker}`);
+      }
+      return;
+    }
+    delete item.launchBlockedReason;
+  }
+  if (Date.now() >= Date.parse(item.end)) return;
   if (!(await claimSession(session))) {
     item.status = "skipped";
     saveState();
     console.log(`[robot-stream] session ${session.id} was claimed by another gateway; skipping.`);
     return;
   }
+  if (Date.now() >= Date.parse(item.end)) {
+    item.status = "finished";
+    item.endCleanupRequired = false;
+    item.endCleanupStatus = "not_started";
+    item.streamAvailableDuringSession = false;
+    saveState();
+    return;
+  }
   if (item.executionModel === "navi") {
+    // Reserve ownership before spawn: a crash in the spawn/PID-save window
+    // must leave an unverified owner, never another launch opportunity.
+    item.naviCleanupOwner = createNaviSessionOwner(session.id);
+    item.naviSessionGuardian = true;
+    item.endCleanupAttempts = 1;
+    item.status = "running";
+    saveState();
     const localLog = join(runtimeDir, `session-${session.id}.navi.log`);
     const logFd = openSync(localLog, "a");
     try {
-      const child = spawn(localPython, [trustedNaviRunner, item.localPlan], {
+      const owner = item.naviCleanupOwner;
+      const child = spawn(localPython, [trustedNaviRunner, "--booked-session", item.localPlan, item.end,
+        owner.result_file, owner.owner_file, owner.attempt_id], {
         detached: true,
         windowsHide: true,
         stdio: ["ignore", logFd, logFd],
         env: naviEnvironment()
       });
+      child.on("error", error => console.error(`[robot-stream] Navi supervisor spawn failed: ${error.message}`));
+      if (!child.pid) throw new Error("Navi supervisor did not provide a process identity; ownership recovery required");
       child.unref();
       item.pid = String(child.pid);
+      owner.pid = String(child.pid);
       item.localLog = localLog;
     } finally {
       closeSync(logFd);
@@ -326,12 +401,25 @@ async function launch(session) {
   console.log(`[robot-stream] trusted runner started for session ${session.id}; PID ${item.pid}.`);
 }
 
-function stopSession(id) {
+async function stopSession(id) {
   const item = state.sessions[id];
+  if (item?.executionModel === "navi" && item.naviSessionGuardian === true) {
+    // The detached supervisor enforces the deadline even if this bridge is
+    // blocked or restarted. Do not kill it while it is stopping/resetting.
+    item.status = "finished";
+    if (item.endCleanupStatus === "pending") item.endCleanupStatus = "running";
+    saveState();
+    return;
+  }
   if (item?.pid && item.status === "running") {
     if (item.executionModel === "navi") {
-      try { process.kill(Number(item.pid)); } catch {}
-      try { run(localPython, [trustedNaviRunner, "--stop"], { stdio: "ignore", env: naviEnvironment() }); } catch {}
+      if (processRunning(item)) {
+        process.kill(Number(item.pid));
+        const deadline = Date.now() + 5000;
+        while (processRunning(item) && Date.now() < deadline) await delay(50);
+        if (processRunning(item)) throw new Error(`Navi session ${id} runner did not exit; reset blocked`);
+      }
+      run(localPython, [trustedNaviRunner, "--stop"], { stdio: "ignore", env: naviEnvironment(), timeout: 10000 });
     } else {
       try { run("ssh", [...sshArgs(), robot, "kill", item.pid], { stdio: "ignore" }); } catch {}
     }
@@ -363,19 +451,89 @@ function endCleanupCanRun(item) {
   const attempts = item.endCleanupAttempts ?? item.endLieDownAttempts;
   if (required !== true) return false;
   if (status === "completed") return false;
+  if (item.executionModel === "navi" && (item.naviCleanupOwner || status === "running")) return true;
   return Number(attempts || 0) < 3;
+}
+
+function reconcileNaviCleanup(item) {
+  const owner = item.naviCleanupOwner;
+  if (!owner) return {status:"unknown",error:"Persisted Navi cleanup has no recoverable process identity"};
+  let outcome;
+  try { outcome = JSON.parse(readFileSync(owner.result_file,"utf8")); } catch {}
+  if (owner.pid && processRunning({executionModel:"navi",pid:owner.pid})) {
+    return reconcileNaviCleanupOutcome(owner,true,outcome);
+  }
+  let metadata;
+  try { metadata = JSON.parse(readFileSync(owner.owner_file,"utf8")); } catch {}
+  if (!owner.pid || metadata?.attempt_id !== owner.attempt_id
+      || ["starting","starting_cleanup"].includes(metadata.phase)) {
+    return reconcileNaviCleanupOutcome(owner,null,outcome);
+  }
+  for (const pid of [metadata.program_pid,metadata.cleanup_pid]) {
+    if (pid && processRunning({executionModel:"navi",pid})) return reconcileNaviCleanupOutcome(owner,true,outcome);
+  }
+  return reconcileNaviCleanupOutcome(owner,false,outcome);
 }
 
 function finishSessionCleanup(id, item) {
   if (!endCleanupCanRun(item)) return;
+  if (item.executionModel === "navi" && (item.naviCleanupOwner || item.endCleanupStatus === "running")) {
+    const recovered = reconcileNaviCleanup(item);
+    if (["running","unknown"].includes(recovered.status)) {
+      item.endCleanupStatus = "running";
+      if (recovered.error) item.endCleanupError = recovered.error;
+      saveState();
+      return;
+    }
+    item.endCleanupStatus = recovered.status;
+    if (recovered.status === "completed") {
+      item.endCleanupResult = recovered.result;
+      state.naviResetVerifiedAt = recovered.verified_at;
+      state.naviResetResult = recovered.result;
+      delete item.endCleanupError;
+    } else item.endCleanupError = recovered.error;
+    delete item.naviCleanupOwner;
+    saveState();
+    return; // Failed known owner becomes eligible for retry on the next tick.
+  }
+  if (item.executionModel === "navi") {
+    // A newer trusted reset can supersede this failure without rewriting its
+    // history. Admission uses the same baseline, so never retry it afterward.
+    let baseline;
+    try { baseline = refreshNaviResetBaseline(); } catch {}
+    const end = Date.parse(item.end);
+    if (Number.isFinite(end) && end <= Date.parse(baseline?.verified_at)) return;
+    // The SDK lock ends when a program exits early; the booked guardian still
+    // owns its slot. An old cleanup must not acquire that temporarily free lock.
+    const now = Date.now();
+    const anotherOwner = Object.entries(state.sessions).some(([otherId, other]) => {
+      if (String(otherId) === String(id) || other.executionModel !== "navi") return false;
+      const otherEnd = Date.parse(other.end);
+      return other.naviCleanupOwner || other.endCleanupStatus === "running"
+        || ["running", "publishing"].includes(other.status)
+        || (other.status === "completed" && (!Number.isFinite(otherEnd) || now < otherEnd));
+    });
+    if (anotherOwner) return;
+  }
   item.endCleanupAttempts = Number(item.endCleanupAttempts ?? item.endLieDownAttempts ?? 0) + 1;
   item.endCleanupStatus = "running";
   delete item.endCleanupError;
   saveState();
   try {
     if (item.executionModel === "navi") {
-      const mode = item.endReturnHomeRequired === false ? "--damp" : "--return-home-and-damp";
-      run(localPython, [trustedNaviRunner, mode], { env: naviEnvironment() });
+      if (!item.localPlan) throw new Error("Navi cleanup requires its validated session plan");
+      item.naviCleanupOwner = createNaviSessionOwner(id);
+      saveState();
+      const owner = item.naviCleanupOwner;
+      const child = spawn(localPython,[trustedNaviRunner,"--cleanup-supervisor",item.localPlan,
+        owner.result_file,owner.owner_file,owner.attempt_id],{
+        detached:true,windowsHide:true,stdio:"ignore",env:naviEnvironment()});
+      child.on("error",error=>console.error(`[robot-stream] Navi cleanup supervisor failed: ${error.message}`));
+      if (!child.pid) throw new Error("Navi cleanup supervisor has unknown process identity");
+      owner.pid = String(child.pid);
+      child.unref();
+      saveState();
+      return;
     } else {
       const remoteRunner = `${remoteDir}/trusted-robot-runner.py`;
       const command = `cd '${remoteDir}' && PYTHONPATH=/home/firefly/Agentech-SDK ${robotPython} '${remoteRunner}' --lie-down`;
@@ -383,7 +541,7 @@ function finishSessionCleanup(id, item) {
     }
     item.endCleanupStatus = "completed";
     const result = item.executionModel === "navi"
-      ? (item.endReturnHomeRequired === false ? "damping" : "return-to-home and damping")
+      ? "return-to-home and damping"
       : "lie-down";
     console.log(`[robot-stream] session ${id} reached its booked end; automatic ${result} completed.`);
   } catch (error) {
@@ -541,6 +699,7 @@ async function publishCaptures(id, item) {
     const localCapture = join(runtimeDir, `session-${id}.capture-${index + 1}.jpg`);
     run("scp", [...sshArgs(), `${robot}:${remoteCapture}`, localCapture]);
     const response = await fetch(captureUploadUrl, {
+      signal: AbortSignal.timeout(8000),
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -563,18 +722,41 @@ async function publishCaptures(id, item) {
 async function tick() {
   const now = Date.now();
   const endingSessions = new Set();
-  const sessions = await dueSessions();
-  for (const session of sessions) {
-    if (!state.sessions[session.id]) {
-      const submission = await reviewedSubmission(session);
-      stage(session, submission);
+  for (const [id, item] of Object.entries(state.sessions)) {
+    if (["running", "completed", "publishing"].includes(item.status) && now >= Date.parse(item.end)) {
+      await stopSession(id);
+      endingSessions.add(id);
     }
-    const item = state.sessions[session.id];
-    const streamReady = await ensureSessionStream(session.id, item, now);
-    if (streamReady && item.status === "staged" && now >= Date.parse(session.scheduled_start)) await launch(session);
+    if (item.status === "staged" && now >= Date.parse(item.end)) {
+      item.status = "finished";
+      item.streamAvailableDuringSession = false;
+      item.endCleanupRequired = false;
+      item.endCleanupStatus = "not_started";
+      saveState();
+    }
+    if (item.status === "finished" && now >= Date.parse(item.end) && endCleanupCanRun(item)) {
+      endingSessions.add(id);
+    }
+  }
+  // Local physical cleanup must not depend on the cloud or launch a second owner.
+  for (const id of endingSessions) {
+    const item = state.sessions[id];
+    finishSessionCleanup(id, item);
+  }
+  const active = Object.values(state.sessions).some((item) => keepsStreamActive(item, Date.now()));
+  if (!active) {
+    try { await stopObs(); }
+    catch (error) { console.error("[robot-stream] stream stop failed:", error.message); }
   }
   for (const [id, item] of Object.entries(state.sessions)) {
-    if (item.status === "running" && !processRunning(item)) {
+    const captures = item.remoteCaptures ?? (item.remoteCapture ? [item.remoteCapture] : []);
+    const pendingCaptures = captures.some(capture => !(item.publishedCaptures ?? []).includes(capture));
+    const expiredCaptures = item.status === "finished" && item.pid && pendingCaptures
+      && item.capturePublishingError == null;
+    if ((item.status === "running" || expiredCaptures) && !processRunning(item)) {
+      // Expiry cleanup runs first, but a runner first observed after expiry can
+      // still have captures to deliver. Publication must retain its final state.
+      const afterPublication = item.status === "finished" ? "finished" : "completed";
       item.status = "publishing";
       saveState();
       collectExecutionResult(id, item);
@@ -584,41 +766,29 @@ async function tick() {
         item.capturePublishingError = error.message;
         console.error(`[robot-stream] session ${id} capture publishing failed:`, error.message);
       }
-      item.status = "completed";
+      item.status = afterPublication;
       saveState();
     }
-    if (item.status === "staged" && now >= Date.parse(item.end)) {
-      item.status = "finished";
-      item.streamAvailableDuringSession = false;
-      item.endCleanupRequired = false;
-      item.endCleanupStatus = "not_started";
-      saveState();
-    }
-    if (["running", "completed"].includes(item.status) && now >= Date.parse(item.end)) {
-      stopSession(id);
-      endingSessions.add(id);
-    }
-    if (item.status === "finished" && now >= Date.parse(item.end) && endCleanupCanRun(item)) {
-      endingSessions.add(id);
-    }
-  }
-  for (const [id, item] of Object.entries(state.sessions)) {
     if (["completed", "finished"].includes(item.status)) collectExecutionResult(id, item);
     await syncExecutionResult(id, item);
     if (["completed", "finished"].includes(item.status)) collectDeviceResults(id, item);
     await syncDeviceResults(id, item);
-  }
-  const active = Object.values(state.sessions).some((item) => keepsStreamActive(item, now));
-  if (!active) await stopObs();
-  for (const id of endingSessions) {
-    const item = state.sessions[id];
-    finishSessionCleanup(id, item);
-    await syncFinalSessionStatus(id, item);
-  }
-  for (const [id, item] of Object.entries(state.sessions)) {
     if (item.status === "finished") await syncFinalSessionStatus(id, item);
   }
-  if (!active) await stopObsVirtualCamera();
+  const sessions = await dueSessions();
+  for (const session of sessions) {
+    if (!state.sessions[session.id]) {
+      const submission = await reviewedSubmission(session);
+      stage(session, submission);
+    }
+    const item = state.sessions[session.id];
+    const launchNow = Date.now();
+    if (launchNow >= Date.parse(item.end)) continue;
+    const streamReady = await ensureSessionStream(session.id, item, launchNow);
+    if (streamReady && item.status === "staged" && Date.now() < Date.parse(item.end)
+        && Date.now() >= Date.parse(session.scheduled_start)) await launch(session);
+  }
+  if (!Object.values(state.sessions).some((item) => keepsStreamActive(item, Date.now()))) await stopObsVirtualCamera();
 }
 
 console.log(`[robot-stream] Standalone trusted command gateway running for Aegies ${robot} and Navi ${naviHost}:${naviPort}; customer source is never sent to the robot. Navi receives only exact SDK calls from an inert plan.`);

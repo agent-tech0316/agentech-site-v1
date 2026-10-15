@@ -30,7 +30,7 @@ Retain `main` and `codex/eais-stable-identity-20260911`. The September 11 branch
 
 Before changing refs, all refs were saved to a verified complete Git bundle. Its SHA-256 is `9A547F5BC94297DBB14DEA7881CEF6E28F24AD5D88977B1E1688D8A4D8F4BD8A`. Dirty tracked and non-ignored untracked files from all existing checkouts were copied and hash-checked separately.
 
-Uncommitted local drafts are not treated as published branch commits. They remain recoverable and are preserved when updating or detaching local checkouts. Tags are retained. No database migration or robot deployment is part of this consolidation.
+The initial branch-only release preserved local drafts separately. The subsequent authorized draft release integrates those changes on top of consolidated main: Master recording access/schema, Navi session ownership and cleanup, Aegis result validation and Gateway operations, report copy, and the website illustration asset. See [the draft release audit](2026-10-14-local-draft-release.md). Tags are retained. Robot runtime activation is separate from website publication.
 
 ## Verification gates
 

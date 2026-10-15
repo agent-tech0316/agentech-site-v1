@@ -229,11 +229,14 @@ test("gateway transfers only trusted runtime files and persists authoritative re
   assert.doesNotMatch(source, /run\("scp", \[\.\.\.sshArgs\(\), sourcePath,/);
   assert.match(source, /customer source is never sent to the robot/);
   assert.match(source, /async function claimSession/);
-  assert.match(source, /spawn\(localPython, \[trustedNaviRunner, item\.localPlan\]/);
-  assert.match(source, /"--return-home-and-damp"/);
-  assert.match(source, /"--damp"/);
-  assert.match(source, /if \(!active\) await stopObs\(\)/);
-  assert.match(source, /if \(!active\) await stopObsVirtualCamera\(\)/);
+  assert.match(source, /spawn\(localPython, \[trustedNaviRunner, "--booked-session", item\.localPlan, item\.end/);
+  assert.match(source, /"--cleanup-supervisor"/);
+  assert.doesNotMatch(source, /"--damp"/);
+  assert.match(source, /naviLaunchBlocker\(state.sessions/);
+  assert.match(source, /reconcileNaviCleanupOutcome\(owner/);
+  assert.match(source, /"--check-home-ready"/);
+  assert.match(source, /await stopObs\(\)/);
+  assert.match(source, /await stopObsVirtualCamera\(\)/);
   assert.doesNotMatch(source, /readFileSync\(item\.localPlan/);
   assert.match(source, /session robot model does not match its reviewed submission/);
   assert.match(source, /remoteResults/);
@@ -256,8 +259,8 @@ test("Gateway restart is process-only and OBS ownership fails closed", () => {
   const watchdogLoopSource = readFileSync(watchdogLoop, "utf8");
   const combined = [restartSource, obsSource, watchdogSource, watchdogLoopSource].join("\n");
 
-  assert.match(restartSource, /robot-stream-bridge\.mjs/);
-  assert.match(restartSource, /robot-stream-watchdog\.ps1/);
+  assert.match(restartSource, /restart-robot-stream-bridge\.ps1/);
+  assert.match(restartSource, /ConfirmNoDueSession/);
   assert.doesNotMatch(restartSource, /obs64|CamoStudio/i);
   assert.doesNotMatch(combined, /Restart-Computer|Stop-Computer|shutdown\.exe|shutdown\s+\/r/i);
   assert.match(obsSource, /More than one OBS process is running/);
@@ -293,7 +296,7 @@ test("session policy selects model-specific scheduled-end cleanup", () => {
       { commands: [{ name: "return_to_home" }, { name: "wave_hand" }] },
       "navi",
     ),
-    { required: true, returnHomeRequired: false },
+    { required: true, returnHomeRequired: true },
   );
   assert.deepEqual(
     endSessionCleanupPolicy({ commands: [{ name: "sit" }] }, "aegis"),

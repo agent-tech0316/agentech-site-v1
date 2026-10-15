@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import math
 import signal
 import sys
 import time
@@ -41,7 +42,7 @@ utc_timestamp = _runner_result.utc_timestamp
 write_final_result = _runner_result.write_final_result
 
 LEGACY_LINEAR_COMMANDS = {"forward", "backward", "lateral_left", "lateral_right"}
-LOCAL_VELOCITY_COMMANDS = LEGACY_LINEAR_COMMANDS | {"diagonal"}
+VERIFIED_LOCOMOTION_COMMANDS = LEGACY_LINEAR_COMMANDS | {"diagonal"}
 
 
 class SessionTerminated(RuntimeError):
@@ -109,8 +110,13 @@ def _translated_call(plan_path: Path, command: dict[str, Any], capture_index: in
         translated = {
             aliases.get(key, key): value for key, value in arguments.items()
         }
-    if name in LOCAL_VELOCITY_COMMANDS:
-        translated.setdefault("backend", "dog_task")
+    if name in VERIFIED_LOCOMOTION_COMMANDS:
+        # The AEGIS SDK's live-proven locomotion path is the robot-local
+        # FF/AgiBot adapter, reached through the SSH backend. Direct dog_task
+        # joystick packets are diagnostic only and can be accepted without
+        # causing the feet to step.
+        translated.setdefault("backend", "robot_ssh")
+        translated.setdefault("host", "127.0.0.1")
     elif name != "capture_image":
         translated.setdefault("host", "127.0.0.1")
     if name in {"turn", "turn_left", "turn_right", "u_turn"}:
@@ -124,6 +130,70 @@ def _translated_call(plan_path: Path, command: dict[str, Any], capture_index: in
             translated.setdefault("angle_deg", shortcut_angles[source_name])
         translated.setdefault("host", "127.0.0.1")
     return name, translated
+
+
+def _motion_number(source_name: str, metadata: dict[str, Any], field: str) -> float:
+    value = metadata.get(field)
+    valid = not isinstance(value, bool) and isinstance(value, (int, float))
+    if valid:
+        try:
+            valid = math.isfinite(value)
+        except OverflowError:
+            valid = False
+    if not valid:
+        raise RuntimeError(f"{source_name} returned invalid {field}; expected a finite number")
+    return float(value)
+
+
+def _assert_action_result(source_name: str, value: Any) -> Any:
+    """Fail closed when a backend reports transport success without motion."""
+
+    if not isinstance(value, dict):
+        if source_name in VERIFIED_LOCOMOTION_COMMANDS:
+            raise RuntimeError(f"{source_name} returned no structured motion result")
+        return value
+    if value.get("success") is False:
+        raise RuntimeError(f"{source_name} backend reported success=false")
+    if value.get("stalled") is True:
+        raise RuntimeError(f"{source_name} stalled before reaching its target")
+    if value.get("timed_out") is True:
+        raise RuntimeError(f"{source_name} timed out before reaching its target")
+
+    if source_name in VERIFIED_LOCOMOTION_COMMANDS:
+        if value.get("backend") != "robot_ssh":
+            raise RuntimeError(
+                f"{source_name} did not use the verified robot_ssh FF/AgiBot backend"
+            )
+        feedback = value.get("position_feedback")
+        if not isinstance(feedback, dict) or feedback.get("available") is not True:
+            raise RuntimeError(
+                f"{source_name} returned no robot odometry position feedback"
+            )
+        metadata_name = (
+            "lateral" if source_name in {"lateral_left", "lateral_right"} else source_name
+        )
+        metadata = value.get(metadata_name)
+        if not isinstance(metadata, dict):
+            raise RuntimeError(f"{source_name} returned no structured motion measurement")
+        if source_name == "diagonal":
+            measured_x = _motion_number(source_name, metadata, "measured_x_m")
+            measured_y = _motion_number(source_name, metadata, "measured_y_m")
+            measured = math.hypot(measured_x, measured_y)
+            expected = _motion_number(source_name, metadata, "distance_m")
+        else:
+            measured = _motion_number(source_name, metadata, "measured_displacement_m")
+            expected = _motion_number(source_name, metadata, "expected_displacement_m")
+        if expected <= 0:
+            raise RuntimeError(f"{source_name} returned a non-positive expected displacement")
+        if not math.isfinite(measured):
+            raise RuntimeError(f"{source_name} returned non-finite measured displacement")
+        minimum = max(0.01, min(expected * 0.25, 0.05))
+        if measured < minimum:
+            raise RuntimeError(
+                f"{source_name} displacement {measured:.4f} m is below "
+                f"the verified minimum {minimum:.4f} m"
+            )
+    return value
 
 
 def end_session_lie_down() -> None:
@@ -193,6 +263,7 @@ def execute(
                 if source_name == "emergency_stop":
                     terminal_emergency_stop_started = True
                 value = getattr(agentech, name)(**translated)
+                _assert_action_result(source_name, value)
                 if source_name in TELEMETRY_COMMANDS and results_path is not None:
                     telemetry_records.append(success_record(current_command, value))
                     write_result(Path(results_path), telemetry_records)

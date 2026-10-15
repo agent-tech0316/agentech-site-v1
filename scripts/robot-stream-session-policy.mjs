@@ -22,7 +22,8 @@ export function endSessionCleanupPolicy(plan, robotModel) {
   if (robotModel === "navi") {
     return {
       required: true,
-      returnHomeRequired: !plan.commands.some((command) => command?.name === "return_to_home"),
+      // Earlier user calls do not establish the posture at booked session end.
+      returnHomeRequired: true,
     };
   }
   if (robotModel === "aegis") {

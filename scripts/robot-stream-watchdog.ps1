@@ -3,11 +3,13 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
 $bridgeScript = Join-Path $scriptDir "robot-stream-bridge.mjs"
+$processHelper = Join-Path $scriptDir "robot-stream-process.ps1"
 $logDir = Join-Path $repoRoot ".robot-stream-logs"
 $stdoutLog = Join-Path $logDir "robot-stream-bridge.out.log"
 $stderrLog = Join-Path $logDir "robot-stream-bridge.err.log"
 
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+. $processHelper
 
 foreach ($key in @("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ROBOT_RUNNER_SECRET", "OBS_WEBSOCKET_URL", "OBS_WEBSOCKET_PASSWORD", "ROBOT_HOST", "ROBOT_SSH_USER", "ROBOT_SSH_KEY", "ROBOT_REMOTE_DIR", "ROBOT_PYTHON", "ROBOT_LOCAL_PYTHON", "ROBOT_STREAM_START_HOUR", "ROBOT_STREAM_END_HOUR", "ROBOT_STREAM_PREP_SECONDS", "ROBOT_STREAM_POLL_MS")) {
   if (-not [Environment]::GetEnvironmentVariable($key, "Process")) {
@@ -40,8 +42,7 @@ $endHour = [double]$endHourRaw
 $now = Get-Date
 $hourValue = $now.Hour + ($now.Minute / 60.0) + ($now.Second / 3600.0)
 
-$bridges = @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
-  Where-Object { $_.CommandLine -and $_.CommandLine -like "*robot-stream-bridge.mjs*" })
+$bridges = @(Get-RobotStreamBridgeProcess -BridgeScript $bridgeScript)
 $existing = $bridges | Select-Object -First 1
 $duplicates = @($bridges | Select-Object -Skip 1)
 foreach ($duplicate in $duplicates) {
