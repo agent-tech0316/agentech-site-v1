@@ -1,3 +1,7 @@
+# Historical plan
+
+Preserved during the October 14, 2026 branch consolidation. The active camera implementation has since moved to native H.264; use `docs/operations/master-livekit-production.md` for the current operating contract. This plan does not replace the newer implementation.
+
 # Front Right Native Focus Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -461,7 +465,3 @@ Use `requestVideoFrameCallback` on the main-site LiveKit video for received FPS 
 - [ ] **Step 7: Record final verification without changing unrelated files**
 
 Run `git status --short` in both repositories. Confirm only the planned commits were added and leave pre-existing `package.json`, `.codex-runtime`, prior plan, and optimizer-script changes untouched.
-# Historical plan
-
-Preserved during the October 14, 2026 branch consolidation. The active camera implementation has since moved to native H.264; use `docs/operations/master-livekit-production.md` for the current operating contract. This plan does not replace the newer implementation.
-

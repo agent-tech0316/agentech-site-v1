@@ -1,3 +1,7 @@
+# Historical design
+
+Preserved during the October 14, 2026 branch consolidation. The active camera implementation has since moved to native H.264; use `docs/operations/master-livekit-production.md` for the current operating contract. This design does not replace the newer implementation.
+
 # Master Front Main 2K Focus Design
 
 ## Goal
@@ -77,7 +81,3 @@ Automated tests cover:
 Runtime verification measures the robot topics through the same AGENTECH01 relay used by the website. It records dimensions, frame count, observed FPS, duplicate frames, last-frame age, and stream bandwidth. The final browser check confirms that selecting Front Main shows the 2K label and a live canvas, while selecting every other option preserves its approved resolution.
 
 All AGENTECH01 operations use hidden PowerShell/SSH sessions; no visible black CMD window is opened.
-# Historical design
-
-Preserved during the October 14, 2026 branch consolidation. The active camera implementation has since moved to native H.264; use `docs/operations/master-livekit-production.md` for the current operating contract. This design does not replace the newer implementation.
-

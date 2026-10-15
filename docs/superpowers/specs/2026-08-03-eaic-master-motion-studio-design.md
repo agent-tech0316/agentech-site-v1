@@ -1,7 +1,11 @@
+# Historical proposal
+
+Preserved during the October 14, 2026 branch consolidation. This August design records proposed Motion Studio behavior; it is not evidence of a deployed controller or public capability. Current website and SDK contracts take precedence.
+
 # EAIC Hub Master Motion Studio Design
 
-**Date:** 2026-08-03  
-**Status:** Approved in conversation; written review pending  
+**Date:** 2026-08-03
+**Status:** Approved in conversation; written review pending
 **Companion SDK spec:** `2026-08-03-master-calibrated-seated-motion-design.md`
 
 ## Goal
@@ -252,7 +256,3 @@ Implementation follows test-driven development and covers:
 
 Both repositories update documentation together. Neither repository publishes
 an incompatible schema or user-visible capability alone.
-# Historical proposal
-
-Preserved during the October 14, 2026 branch consolidation. This August design records proposed Motion Studio behavior; it is not evidence of a deployed controller or public capability. Current website and SDK contracts take precedence.
-

@@ -1,3 +1,7 @@
+# Historical design
+
+Preserved during the October 14, 2026 branch consolidation. The active camera implementation has since moved to native H.264; use `docs/operations/master-livekit-production.md` for the current operating contract. This design does not replace the newer implementation.
+
 # Front Right Native Focus Design
 
 Date: 2026-08-13
@@ -107,7 +111,3 @@ The PHY rate is not usable application throughput. For planning, use the measure
 - LiveKit publishes only the existing single selected-camera program track in this mode, targeting 30 FPS.
 - The Front Right production canvas is `2064x1552` and does not scale the decoded image.
 - The wall and all non-Front-Right modes behave exactly as before.
-# Historical design
-
-Preserved during the October 14, 2026 branch consolidation. The active camera implementation has since moved to native H.264; use `docs/operations/master-livekit-production.md` for the current operating contract. This design does not replace the newer implementation.
-
