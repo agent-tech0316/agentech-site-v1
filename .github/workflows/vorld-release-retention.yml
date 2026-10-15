@@ -1,0 +1,43 @@
+name: Keep latest VORLD release
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main]
+    paths:
+      - lib/vorld-release.ts
+      - scripts/vorld-release-retention.mjs
+      - scripts/vorld-release-retention.test.mjs
+      - .github/workflows/vorld-release-retention.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vorld-release-retention
+  cancel-in-progress: false
+
+jobs:
+  retain-latest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out current main policy
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Test retention rules without network changes
+        run: node --experimental-strip-types --test scripts/vorld-release-retention.test.mjs
+      - name: Configure GitHub credentials for expected-tip tag deletion
+        run: gh auth setup-git
+      - name: Retain only the newest published VORLD build
+        run: node --experimental-strip-types scripts/vorld-release-retention.mjs --apply

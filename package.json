@@ -40,13 +40,14 @@
     "test:master-live-camera-gateway": "node --test scripts/master-live-camera-gateway.test.mjs",
     "test:master-live-test": "node --test scripts/master-live-test-access.test.mjs scripts/master-live-test-route.test.mjs scripts/master-live-test-ui.test.mjs",
     "test:master-heartbeat": "node --experimental-strip-types --test lib/master-heartbeat.test.ts scripts/master-heartbeat-route.test.mjs scripts/master-heartbeat-store.test.mjs scripts/master-heartbeat-ui.test.mjs",
-    "test": "npm run test:aegis-gateway-spec && npm run test:aegis-device-results && npm run test:aegis-runner && npm run test:session-device-results && npm run test:device-results-ui && npm run test:account-profile-selection && npm run test:site-header-visibility && npm run test:robotics-mobile-products && npm run test:robot-stream-bridge && npm run test:navi-cli-gateway && npm run test:return-to-home-access && npm run test:sdk-reference && npm run test:master-simulation-previews && npm run test:master-motor-map && npm run test:master-live-camera && npm run test:master-live-test && npm run test:master-heartbeat && npm run test:auth-sign-in && npm run test:robot-stream-operations && npm run test:master-session-recordings",
+    "test": "npm run test:aegis-gateway-spec && npm run test:aegis-device-results && npm run test:aegis-runner && npm run test:session-device-results && npm run test:device-results-ui && npm run test:account-profile-selection && npm run test:site-header-visibility && npm run test:robotics-mobile-products && npm run test:robot-stream-bridge && npm run test:navi-cli-gateway && npm run test:return-to-home-access && npm run test:sdk-reference && npm run test:master-simulation-previews && npm run test:master-motor-map && npm run test:master-live-camera && npm run test:master-live-test && npm run test:master-heartbeat && npm run test:auth-sign-in && npm run test:robot-stream-operations && npm run test:master-session-recordings && npm run test:vorld-release",
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "typecheck": "tsc --noEmit",
     "check": "npm run lint && npm run typecheck && npm run build && npm run test:talents-page",
     "test:robot-stream-operations": "node --test scripts/robot-stream-operations.test.mjs scripts/robot-stream-process.test.mjs scripts/obs-low-latency-policy.test.mjs",
-    "test:master-session-recordings": "node --experimental-strip-types --test lib/master-session-recordings.test.ts scripts/master-session-recordings-route.test.mjs && node scripts/test-master-recording-schema.mjs"
+    "test:master-session-recordings": "node --experimental-strip-types --test lib/master-session-recordings.test.ts scripts/master-session-recordings-route.test.mjs && node scripts/test-master-recording-schema.mjs",
+    "test:vorld-release": "node --experimental-strip-types --test scripts/vorld-download.test.mjs scripts/vorld-release-retention.test.mjs"
   },
   "dependencies": {
     "@foxglove/rosmsg": "5.0.5",
