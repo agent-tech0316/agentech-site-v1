@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  canOpenEaisWork,
   categoryLabels,
   filterEaisWorks,
   getEaisPaginationTokens,
@@ -138,12 +139,29 @@ export function EaisShowcase() {
             {page.totalItems === 0 ? "Showing 0 of 0 works" : `Showing ${page.start}–${page.end} of ${page.totalItems} works`}
           </p>
           <div id="eais-feature-strip" data-eais-feature-strip data-eais-work-list data-eais-page-size={worksPerPage} ref={featureStripRef} className={styles.featureStrip}>
-            {page.items.map((work) => (
-              <button data-eais-work-card key={work.slug} type="button" className={styles.featureCard} onClick={(event) => openWork(work, event.currentTarget)} aria-haspopup="dialog">
-                <span data-eais-cover-framing={work.slug === "prototype-gesture-lab" ? "full-body" : undefined} className={styles.featureImage}><Image src={work.image} alt={work.imageAlt} fill sizes="(max-width: 767px) 76vw, 28vw" /></span>
-                <span className={styles.featureCardCopy}><small>{categoryLabels[work.category]}</small><strong>{work.title}</strong><em>{work.outcome}</em><b>Open story <span aria-hidden="true">↗</span></b></span>
-              </button>
-            ))}
+            {page.items.map((work) => {
+              if (canOpenEaisWork(work)) {
+                return (
+                  <button data-eais-work-card data-eais-availability={work.availability} key={work.slug} type="button" className={styles.featureCard} onClick={(event) => openWork(work, event.currentTarget)} aria-haspopup="dialog">
+                    <span data-eais-cover-framing={work.slug === "prototype-gesture-lab" ? "full-body" : undefined} className={styles.featureImage}><Image src={work.image} alt={work.imageAlt} fill sizes="(max-width: 767px) 76vw, 28vw" /></span>
+                    <span className={styles.featureCardCopy}><small>{categoryLabels[work.category]}</small><strong>{work.title}</strong><em>{work.outcome}</em><b>Open story <span aria-hidden="true">↗</span></b></span>
+                  </button>
+                );
+              }
+
+              return (
+                <article data-eais-work-card data-eais-availability={work.availability} key={work.slug} className={`${styles.featureCard} ${styles.unavailableCard}`}>
+                  <span data-eais-cover-framing="accessory-board" className={styles.featureImage}><Image src={work.image} alt={work.imageAlt} fill sizes="(max-width: 767px) 76vw, 28vw" /></span>
+                  <span className={styles.featureCardCopy}>
+                    <small>{work.collection}</small>
+                    <strong>{work.title}</strong>
+                    <em>{work.description}</em>
+                    <span className={styles.unavailableStatus}>Unavailable</span>
+                    <button type="button" className={styles.unavailableButton} disabled>Unavailable</button>
+                  </span>
+                </article>
+              );
+            })}
             {page.totalItems === 0 ? <p className={styles.emptyResult}>No idea matches that search yet. Try a robot type or a simpler word.</p> : null}
           </div>
           <nav

@@ -150,7 +150,7 @@ test("Master motor boxes identify the SDK function for each controllable joint",
   assert.equal(marker("head_yaw_joint").sdkControl, null);
 });
 
-test("Master motor tooltips hide the teach suffix without changing the SDK mapping", () => {
+test("Master motor tooltips hide tech and teach suffixes without changing the SDK mapping", () => {
   const component = fs.readFileSync(
     path.join(repositoryRoot, "features/eaic/01-clients/eaic-hub/components/master-motor-map.tsx"),
     "utf8"
@@ -158,6 +158,7 @@ test("Master motor tooltips hide the teach suffix without changing the SDK mappi
 
   assert.match(component, /function visibleSdkControlText\(/);
   assert.match(component, /replaceAll\("\.teach", ""\)/);
+  assert.match(component, /replaceAll\("\.tech", ""\)/);
   assert.equal(
     component.match(/visibleSdkControlText\(activeMarker\.sdkControl\.(?:functionName|example)\)/g)?.length,
     2,

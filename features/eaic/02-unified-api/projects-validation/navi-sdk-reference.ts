@@ -1,6 +1,27 @@
 import type { AgentechFunction, AgentechParam, CapabilityStatus } from "./aegis-sdk-reference";
 
-export type NaviFunction = AgentechFunction;
+export type NaviDiscoverability = {
+  taskLabel: string;
+  keywords: readonly string[];
+  commonTask?: {
+    rank: 1 | 2 | 3 | 4 | 5 | 6;
+    approved: true;
+    reviewedBy: string;
+    reviewedOn: `${number}-${number}-${number}`;
+  };
+};
+
+export type NaviReturnDocumentation = {
+  type: string;
+  description?: string;
+  reviewedBy: string;
+  reviewedOn: `${number}-${number}-${number}`;
+};
+
+export type NaviFunction = AgentechFunction & {
+  discovery?: NaviDiscoverability;
+  returns?: NaviReturnDocumentation;
+};
 
 const p = (
   name: string,
@@ -70,7 +91,7 @@ const parameterizedAction = (
 
 const internalNaviParamNames = new Set(["**connect_kwargs"]);
 
-function completeParameterProfiles(item: AgentechFunction): AgentechFunction {
+function completeParameterProfiles(item: NaviFunction): NaviFunction {
   const publicParams = item.params.filter((param) => !internalNaviParamNames.has(param.name));
   if (!publicParams.length || item.profiles?.length) return item;
 
@@ -86,7 +107,7 @@ function completeParameterProfiles(item: AgentechFunction): AgentechFunction {
   return { ...item, profiles };
 }
 
-function validateNaviReference(items: AgentechFunction[]) {
+function validateNaviReference(items: NaviFunction[]) {
   const names = new Set<string>();
   for (const item of items) {
     if (names.has(item.name)) throw new Error(`Duplicate Navi SDK reference: ${item.name}`);
@@ -112,13 +133,18 @@ function validateNaviReference(items: AgentechFunction[]) {
 }
 
 const motionVerification = "Live verified 2026-07-15 with controller error=0 and warning=0";
-const naviFunctionDefinitions: AgentechFunction[] = [
+const naviFunctionDefinitions: NaviFunction[] = [
   {
     name: "forward",
     category: "Movement",
     signature: "Agentech.forward()",
     summary: "Move forward using one positive speed-magnitude profile and a controlled stop.",
     example: "Agentech.forward(speed_mps=0.5, duration_s=1.0)",
+    discovery: {
+      taskLabel: "Move forward",
+      keywords: ["forward", "move forward", "forward movement"],
+      commonTask: { rank: 2, approved: true, reviewedBy: "Agentech product owner", reviewedOn: "2026-10-14" }
+    },
     verification: "Live verified 2026-07-16 through Navi's 1.34 m/s limit with controller error=0 and warning=0",
     platformNote: "Navi has no dependable global X/Y odometry, so distance mode is open loop.",
     profiles: [
@@ -221,6 +247,11 @@ const naviFunctionDefinitions: AgentechFunction[] = [
     signature: "Agentech.turn()",
     summary: "Turn with signed angle, rate, percentage, level, timed, or fixed-shortcut profiles.",
     example: "Agentech.turn(angle_deg=-45, turn_rate_rad_s=0.5)",
+    discovery: {
+      taskLabel: "Turn left or right",
+      keywords: ["turn", "turn left", "turn right", "left turn", "right turn"],
+      commonTask: { rank: 3, approved: true, reviewedBy: "Agentech product owner", reviewedOn: "2026-10-14" }
+    },
     verification: `${motionVerification}; yaw-feedback controller verified in hardware-free wraparound and fail-safe tests; physical angle calibration pending`,
     platformNote: "Positive public values turn right and negative values turn left. The requested angle is the target: live body-yaw feedback varies speed and completion time, requires five consecutive readings within 1 degree, and corrects again if settling drifts outside that window. Explicit rate-plus-time turns remain open loop.",
     profiles: [
@@ -513,6 +544,11 @@ const naviFunctionDefinitions: AgentechFunction[] = [
     signature: "Agentech.stand()",
     summary: "Navi rises into its normal four-leg standing stance, ready to walk.",
     example: "Agentech.stand()",
+    discovery: {
+      taskLabel: "Get Navi ready in a standing state",
+      keywords: ["stand", "standing", "standing state", "ready"],
+      commonTask: { rank: 1, approved: true, reviewedBy: "Agentech product owner", reviewedOn: "2026-10-14" }
+    },
     params: []
   },
   {
@@ -534,6 +570,11 @@ const naviFunctionDefinitions: AgentechFunction[] = [
     signature: "Agentech.sit()",
     summary: "Navi lowers its rear body to the floor while its extended front legs keep the shoulders elevated, holds the posture for the requested time, then returns to regular standing mode.",
     example: "Agentech.sit(time=30.0)",
+    discovery: {
+      taskLabel: "Sit and return to standing automatically",
+      keywords: ["sit", "sitting", "return to stand", "auto return to stand"],
+      commonTask: { rank: 4, approved: true, reviewedBy: "Agentech product owner", reviewedOn: "2026-10-14" }
+    },
     verification: "Physically verified 2026-07-16; timed automatic return to Stand is implemented in the Navi SDK",
     profiles: [
       { name: "Default: 30 seconds", syntax: "Agentech.sit()" },
@@ -721,6 +762,11 @@ const naviFunctionDefinitions: AgentechFunction[] = [
     signature: "Agentech.stop()",
     summary: "Stop walking or turning while leaving Navi in its current posture.",
     example: "Agentech.stop()",
+    discovery: {
+      taskLabel: "Stop walking or turning",
+      keywords: ["stop", "stop walking", "stop turning"],
+      commonTask: { rank: 5, approved: true, reviewedBy: "Agentech product owner", reviewedOn: "2026-10-14" }
+    },
     verification: "Live verified after every locomotion case through 2.5 rad/s turning",
     params: [naviConnection]
   },
@@ -748,6 +794,11 @@ const naviFunctionDefinitions: AgentechFunction[] = [
     signature: "Agentech.get_battery_status()",
     summary: "Read battery percentage, voltage, current, temperature, presence, and supply status.",
     example: "battery = Agentech.get_battery_status()",
+    discovery: {
+      taskLabel: "View battery status",
+      keywords: ["battery", "battery status", "view battery status"],
+      commonTask: { rank: 6, approved: true, reviewedBy: "Agentech product owner", reviewedOn: "2026-10-14" }
+    },
     verification: "Read-only live verified 2026-07-15",
     params: [naviConnection]
   },

@@ -1,3 +1,5 @@
+import { naviAccessoryWorks, type NaviAccessoryWork } from "./eais-navi-accessories.ts";
+
 export const workCategories = [
   "for-you", "trending", "humanoids", "robot-arms", "mobile-robots", "quadrupeds", "drones", "education", "simulation"
 ] as const;
@@ -45,7 +47,14 @@ export type EaisProjectRecord = Omit<ProjectConcept, "experimentQuestion" | "tes
   }[];
 };
 
-export type PrototypeWork = PrototypeWorkPreview & { project: EaisProjectRecord };
+export type PrototypeWork = PrototypeWorkPreview & {
+  availability: "available";
+  project: EaisProjectRecord;
+};
+
+export type EaisWork = PrototypeWork | NaviAccessoryWork;
+
+export { naviAccessoryWorks };
 
 export const categoryLabels: Record<WorkCategory, string> = {
   "for-you": "For You",
@@ -413,6 +422,7 @@ export const prototypeWorks: readonly PrototypeWork[] = workPreviews.map((work) 
   const { experimentQuestion, testPlan, ...concept } = projectConcepts[work.slug];
   return {
     ...work,
+    availability: "available",
     project: {
       ...concept,
       stage: "concept",
@@ -429,19 +439,37 @@ export const prototypeWorks: readonly PrototypeWork[] = workPreviews.map((work) 
   };
 });
 
+export const eaisWorkLibrary: readonly EaisWork[] = [...prototypeWorks, ...naviAccessoryWorks];
+
+export function canOpenEaisWork(work: EaisWork): work is PrototypeWork {
+  return work.availability === "available" && "project" in work;
+}
+
 export function findEaisProject(slug: string): PrototypeWork | undefined {
   return prototypeWorks.find((work) => work.slug === slug);
 }
 
-export function filterEaisWorks(category: WorkCategory, query: string): readonly PrototypeWork[] {
+export function filterEaisWorks(category: WorkCategory, query: string): readonly EaisWork[] {
   const search = query.trim().toLocaleLowerCase();
-  return prototypeWorks.filter((work) => {
+  return eaisWorkLibrary.filter((work) => {
     const isInCategory = category === "for-you"
       || (category === "trending" ? work.isFeatured : work.category === category);
-    const { project } = work;
-    const searchableNotes = [...project.hardware, ...project.architecture, ...project.development];
-    const searchText = [work.title, work.summary, work.outcome, categoryLabels[work.category], project.problem, project.idea, project.robot,
-      ...searchableNotes.flatMap((note) => [note.title, note.description])].join(" ").toLocaleLowerCase();
+    const commonSearchText = [work.title, work.summary, work.outcome, categoryLabels[work.category]];
+    const recordSearchText = canOpenEaisWork(work)
+      ? [
+          work.project.problem,
+          work.project.idea,
+          work.project.robot,
+          ...[...work.project.hardware, ...work.project.architecture, ...work.project.development]
+            .flatMap((note) => [note.title, note.description])
+        ]
+      : [
+          work.collection,
+          work.accessoryCategory,
+          work.description,
+          ...work.assets.flatMap((asset) => [asset.label, asset.sourceRelativePath])
+        ];
+    const searchText = [...commonSearchText, ...recordSearchText].join(" ").toLocaleLowerCase();
     return isInCategory && (!search || searchText.includes(search));
   });
 }

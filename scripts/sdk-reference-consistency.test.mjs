@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -150,4 +151,38 @@ test("Navi reference excludes unsupported photo actions while retaining raise_ca
   for (const name of newActionNames) assert.ok(naviNames.has(name), name);
   for (const name of removedPhotoActions) assert.ok(!naviNames.has(name), name);
   assert.ok(!naviNames.has("turn_around"));
+});
+
+test("Navi exposes the exact product-owner-reviewed Common Tasks without changing executable records", () => {
+  const expectedCommonTasks = [
+    { name: "stand", taskLabel: "Get Navi ready in a standing state", keywords: ["stand", "standing", "standing state", "ready"] },
+    { name: "forward", taskLabel: "Move forward", keywords: ["forward", "move forward", "forward movement"] },
+    { name: "turn", taskLabel: "Turn left or right", keywords: ["turn", "turn left", "turn right", "left turn", "right turn"] },
+    { name: "sit", taskLabel: "Sit and return to standing automatically", keywords: ["sit", "sitting", "return to stand", "auto return to stand"] },
+    { name: "stop", taskLabel: "Stop walking or turning", keywords: ["stop", "stop walking", "stop turning"] },
+    { name: "get_battery_status", taskLabel: "View battery status", keywords: ["battery", "battery status", "view battery status"] },
+  ].map((item, index) => ({
+    ...item,
+    commonTask: {
+      rank: index + 1,
+      approved: true,
+      reviewedBy: "Agentech product owner",
+      reviewedOn: "2026-10-14",
+    },
+  }));
+
+  const actualCommonTasks = navi.naviFunctions
+    .filter((item) => item.discovery?.commonTask)
+    .sort((left, right) => left.discovery.commonTask.rank - right.discovery.commonTask.rank)
+    .map((item) => ({ name: item.name, ...item.discovery }));
+  assert.deepEqual(actualCommonTasks, expectedCommonTasks);
+
+  const executableRecords = navi.naviFunctions.map(({ discovery, returns, ...item }) => item);
+  assert.equal(executableRecords.length, 130);
+  assert.equal(new Set(executableRecords.map((item) => item.name)).size, 130);
+  assert.equal(
+    createHash("sha256").update(JSON.stringify(executableRecords)).digest("hex"),
+    "b6e96cb3c83011c0d073a5572bce3828b7d4d7442b439ccc60f0b6e2495b1dd5",
+    "discovery metadata must not change names, signatures, examples, statuses, access, parameters, profiles, or callable inputs",
+  );
 });

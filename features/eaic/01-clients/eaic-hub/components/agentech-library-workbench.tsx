@@ -2,13 +2,23 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { aegisFunctions, aegisStarterCode, type AgentechFunction } from "@/features/eaic/02-unified-api/projects-validation/aegis-sdk-reference";
 import { naviFunctions, naviSafetyLimits, naviStarterCode } from "@/features/eaic/02-unified-api/projects-validation/navi-sdk-reference";
 import { masterReferenceCategories, masterSafetyLimits } from "@/features/eaic/02-unified-api/projects-validation/master-sdk-reference";
 import { masterSimulationPreviews, resolveMasterSimulationVariant } from "@/lib/master-simulation-previews";
 import { masterActionFunctions } from "@/features/eaic/01-clients/eaic-hub/contracts/master-action-documentation";
 import { MasterActionReference } from "@/features/eaic/01-clients/eaic-hub/components/master-action-reference";
+import { NaviSdkExplorer } from "@/features/eaic/01-clients/eaic-hub/components/navi-sdk-explorer";
+import {
+  ViewSdkOnboardingCoordinator,
+  ViewSdkOnboardingSurface,
+  type ViewSdkOnboardingController,
+} from "@/features/eaic/01-clients/eaic-hub/components/view-sdk-onboarding";
+import { type SdkRobot } from "@/features/eaic/01-clients/eaic-hub/contracts/view-sdk-onboarding";
+import { getNaviSimulationMedia } from "@/features/eaic/01-clients/eaic-hub/contracts/navi-simulation-media";
+import { stripNaviExplorerParams } from "@/features/eaic/01-clients/eaic-hub/contracts/navi-sdk-explorer-state";
 import { agentechLibraryTasks, getAgentechLibraryTask, type AgentechLibraryTaskSlug } from "@/features/eaic/01-clients/eaic-hub/contracts/agentech-library-tasks";
 import { eaicHubPath, getEaicHubTaskPath } from "@/features/eaic/01-clients/eaic-hub/contracts/eaic-hub";
 import {
@@ -95,89 +105,11 @@ type CachedPhysicalReview = {
   physicalSafetyStatus: string;
   aiSecurityStatus: string;
 };
-type PremiumFeatureStatus = {
-  feature?: { name: string };
-  access?: { allowed: boolean; source: "subscription" | "purchase" | "internal" | "none" };
-  priceCents?: number | null;
-  error?: string;
-};
 const robotSchedulingPath = getEaicHubTaskPath("schedule-time");
 const useRealMuJoCoPreview = true;
 const simulatorPreviewRoot = "/assets/products/agentech-library/simulator-previews";
 const previewAsset = (name: string) => `${simulatorPreviewRoot}/aegis/${name}.gif?v=squat-half-height-20260715`;
 
-function PremiumFeaturePanel({ item }: { item: AgentechFunction }) {
-  const [status, setStatus] = useState<PremiumFeatureStatus | null>(null);
-  const [busy, setBusy] = useState(false);
-  const access = item.access;
-
-  useEffect(() => {
-    if (!access) return;
-    let active = true;
-    fetch("/api/premium-features/return-to-home", { cache: "no-store" })
-      .then(async (response) => ({ response, payload: await response.json().catch(() => null) as PremiumFeatureStatus | null }))
-      .then(({ response, payload }) => {
-        if (!active) return;
-        setStatus(payload ?? { error: response.status === 401 ? "Sign in to check access." : "Unable to check access." });
-      })
-      .catch(() => active && setStatus({ error: "Unable to check access." }));
-    return () => { active = false; };
-  }, [access]);
-
-  if (!access) return null;
-
-  const purchase = async () => {
-    setBusy(true);
-    const response = await fetch("/api/premium-features/return-to-home", { method: "POST" });
-    const payload = await response.json().catch(() => null) as (PremiumFeatureStatus & { checkoutUrl?: string; alreadyEntitled?: boolean }) | null;
-    if (payload?.checkoutUrl) {
-      window.location.href = payload.checkoutUrl;
-      return;
-    }
-    if (payload?.alreadyEntitled) {
-      window.location.reload();
-      return;
-    }
-    setStatus(payload ?? { error: "Unable to start checkout." });
-    setBusy(false);
-  };
-
-  const price = typeof status?.priceCents === "number"
-    ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(status.priceCents / 100)
-    : null;
-
-  return (
-    <div className="mt-3 border border-[#7c5ce7] bg-[#f5f1ff] p-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-[#5b35c8]">Premium function</p>
-          <p className="mt-1 text-xs leading-5 text-[#3c2875]">
-            Included with an active monthly subscription. Non-subscribers can purchase a lifetime unlock for this function only.
-          </p>
-          <p className="mt-2 text-xs font-medium text-[#3c2875]">
-            {status?.access?.allowed
-              ? status.access.source === "subscription"
-                ? "Unlocked by monthly subscription"
-                : status.access.source === "purchase"
-                  ? "Lifetime feature unlocked"
-                  : "Internal access enabled"
-              : status?.error || (price ? `One-time unlock: ${price}` : "Checking access…")}
-          </p>
-        </div>
-        {!status?.access?.allowed ? (
-          <button
-            type="button"
-            disabled={busy || status?.priceCents == null}
-            onClick={purchase}
-            className="border border-[#5b35c8] bg-[#5b35c8] px-3 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {busy ? "Opening checkout…" : price ? `Unlock for ${price}` : "Price coming soon"}
-          </button>
-        ) : null}
-      </div>
-    </div>
-  );
-}
 const localPreviewAssets: Record<string, string> = {
   forward: previewAsset("forward"),
   backward: previewAsset("backward"),
@@ -202,8 +134,6 @@ const localPreviewAssets: Record<string, string> = {
   get_battery_status: previewAsset("battery_status")
 };
 const commandsWithoutReferencePreview = new Set(["stay", "squat_forward", "squat_backward", "squat_lateral", "squat_diagonal", "squat_turn", "get_battery_status", "get_body_state", "capture_image"]);
-type SdkRobot = "aegis" | "navi" | "master";
-
 const masterPresentationOrder = new Map<AgentechFunction["category"], number>([
   ["Joint Adjustments", 0],
   ["Sensing", 1],
@@ -239,167 +169,6 @@ function shouldHideReferencePreview(item: AgentechFunction, selectedRobot: SdkRo
     || (selectedRobot === "master" && !masterSimulationPreviews[item.name])
     || (selectedRobot === "navi" && (item.name === "stop" || item.name === "recovery_stand" || item.category === "Sensing" || item.category === "Configuration"));
 }
-const naviSimulationAssets: Partial<Record<string, string>> = {
-  backward: "/assets/products/agentech-library/simulator-previews/navi/backward/navi-walk-backward.mp4?v=local-approval-20260720",
-  forward: "/assets/products/agentech-library/simulator-previews/navi/forward/navi-walk-forward.mp4?v=local-approval-20260720",
-  lateral_left: "/assets/products/agentech-library/simulator-previews/navi/lateral-left/navi-lateral-left.mp4?v=local-approval-20260720d",
-  lateral_right: "/assets/products/agentech-library/simulator-previews/navi/lateral-right/navi-lateral-right.mp4?v=local-approval-20260720",
-  diagonal_left: "/assets/products/agentech-library/simulator-previews/navi/diagonal-left/navi-diagonal-left.mp4?v=local-approval-20260720",
-  diagonal_right: "/assets/products/agentech-library/simulator-previews/navi/diagonal-right/navi-diagonal-right.mp4?v=local-approval-20260720",
-  turn_left: "/assets/products/agentech-library/simulator-previews/navi/turn-left/navi-turn-left.mp4?v=local-approval-20260720",
-  turn_right: "/assets/products/agentech-library/simulator-previews/navi/turn-right/navi-turn-right.mp4?v=local-approval-20260720",
-  return_to_home: "/assets/products/agentech-library/simulator-previews/navi/return-to-home/navi-return-to-home.mp4?v=20260722-1",
-  sway: "/assets/products/agentech-library/simulator-previews/navi/actions/sway/navi-sway-standing.mp4?v=20260720-1",
-  pee: "/assets/products/agentech-library/simulator-previews/navi/actions/pee/navi-pee-back-left-v2.mp4?v=20260720-2",
-  knock: "/assets/products/agentech-library/simulator-previews/navi/actions/knock/navi-knock-higher-v2.mp4?v=20260721-3",
-  shake_hand: "/assets/products/agentech-library/simulator-previews/navi/actions/shake-hand/navi-shake-hand-one-second.mp4?v=20260721-4",
-  hip_shake: "/assets/products/agentech-library/simulator-previews/navi/actions/hip-shake/navi-hip-shake-rear-down.mp4?v=20260721-2",
-  wave_hand: "/assets/products/agentech-library/simulator-previews/navi/actions/wave-hand/navi-wave-hand-forward-up.mp4?v=20260721-5",
-  bow: "/assets/products/agentech-library/simulator-previews/navi/actions/bow/navi-reference-bow.gif?v=20260723-1",
-  wag_rear: "/assets/products/agentech-library/simulator-previews/navi/actions/wag-rear/navi-wag-rear-planted.mp4?v=20260721-2",
-  bark: "/assets/products/agentech-library/simulator-previews/navi/actions/bark/navi-reference-bark.gif?v=20260723-1",
-  clap_hand: "/assets/products/agentech-library/simulator-previews/navi/actions/clap-hand/navi-reference-clap-hand.gif?v=20260723-1",
-  rub_eyes: "/assets/products/agentech-library/simulator-previews/navi/actions/rub-eyes/navi-reference-rub-eyes.gif?v=20260723-1",
-  nod_head: "/assets/products/agentech-library/simulator-previews/navi/actions/nod-head/navi-nod-head-sequential.mp4?v=20260721-4",
-  shake_head: "/assets/products/agentech-library/simulator-previews/navi/actions/shake-head/navi-shake-head-twist.mp4?v=20260721-1",
-  confused: "/assets/products/agentech-library/simulator-previews/navi/actions/confused/navi-confused-asymmetric-legs.mp4?v=20260721-4",
-  show_affection: "/assets/products/agentech-library/simulator-previews/navi/actions/show-affection/navi-show-affection-from-cute.mp4?v=20260721-4",
-  draw_heart: "/assets/products/agentech-library/simulator-previews/navi/actions/draw-heart/navi-draw-heart-reference.mp4?v=20260721-3",
-  cute: "/assets/products/agentech-library/simulator-previews/navi/actions/cute/navi-cute-reference.mp4?v=20260721-5",
-  ask_for_play: "/assets/products/agentech-library/simulator-previews/navi/actions/ask-for-play/navi-ask-for-play-reference.mp4?v=20260721-4",
-  enjoy_touch: "/assets/products/agentech-library/simulator-previews/navi/actions/enjoy-touch/navi-enjoy-touch-reference.mp4?v=20260721-5",
-  sniff_ahead: "/assets/products/agentech-library/simulator-previews/navi/actions/sniff-ahead/navi-sniff-ahead.mp4?v=20260721-1",
-  sniff_left: "/assets/products/agentech-library/simulator-previews/navi/actions/sniff-left/navi-sniff-left.mp4?v=20260721-1",
-  sniff_right: "/assets/products/agentech-library/simulator-previews/navi/actions/sniff-right/navi-sniff-right.mp4?v=20260721-1",
-  front_stretch: "/assets/products/agentech-library/simulator-previews/navi/actions/front-stretch/navi-front-stretch.mp4?v=20260721-2",
-  full_body_stretch: "/assets/products/agentech-library/simulator-previews/navi/actions/full-body-stretch/navi-full-body-stretch.mp4?v=20260721-2",
-  look_around: "/assets/products/agentech-library/simulator-previews/navi/actions/look-around/navi-look-around.mp4?v=20260721-1",
-  squat: "/assets/products/agentech-library/simulator-previews/navi/posture/squat/navi-reference-squat.gif?v=20260723-1",
-  sit: "/assets/products/agentech-library/simulator-previews/navi/posture/sit/navi-sit.mp4?v=20260721-1",
-  lie_down: "/assets/products/agentech-library/simulator-previews/navi/posture/lie-down/navi-lie-down.mp4?v=20260721-1",
-  lie_on_elbows: "/assets/products/agentech-library/simulator-previews/navi/posture/lie-on-elbows/navi-lie-on-elbows.mp4?v=20260721-1",
-  prostrate: "/assets/products/agentech-library/simulator-previews/navi/posture/prostrate/navi-prostrate.mp4?v=20260721-1",
-  sphinx_lie: "/assets/products/agentech-library/simulator-previews/navi/posture/sphinx-lie/navi-sphinx-lie.mp4?v=20260721-1",
-  sphinx_left_lie: "/assets/products/agentech-library/simulator-previews/navi/posture/sphinx-left-lie/navi-sphinx-left-lie.mp4?v=20260721-1",
-  sphinx_right_lie: "/assets/products/agentech-library/simulator-previews/navi/posture/sphinx-right-lie/navi-sphinx-right-lie.mp4?v=20260721-1",
-  stand_high: "/assets/products/agentech-library/simulator-previews/navi/posture/stand-high/navi-stand-high.mp4?v=20260721-1",
-  stand_at_ease: "/assets/products/agentech-library/simulator-previews/navi/posture/stand-at-ease/navi-stand-at-ease.mp4?v=20260721-1",
-  stand_at_attention: "/assets/products/agentech-library/simulator-previews/navi/posture/stand-at-attention/navi-stand-at-attention.mp4?v=20260721-1",
-  rear_puff: "/assets/products/agentech-library/simulator-previews/navi/actions/long-fart/navi-long-fart.mp4?v=20260721-1",
-  head_up_down: "/assets/products/agentech-library/simulator-previews/navi/actions/head-up-down/navi-head-up-down.mp4?v=20260721-1",
-  look_down: "/assets/products/agentech-library/simulator-previews/navi/actions/look-down/navi-look-down.mp4?v=20260721-1",
-  nod_with_beats: "/assets/products/agentech-library/simulator-previews/navi/actions/nod-with-beats/navi-nod-with-beats.mp4?v=20260721-1",
-  eat: "/assets/products/agentech-library/simulator-previews/navi/actions/eat/navi-eat.mp4?v=20260721-7",
-  excited: "/assets/products/agentech-library/simulator-previews/navi/actions/excited/navi-excited.mp4?v=20260721-1",
-  nod_off: "/assets/products/agentech-library/simulator-previews/navi/actions/nod-off/navi-nod-off.mp4?v=20260721-2",
-  dance: "/assets/products/agentech-library/simulator-previews/navi/actions/dance-shoulder/navi-dance-shoulder.mp4?v=20260721-2",
-  dramatic_listen: "/assets/products/agentech-library/simulator-previews/navi/actions/dramatic-listen/navi-dramatic-listen.mp4?v=20260721-2",
-  act_shy: "/assets/products/agentech-library/simulator-previews/navi/actions/act-shy/navi-reference-act-shy.gif?v=20260723-1",
-  be_sleepy: "/assets/products/agentech-library/simulator-previews/navi/actions/be-sleepy/navi-reference-be-sleepy.gif?v=20260723-1",
-  body_tag_search: "/assets/products/agentech-library/simulator-previews/navi/actions/body-tag-search/navi-reference-body-tag-search.gif?v=20260723-1",
-  bored_half_sit: "/assets/products/agentech-library/simulator-previews/navi/actions/bored-half-sit/navi-reference-bored-half-sit.gif?v=20260723-1",
-  brush_teeth: "/assets/products/agentech-library/simulator-previews/navi/actions/brush-teeth/navi-reference-brush-teeth.gif?v=20260723-1",
-  smell_food: "/assets/products/agentech-library/simulator-previews/navi/actions/smell-food/navi-smell-food-live-telemetry.mp4?v=20260805-grounded-1",
-  look_at_food: "/assets/products/agentech-library/simulator-previews/navi/actions/look-at-food/navi-look-at-food-live-telemetry.mp4?v=20260805-grounded-1",
-  eat_yellow: "/assets/products/agentech-library/simulator-previews/navi/actions/eat-yellow/navi-eat-yellow-live-telemetry.mp4?v=20260805-grounded-1",
-  drink: "/assets/products/agentech-library/simulator-previews/navi/actions/drink/navi-drink-live-telemetry.mp4?v=20260805-grounded-1",
-  enjoy_eating: "/assets/products/agentech-library/simulator-previews/navi/actions/enjoy-eating/navi-enjoy-eating-live-telemetry.mp4?v=20260805-recapture-2",
-  finish_eating: "/assets/products/agentech-library/simulator-previews/navi/actions/finish-eating/navi-finish-eating-live-telemetry.mp4?v=20260805-recapture-2",
-  apply_toothpaste: "/assets/products/agentech-library/simulator-previews/navi/actions/apply-toothpaste/navi-apply-toothpaste-live-telemetry.mp4?v=20260805-grounded-1",
-  main_brush: "/assets/products/agentech-library/simulator-previews/navi/actions/main-brush/navi-main-brush-live-telemetry.mp4?v=20260805-grounded-1",
-  gargle: "/assets/products/agentech-library/simulator-previews/navi/actions/gargle/navi-gargle-live-telemetry.mp4?v=20260805-grounded-1",
-  brush_teeth_horizontal_30s: "/assets/products/agentech-library/simulator-previews/navi/actions/brush-teeth-horizontal-30s/navi-brush-teeth-horizontal-30s-live-telemetry.mp4?v=20260805-grounded-1",
-  brush_teeth_back_and_forth_30s: "/assets/products/agentech-library/simulator-previews/navi/actions/brush-teeth-back-and-forth-30s/navi-brush-teeth-back-and-forth-30s-live-telemetry.mp4?v=20260805-grounded-1",
-  brush_teeth_horizontal_23s: "/assets/products/agentech-library/simulator-previews/navi/actions/brush-teeth-horizontal-23s/navi-brush-teeth-horizontal-23s-live-telemetry.mp4?v=20260805-grounded-1",
-  raise_camera: "/assets/products/agentech-library/simulator-previews/navi/actions/raise-camera/navi-raise-camera-live-telemetry.mp4?v=20260805-recapture-2",
-  brush_teeth_vertical_30s: "/assets/products/agentech-library/simulator-previews/navi/actions/brush-teeth-vertical-30s/navi-brush-teeth-vertical-30s-live-telemetry.mp4?v=20260805-grounded-1",
-  chat: "/assets/products/agentech-library/simulator-previews/navi/actions/chat/navi-reference-chat.gif?v=20260723-1",
-  cooking: "/assets/products/agentech-library/simulator-previews/navi/actions/cooking/navi-reference-cooking.gif?v=20260723-1",
-  duck_walk: "/assets/products/agentech-library/simulator-previews/navi/actions/duck-walk/navi-reference-duck-walk.gif?v=20260723-1",
-  eager: "/assets/products/agentech-library/simulator-previews/navi/actions/eager/navi-reference-eager.gif?v=20260723-1",
-  explore_new_home: "/assets/products/agentech-library/simulator-previews/navi/actions/explore-new-home/navi-reference-explore-new-home.gif?v=20260723-1",
-  explore_road: "/assets/products/agentech-library/simulator-previews/navi/actions/explore-road/navi-reference-explore-road.gif?v=20260723-1",
-  fast_rotate: "/assets/products/agentech-library/simulator-previews/navi/actions/fast-rotate/navi-reference-fast-rotate.gif?v=20260723-1",
-  joy_walk: "/assets/products/agentech-library/simulator-previews/navi/actions/joy-walk/navi-reference-joy-walk.gif?v=20260723-1",
-  listen: "/assets/products/agentech-library/simulator-previews/navi/actions/listen/navi-reference-listen.gif?v=20260723-1",
-  observe: "/assets/products/agentech-library/simulator-previews/navi/actions/observe/navi-reference-observe.gif?v=20260723-1",
-  push_up: "/assets/products/agentech-library/simulator-previews/navi/actions/push-up/navi-reference-push-up.gif?v=20260723-2",
-  rear_stretch: "/assets/products/agentech-library/simulator-previews/navi/actions/rear-stretch/navi-reference-rear-stretch.gif?v=20260723-1",
-  rest: "/assets/products/agentech-library/simulator-previews/navi/actions/rest/navi-reference-rest.gif?v=20260723-1",
-  search_environment: "/assets/products/agentech-library/simulator-previews/navi/actions/search-environment/navi-reference-search-environment.gif?v=20260723-1",
-  search_tag: "/assets/products/agentech-library/simulator-previews/navi/actions/search-tag/navi-reference-search-tag.gif?v=20260723-1",
-  shake_self: "/assets/products/agentech-library/simulator-previews/navi/actions/shake-self/navi-reference-shake-self.gif?v=20260723-1",
-  sniff_up: "/assets/products/agentech-library/simulator-previews/navi/actions/sniff-up/navi-reference-sniff-up.gif?v=20260723-1",
-  snuggle: "/assets/products/agentech-library/simulator-previews/navi/actions/snuggle/navi-reference-snuggle.gif?v=20260723-1",
-  step: "/assets/products/agentech-library/simulator-previews/navi/actions/step/navi-reference-step.gif?v=20260723-1",
-  step_idle: "/assets/products/agentech-library/simulator-previews/navi/actions/step-idle/navi-reference-step-idle.gif?v=20260723-1",
-  sway_front_back: "/assets/products/agentech-library/simulator-previews/navi/actions/sway-front-back/navi-reference-sway-front-back.gif?v=20260723-1",
-  think: "/assets/products/agentech-library/simulator-previews/navi/actions/think/navi-reference-think.gif?v=20260723-1",
-  toilet_pose: "/assets/products/agentech-library/simulator-previews/navi/actions/toilet-pose/navi-reference-toilet-pose.gif?v=20260723-1",
-  toss: "/assets/products/agentech-library/simulator-previews/navi/actions/toss/navi-reference-toss.gif?v=20260723-1",
-  yawn: "/assets/products/agentech-library/simulator-previews/navi/actions/yawn/navi-reference-yawn.gif?v=20260723-1",
-  swim: "/assets/products/agentech-library/simulator-previews/navi/actions/swim/navi-swim.mp4?v=20260722-4",
-  point_to_sky: "/assets/products/agentech-library/simulator-previews/navi/actions/point-to-sky/navi-point-to-sky-left.mp4?v=20260722-2",
-  wait_for_praise: "/assets/products/agentech-library/simulator-previews/navi/actions/wait-for-praise/navi-wait-for-praise-planted-feet.mp4?v=20260722-1",
-  lucky_cat: "/assets/products/agentech-library/simulator-previews/navi/actions/lucky-cat/navi-lucky-cat-floor-safe.mp4?v=20260722-1",
-  jingle: "/assets/products/agentech-library/simulator-previews/navi/actions/jingle/navi-jingle-fast-three-times.mp4?v=20260722-1",
-  flex_muscles: "/assets/products/agentech-library/simulator-previews/navi/actions/flex-muscles/navi-flex-muscles-live-joints.mp4?v=20260722-1",
-  good_night_wave: "/assets/products/agentech-library/simulator-previews/navi/actions/good-night-wave/navi-good-night-wave-front-camera.mp4?v=20260722-1",
-  cry: "/assets/products/agentech-library/simulator-previews/navi/actions/cry/navi-cry-live-joints.mp4?v=20260722-2",
-  encourage: "/assets/products/agentech-library/simulator-previews/navi/actions/encourage/navi-encourage-clean-return.mp4?v=20260722-1",
-  playful_greeting: "/assets/products/agentech-library/simulator-previews/navi/actions/playful-greeting/navi-playful-greeting-shoulder-dips.webp?v=20260722-5",
-  push_ahead: "/assets/products/agentech-library/simulator-previews/navi/actions/push-ahead/navi-push-ahead-knee-forward.webp?v=20260722-4",
-  brace: "/assets/products/agentech-library/simulator-previews/navi/actions/brace/navi-brace-live-joints.mp4?v=20260722-2",
-  shake_hand_quick: "/assets/products/agentech-library/simulator-previews/navi/actions/shake-hand-quick/navi-shake-hand-quick-live-joints.mp4?v=20260722-2",
-  pee_quick: "/assets/products/agentech-library/simulator-previews/navi/actions/pee-quick/navi-pee-quick-live-joints.mp4?v=20260722-2",
-  emergency_stop: "/assets/products/agentech-library/simulator-previews/navi/safety/emergency-stop/navi-emergency-stop.mp4?v=20260722-1",
-  jump: "/assets/products/agentech-library/simulator-previews/navi/athletics/jump/navi-reference-jump.mp4?v=20260721-2",
-  jump_round: "/assets/products/agentech-library/simulator-previews/navi/athletics/jump-round/navi-reference-jump-round.gif?v=20260723-1",
-  kick: "/assets/products/agentech-library/simulator-previews/navi/athletics/kick/navi-reference-kick.mp4?v=20260721-2",
-  frontflip: "/assets/products/agentech-library/simulator-previews/navi/athletics/frontflip/navi-reference-frontflip.mp4?v=20260721-2",
-  jump_forward: "/assets/products/agentech-library/simulator-previews/navi/athletics/jump-forward/navi-reference-jump-forward.mp4?v=20260721-2",
-  sideflip: "/assets/products/agentech-library/simulator-previews/navi/athletics/sideflip-right/navi-reference-sideflip-right.mp4?v=20260721-2",
-  stand: "/assets/products/agentech-library/simulator-previews/navi/stand/navi-stand-up.mp4?v=approved-20260720"
-};
-const naviPreviewAliases: Partial<Record<string, string[]>> = {
-  diagonal: ["diagonal_left", "diagonal_right"],
-  lateral: ["lateral_left", "lateral_right"],
-  turn: ["turn_left", "turn_right"]
-};
-const naviPreviewCategories = new Set(["Movement", "Athletics", "Actions", "Posture"]);
-const missingNaviSimulationAssets = naviFunctions
-  .filter((item) =>
-    item.status !== "development"
-    && item.status !== "unsupported"
-    && naviPreviewCategories.has(item.category)
-    && item.name !== "recovery_stand"
-  )
-  .flatMap((item) => naviPreviewAliases[item.name] ?? [item.name])
-  .filter((command) => !naviSimulationAssets[command]);
-
-if (missingNaviSimulationAssets.length) {
-  throw new Error(`Missing Navi simulation previews: ${missingNaviSimulationAssets.join(", ")}`);
-}
-
-const naviSimulationReplayStart: Partial<Record<string, number>> = {
-  bow: 0,
-  bark: 0,
-  hip_shake: 0,
-  nod_head: 0,
-  shake_head: 0,
-  confused: 0,
-  show_affection: 13.8,
-  draw_heart: 14.3,
-  cute: 0,
-  ask_for_play: 0,
-  enjoy_touch: 0,
-  knock: 14.5,
-  shake_hand: 2.65,
-  wave_hand: 0,
-  wag_rear: 0,
-  pee: 6.25,
-  sway: 4.9
-};
 const localPreviewFallback = previewAsset("stand");
 const protectedStandLine = "Agentech.stand()";
 const commandsRequiringStand = new Set([
@@ -628,12 +397,13 @@ function simulationClipsForMotionPlan(
   motionPlan: string[],
   robotModel: AgentechRobotModel
 ): HardwareSimulationClip[] {
-  const assets = robotModel === "Navi" ? naviSimulationAssets : localPreviewAssets;
   const clips = motionPlan
     .map((line) => {
       const match = line.match(/^([a-zA-Z_][\w]*)\s*\((.*)\)$/);
       const command = match ? resolvePreviewCommand(match[1], match[2]) : "";
-      const asset = assets[command];
+      const asset = robotModel === "Navi"
+        ? getNaviSimulationMedia(command)?.asset
+        : localPreviewAssets[command];
       if (!command || !asset) {
         return null;
       }
@@ -656,7 +426,7 @@ function simulationClipsForMotionPlan(
       command: "stand",
       label: "Stand",
       asset: robotModel === "Navi"
-        ? naviSimulationAssets.stand ?? "/assets/robotics/ff-navi-white.jpg"
+        ? getNaviSimulationMedia("stand")?.asset ?? "/assets/robotics/ff-navi-white.jpg"
         : localPreviewFallback,
       sourceLine: "No renderable Agentech movement command found."
     }
@@ -878,8 +648,18 @@ function commandPlan(code: string, robotModel: AgentechRobotModel = "Aegies") {
   };
 }
 
-function CopyCodeButton({ value, className = "" }: { value: string; className?: string }) {
-  const [copied, setCopied] = useState(false);
+function CopyCodeButton({
+  value,
+  className = "",
+  onCopied,
+  onCopyError,
+}: {
+  value: string;
+  className?: string;
+  onCopied?: () => void;
+  onCopyError?: () => void;
+}) {
+  const [copyStatus, setCopyStatus] = useState<"idle" | "success" | "error">("idle");
 
   async function copyCode() {
     try {
@@ -893,13 +673,21 @@ function CopyCodeButton({ value, className = "" }: { value: string; className?: 
         textarea.style.opacity = "0";
         document.body.appendChild(textarea);
         textarea.select();
-        document.execCommand("copy");
-        textarea.remove();
+        try {
+          const copied = document.execCommand("copy");
+          if (!copied) {
+            throw new Error("Copy command was rejected.");
+          }
+        } finally {
+          textarea.remove();
+        }
       }
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
+      setCopyStatus("success");
+      onCopied?.();
+      window.setTimeout(() => setCopyStatus("idle"), 1500);
     } catch {
-      setCopied(false);
+      setCopyStatus("error");
+      onCopyError?.();
     }
   }
 
@@ -907,11 +695,11 @@ function CopyCodeButton({ value, className = "" }: { value: string; className?: 
     <button
       type="button"
       onClick={copyCode}
-      className={`grid h-9 w-9 place-items-center rounded-[10px] border border-[#1a73e8]/35 bg-white/80 text-[#1a73e8] shadow-sm transition hover:border-[#1a73e8] hover:bg-[#1a73e8] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1a73e8] focus-visible:ring-offset-2 ${className}`}
+      className={`grid h-11 w-11 place-items-center rounded-[10px] border border-[#1a73e8]/35 bg-white/80 text-[#1a73e8] shadow-sm transition hover:border-[#1a73e8] hover:bg-[#1a73e8] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1a73e8] focus-visible:ring-offset-2 ${className}`}
       aria-label="Copy code"
-      title={copied ? "Copied" : "Copy code"}
+      title={copyStatus === "success" ? "Copied" : copyStatus === "error" ? "Copy failed" : "Copy code"}
     >
-      {copied ? (
+      {copyStatus === "success" ? (
         <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M20 6 9 17l-5-5" />
         </svg>
@@ -921,163 +709,13 @@ function CopyCodeButton({ value, className = "" }: { value: string; className?: 
           <path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
         </svg>
       )}
+      <span className="sr-only" aria-live="polite">
+        {copyStatus === "success" ? "Code copied." : copyStatus === "error" ? "Copy failed. Select and copy the code manually." : ""}
+      </span>
     </button>
   );
 }
 
-function NaviSimulationPreview({ command }: { command: string }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const animatedImageRef = useRef<HTMLDivElement>(null);
-  const autoPlayedSourceRef = useRef<string | null>(null);
-  const [animatedImageVisible, setAnimatedImageVisible] = useState(false);
-  const [animatedImageRun, setAnimatedImageRun] = useState(0);
-  const videoSource = naviSimulationAssets[command];
-  const isGifImage = Boolean(videoSource && /\.gif(?:[?#]|$)/i.test(videoSource));
-  const isAnimatedImage = Boolean(videoSource && /\.(?:gif|webp)(?:[?#]|$)/i.test(videoSource));
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !videoSource || isAnimatedImage) {
-      return;
-    }
-
-    if (autoPlayedSourceRef.current !== videoSource) {
-      autoPlayedSourceRef.current = null;
-    }
-
-    const playFromStart = () => {
-      const replayStart = naviSimulationReplayStart[command] ?? 0;
-      const startPlayback = () => {
-        video.pause();
-        video.currentTime = replayStart;
-        void video.play().catch(() => undefined);
-      };
-      if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
-        startPlayback();
-        return;
-      }
-      video.addEventListener("loadedmetadata", startPlayback, { once: true });
-      video.load();
-    };
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry?.isIntersecting || autoPlayedSourceRef.current === videoSource) {
-          return;
-        }
-        autoPlayedSourceRef.current = videoSource;
-        playFromStart();
-      },
-      { threshold: 0.35 }
-    );
-    observer.observe(video);
-    return () => observer.disconnect();
-  }, [command, isAnimatedImage, videoSource]);
-
-  useEffect(() => {
-    const container = animatedImageRef.current;
-    if (!container || !videoSource || !isAnimatedImage) {
-      return;
-    }
-    setAnimatedImageVisible(false);
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry?.isIntersecting) {
-          return;
-        }
-        setAnimatedImageVisible(true);
-        observer.disconnect();
-      },
-      { threshold: 0.35 }
-    );
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [isAnimatedImage, videoSource]);
-
-  if (!videoSource) {
-    return (
-      <div>
-        <Image
-          src="/assets/robotics/ff-navi-white.jpg"
-          alt={`FF Navi robot for Agentech.${command}`}
-          width={1200}
-          height={675}
-          className="aspect-video w-full border border-[#dce7f2] bg-white object-contain"
-        />
-        <p className="mt-3 text-xs leading-5 text-[#526174]">Simulation preview coming soon</p>
-      </div>
-    );
-  }
-
-  function replay() {
-    if (isAnimatedImage) {
-      setAnimatedImageVisible(true);
-      setAnimatedImageRun((run) => run + 1);
-      return;
-    }
-    const video = videoRef.current;
-    if (!video) {
-      return;
-    }
-    const replayStart = naviSimulationReplayStart[command] ?? 0;
-    const playFromStart = () => {
-      video.currentTime = replayStart;
-      void video.play().catch(() => undefined);
-    };
-    video.pause();
-    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
-      playFromStart();
-      return;
-    }
-    video.addEventListener("loadedmetadata", playFromStart, { once: true });
-    video.load();
-  }
-
-  return (
-    <div>
-      {isAnimatedImage ? (
-        <div
-          ref={animatedImageRef}
-          className={isGifImage ? "w-full" : "aspect-video w-full border border-[#dce7f2] bg-black"}
-        >
-          {animatedImageVisible ? (
-            <Image
-              key={animatedImageRun}
-              src={`${videoSource}&replay=${animatedImageRun}`}
-              alt={`Approved Navi MuJoCo simulation for Agentech.${command}`}
-              width={isGifImage ? 720 : 640}
-              height={isGifImage ? 540 : 360}
-              unoptimized
-              className={isGifImage
-                ? "h-auto w-full border border-[#dce7f2] object-contain"
-                : "aspect-video h-full w-full object-contain"}
-            />
-          ) : null}
-        </div>
-      ) : (
-        <video
-          ref={videoRef}
-          src={videoSource}
-          muted
-          playsInline
-          preload="metadata"
-          aria-label={`Approved Navi MuJoCo simulation for Agentech.${command}`}
-          className="aspect-video w-full border border-[#dce7f2] bg-black object-contain"
-        />
-      )}
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs leading-5 text-[#526174]">Approved Navi MuJoCo simulation</p>
-        <button
-          type="button"
-          onClick={replay}
-          className="border border-[#005bd6] bg-[#eef6ff] px-3 py-2 text-xs font-medium text-[#0053bd] transition hover:bg-[#005bd6] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#005bd6] focus-visible:ring-offset-2"
-        >
-          Replay simulation
-        </button>
-      </div>
-    </div>
-  );
-}
 
 function MasterSimulationPreviewPanel({ command }: { command: string }) {
   const previewEntry = masterSimulationPreviews[command];
@@ -1627,11 +1265,21 @@ function LockedLiveRunPanel({ dark = false }: { dark?: boolean }) {
 }
 
 function FocusedStartCodingSection() {
+  const [activeStep, setActiveStep] = useState(0);
+  const [completedSteps, setCompletedSteps] = useState<readonly number[]>([]);
+  const [finished, setFinished] = useState(false);
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const hasNavigatedRef = useRef(false);
+  const fullFile = `from agentech import Agentech
+
+Agentech.stand()
+Agentech.forward(speed_mps=0.3, duration_s=1)
+Agentech.stop()`;
   const setupSteps = [
     {
       label: "01",
       title: "Install the SDK",
-      body: "Run the GitHub package install in your terminal before writing robot commands.",
+      body: "Confirm that your approved account has private SDK repository access, then run the GitHub install in your terminal.",
       code: "pip install git+https://github.com/agent-tech0316/agentech_sdk.git"
     },
     {
@@ -1649,7 +1297,7 @@ function FocusedStartCodingSection() {
     {
       label: "04",
       title: "Move, then stop",
-      body: "Keep early commands short. Preview first, then submit for review when the sequence is stable.",
+      body: "Keep the first movement short and end with stop. This page prepares and copies code; it does not preview, authenticate, send, or run it.",
       code: "Agentech.forward(speed_mps=0.3, duration_s=1)\nAgentech.stop()"
     }
   ];
@@ -1679,8 +1327,29 @@ print(Agentech.get_battery_status())`
     }
   ];
 
+  useEffect(() => {
+    if (!hasNavigatedRef.current) return;
+    stepHeadingRef.current?.focus();
+  }, [activeStep, finished]);
+
+  function goToStep(index: number) {
+    hasNavigatedRef.current = true;
+    setFinished(false);
+    setActiveStep(index);
+  }
+
+  function continueFromStep() {
+    setCompletedSteps((current) => current.includes(activeStep) ? current : [...current, activeStep]);
+    hasNavigatedRef.current = true;
+    if (activeStep === setupSteps.length - 1) {
+      setFinished(true);
+      return;
+    }
+    setActiveStep(activeStep + 1);
+  }
+
   return (
-    <section className="bg-[#f5f4f1] px-4 py-10 sm:px-6 lg:px-8">
+    <section data-eaic-start-guide="true" className="bg-[#f5f4f1] px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
         <div className="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
           <div className="overflow-hidden rounded-[22px] border border-black/8 bg-white/70 shadow-[0_28px_80px_rgba(17,17,17,0.08)]">
@@ -1711,35 +1380,64 @@ print(Agentech.get_battery_status())`
               />
             </div>
             <div className="p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1a73e8]">Beginner Path</p>
-              <h2 className="font-display mt-3 text-3xl font-semibold tracking-tight text-[#111111]">Your first Aegis script in four moves.</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1a73e8]">Beginner Quick Start</p>
+              <h2 className="font-display mt-3 text-3xl font-semibold tracking-tight text-[#111111]">Prepare your first complete Aegis file.</h2>
               <p className="mt-3 text-sm leading-7 text-[#5f6368]">
-                Start with one safe motion. Keep the file small, preview the command, then move to review once the sequence is readable.
+                Follow one step at a time. This page only prepares and copies code; it does not preview, authenticate, send, or run it on a robot.
               </p>
-              <div className="mt-5 grid gap-px overflow-hidden rounded-[14px] border border-black/8 bg-black/8 sm:grid-cols-3">
-                {["Install", "Write", "Preview"].map((item) => (
-                  <div key={item} className="font-interface bg-[#faf9f6] p-3 text-center text-xs font-semibold uppercase tracking-[0.12em] text-[#1a73e8]">
-                    {item}
-                  </div>
+              <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Quick start steps">
+                {setupSteps.map((step, index) => (
+                  <button
+                    key={step.label}
+                    type="button"
+                    data-eaic-start-step={index + 1}
+                    aria-current={!finished && index === activeStep ? "step" : undefined}
+                    onClick={() => goToStep(index)}
+                    className={`min-h-11 rounded-[12px] border px-3 py-2 text-xs font-semibold ${index === activeStep && !finished ? "border-[#1a73e8] bg-[#1a73e8] text-white" : "border-black/10 bg-[#faf9f6] text-[#526174]"}`}
+                  >
+                    {completedSteps.includes(index) ? "✓ " : ""}Step {index + 1}
+                  </button>
                 ))}
               </div>
             </div>
           </div>
 
-          <div className="grid gap-3">
-            {setupSteps.map((step) => (
-              <div key={step.label} className="relative grid gap-4 rounded-[22px] border border-black/8 bg-white/70 p-4 pr-16 shadow-[0_20px_55px_rgba(17,17,17,0.06)] sm:grid-cols-[72px_minmax(0,1fr)]">
-                <CopyCodeButton value={step.code} className="absolute right-4 top-4 z-10" />
-                <div className="grid h-14 w-14 place-items-center rounded-[14px] bg-[#1a73e8] font-mono text-xl font-bold text-white shadow-[0_12px_30px_rgba(26,115,232,0.2)]">
-                  {step.label}
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-display text-xl font-semibold text-[#111111]">{step.title}</h3>
-                  <p className="mt-1 text-sm leading-6 text-[#5f6368]">{step.body}</p>
-                  <pre className="mt-3 overflow-x-auto rounded-[12px] border border-black/8 bg-[#faf9f6] p-3 font-mono text-xs leading-6 text-[#303134]">{step.code}</pre>
-                </div>
+          <div className="grid gap-3" aria-live="polite">
+            <div className="relative grid gap-4 rounded-[22px] border border-black/8 bg-white/70 p-4 shadow-[0_20px_55px_rgba(17,17,17,0.06)] sm:grid-cols-[72px_minmax(0,1fr)]">
+              <div className="grid h-14 w-14 place-items-center rounded-[14px] bg-[#1a73e8] font-mono text-xl font-bold text-white shadow-[0_12px_30px_rgba(26,115,232,0.2)]">
+                {finished ? "✓" : setupSteps[activeStep].label}
               </div>
-            ))}
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1a73e8]">{finished ? "Quick start complete" : `Step ${activeStep + 1} of 4`}</p>
+                <h3 ref={stepHeadingRef} tabIndex={-1} className="font-display mt-2 text-xl font-semibold text-[#111111] focus:outline-none">
+                  {finished ? "Your complete file is ready." : setupSteps[activeStep].title}
+                </h3>
+                {finished ? (
+                  <>
+                    <p className="mt-2 text-sm leading-6 text-[#5f6368]">Copy the complete file, explore more commands in View SDK, then use Code Certification before any approved scheduled robot session.</p>
+                    <div data-eaic-start-full-file="true" className="relative mt-3 rounded-[12px] border border-black/8 bg-[#faf9f6] p-3 pr-16">
+                      <CopyCodeButton value={fullFile} className="absolute right-2 top-2" />
+                      <pre className="overflow-x-auto font-mono text-xs leading-6 text-[#303134]">{fullFile}</pre>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <Link href={getEaicHubTaskPath("view-sdk")} className="inline-flex min-h-11 items-center rounded-full border border-[#1a73e8] px-4 py-2 text-sm font-semibold text-[#1a73e8]">View SDK</Link>
+                      <Link href={getEaicHubTaskPath("software-check")} className="inline-flex min-h-11 items-center rounded-full bg-[#1a73e8] px-4 py-2 text-sm font-semibold text-white">Code Certification</Link>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1 text-sm leading-6 text-[#5f6368]">{setupSteps[activeStep].body}</p>
+                    <div className="relative mt-3 rounded-[12px] border border-black/8 bg-[#faf9f6] p-3 pr-16">
+                      <CopyCodeButton value={setupSteps[activeStep].code} className="absolute right-2 top-2 z-10" />
+                      <pre className="overflow-x-auto font-mono text-xs leading-6 text-[#303134]">{setupSteps[activeStep].code}</pre>
+                    </div>
+                    <button type="button" onClick={continueFromStep} className="mt-4 min-h-11 rounded-full bg-[#111111] px-5 py-2 text-sm font-semibold text-white">
+                      {activeStep === setupSteps.length - 1 ? "Finish quick start" : "Continue"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1792,7 +1490,44 @@ function SafetyLimitLabel({ label }: { label: string }) {
 }
 
 function FocusedBrowseFunctionsSection() {
-  const [selectedRobot, setSelectedRobot] = useState<SdkRobot>("master");
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const searchParamsKey = searchParams.toString();
+  const robotParam = searchParams.get("robot");
+  const robotFromUrl: SdkRobot = robotParam === "master" || robotParam === "aegis" || robotParam === "navi" ? robotParam : "master";
+  const [selectedRobot, setSelectedRobot] = useState<SdkRobot>(robotFromUrl);
+  const onboardingControllerRef = useRef<ViewSdkOnboardingController | null>(null);
+  const functionDetailIntentRef = useRef(new Set<string>());
+  const chooseRobotAnchorRef = useCallback((node: HTMLDivElement | null) => {
+    onboardingControllerRef.current?.registerAnchor("choose-robot", node);
+  }, []);
+  const setupAnchorRef = useCallback((node: HTMLDivElement | null) => {
+    onboardingControllerRef.current?.registerAnchor("set-up-sdk", node);
+  }, []);
+  const exploreAnchorRef = useCallback((node: HTMLDivElement | null) => {
+    onboardingControllerRef.current?.registerAnchor("explore-commands", node);
+  }, []);
+
+  useEffect(() => {
+    setSelectedRobot(robotFromUrl);
+
+    if ((robotParam === null || robotParam === robotFromUrl) && (robotFromUrl === "navi" || !/[?&](?:q|category|ref)=/.test(`?${searchParamsKey}`))) return;
+
+    let canonicalParams = stripNaviExplorerParams(new URLSearchParams(searchParamsKey));
+    if (robotParam !== null && robotParam !== robotFromUrl) canonicalParams.delete("robot");
+    const canonicalHref = canonicalParams.size ? `${pathname}?${canonicalParams.toString()}` : pathname;
+    router.replace(canonicalHref, { scroll: false });
+  }, [pathname, robotFromUrl, robotParam, router, searchParamsKey]);
+
+  function selectRobot(robot: SdkRobot) {
+    onboardingControllerRef.current?.recordRobotSelected(robot);
+    if (robot === selectedRobot) return;
+    const nextParams = stripNaviExplorerParams(new URLSearchParams(searchParamsKey));
+    nextParams.set("robot", robot);
+    setSelectedRobot(robot);
+    router.push(`${pathname}?${nextParams.toString()}`, { scroll: false });
+  }
   const publicNaviPlatformNotes = new Set([
     "jump",
     "jump_forward",
@@ -1852,12 +1587,12 @@ function FocusedBrowseFunctionsSection() {
         ];
   const tutorialCards = [
     {
-      title: "Read the signature",
-      body: "Use the compact row for the function name. Open details for required inputs, profiles, and limits."
+      title: "Find an action",
+      body: "Choose a robot, then browse the public commands it actually supports."
     },
     {
-      title: "Open details",
-      body: `Details reveal definitions, parameter meanings, examples, and ${
+      title: "See how it works",
+      body: `Open details for definitions, parameter meanings, examples, and ${
         selectedRobot === "master"
           ? "MuJoCo simulations and physical-verification notes"
           : selectedRobot === "navi"
@@ -1866,35 +1601,53 @@ function FocusedBrowseFunctionsSection() {
       }.`
     },
     {
-      title: "Copy into Hardware Check",
-      body: "Move working sequences to Step 3 after previewing the intended behavior."
+      title: "Try it",
+      body: "Copy the example, then paste it into Code Certification. This page never sends code to a robot."
     }
   ];
 
   return (
-    <section className="bg-[#f5f4f1] px-4 py-10 sm:px-6 lg:px-8">
+    <ViewSdkOnboardingCoordinator selectedRobot={selectedRobot}>
+      {(onboarding) => {
+        onboardingControllerRef.current = onboarding;
+        return <section className="bg-[#f5f4f1] px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 rounded-[22px] border border-black/8 bg-white/70 p-5 shadow-[0_28px_80px_rgba(17,17,17,0.08)]">
+          <ViewSdkOnboardingSurface selectedRobot={selectedRobot} controller={onboarding} />
           <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-start">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1a73e8]">Robot SDK Reference</p>
-              <h2 className="mt-2 text-3xl font-semibold text-[#111111]">Choose the robot. Use its real capabilities.</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1a73e8]">Start with an action</p>
+              <h2 className="mt-2 text-3xl font-semibold text-[#111111]">Make your robot do something.</h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[#5f6368]">
-                The import and setup pattern stay the same. Each robot shows only the functions and limits its public SDK supports.
+                Find a supported action, understand its inputs, and copy the example for review. Media previews are pre-recorded references and do not move a physical robot.
               </p>
+              <Link
+                href={getEaicHubTaskPath("software-check")}
+                onClick={() => onboarding.recordNextAction(selectedRobot, "software-check")}
+                className="mt-4 inline-flex min-h-11 items-center rounded-full bg-[#111111] px-5 py-2 text-sm font-semibold text-white"
+              >
+                Open Code Certification
+              </Link>
               <p data-sdk-performance-pricing="true" className="mt-2 max-w-3xl text-xs leading-5 text-[#526174]">
                 Using code to run robot or Navi performances on this website requires payment.
               </p>
-              <div className="mt-5 inline-grid grid-cols-3 rounded-full border border-black/10 bg-[#efede8] p-1" role="group" aria-label="Select robot SDK">
+              <div
+                ref={chooseRobotAnchorRef}
+                data-sdk-robot-selector="true"
+                className="mt-5 inline-grid grid-cols-3 rounded-full border border-black/10 bg-[#efede8] p-1"
+                role="group"
+                aria-label="Select robot SDK"
+              >
                 {(["master", "aegis", "navi"] as const).map((robot) => {
                   const selected = selectedRobot === robot;
                   return (
                     <button
                       key={robot}
                       type="button"
+                      data-sdk-robot-option={robot}
                       aria-pressed={selected}
-                      onClick={() => setSelectedRobot(robot)}
-                      className={`min-w-28 rounded-full px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a73e8] ${selected ? "bg-[#1a73e8] text-white shadow-sm" : "text-[#5f6368] hover:bg-white/75 hover:text-[#111111]"}`}
+                      onClick={() => selectRobot(robot)}
+                      className={`min-h-11 min-w-28 rounded-full px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a73e8] ${selected ? "bg-[#1a73e8] text-white shadow-sm" : "text-[#5f6368] hover:bg-white/75 hover:text-[#111111]"}`}
                     >
                       {robot === "aegis" ? "Aegis" : robot === "navi" ? "Navi" : "Master"}
                     </button>
@@ -1911,10 +1664,31 @@ function FocusedBrowseFunctionsSection() {
                 ) : null}
               </div>
             </div>
-            <div className="relative min-w-0 rounded-[16px] border border-black/8 bg-[#faf9f6] p-4 pr-14">
-              <CopyCodeButton value={selectedStarterCode} className="absolute right-3 top-3" />
+            <div
+              ref={setupAnchorRef}
+              data-sdk-setup-panel={selectedRobot}
+              className="relative min-w-0 rounded-[16px] border border-black/8 bg-[#faf9f6] p-4 pr-14"
+            >
+              <div data-sdk-setup-copy={selectedRobot}>
+                <CopyCodeButton
+                  value={selectedStarterCode}
+                  className="absolute right-3 top-3"
+                  onCopied={() => onboarding.recordSetupCopied(selectedRobot)}
+                />
+              </div>
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#1a73e8]">{selectedRobotLabel} setup</p>
               <pre className="mt-3 max-h-52 min-w-0 overflow-auto whitespace-pre-wrap font-mono text-xs leading-6 text-[#303134] [overflow-wrap:anywhere]">{selectedStarterCode}</pre>
+              <p className="mt-3 text-xs leading-5 text-[#526174]">After copying, paste the code into Code Certification. This reference page does not run a robot.</p>
+              <button
+                type="button"
+                data-sdk-setup-review={selectedRobot}
+                aria-label="I reviewed these setup instructions"
+                aria-pressed={onboarding.state.robots[selectedRobot].setupReviewed}
+                onClick={() => onboarding.recordSetupReviewed(selectedRobot)}
+                className="mt-3 min-h-11 rounded-full border border-[#9ca8ba] bg-white px-4 text-sm font-semibold text-[#334155] transition hover:border-[#1a73e8] hover:text-[#1a73e8] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1a73e8] focus-visible:ring-offset-2"
+              >
+                {onboarding.state.robots[selectedRobot].setupReviewed ? "Reviewed" : "I reviewed these setup instructions"}
+              </button>
               {selectedRobot === "master" ? masterSetupParams.map((parameter) => (
                 <details key={parameter.name} data-sdk-setup-param={parameter.name} className="mt-3 min-w-0 border border-[#dce7f2] bg-white p-3">
                   <summary className="cursor-pointer break-words font-mono text-xs text-[#006a5c] [overflow-wrap:anywhere]">{parameter.name} · default {parameter.defaultValue}</summary>
@@ -2002,7 +1776,16 @@ function FocusedBrowseFunctionsSection() {
           </>
         ) : null}
 
-        <div data-sdk-documentation-region="true" className="font-interface">
+        {selectedRobot === "navi" ? (
+          <div ref={exploreAnchorRef}>
+            <NaviSdkExplorer
+              canonicalItems={naviFunctions}
+              globalSafetyLimits={naviSafetyLimits}
+              onFunctionDetailViewed={({ robot, functionName }) => onboarding.recordFunctionDetailViewed(robot, functionName)}
+            />
+          </div>
+        ) : (
+        <div ref={exploreAnchorRef} data-sdk-documentation-region="true" className="font-interface">
           <div
             data-sdk-overview-grid="true"
             data-sdk-overview-count={groupedFunctions.length}
@@ -2054,13 +1837,8 @@ function FocusedBrowseFunctionsSection() {
                   ) : null}
                   {group.category === "Posture" ? (
                     <p className="mt-2 text-sm leading-6 text-[#526174]">
-                      {selectedRobot === "navi"
-                        ? "Commands in this section set, hold, lower, or recover Navi's body posture."
-                        : "All commands in this section use a four-foot planted hold, with all four feet remaining planted on the ground."}
+                      All commands in this section use a four-foot planted hold, with all four feet remaining planted on the ground.
                     </p>
-                  ) : null}
-                  {group.category === "Athletics" ? (
-                    <p className="mt-2 text-sm leading-6 text-[#526174]">Jumps, flips, and kicks that move Navi&apos;s whole body.</p>
                   ) : null}
                   {group.category === "Actions" ? (
                     <p className="mt-2 text-sm leading-6 text-[#526174]">
@@ -2082,9 +1860,6 @@ function FocusedBrowseFunctionsSection() {
                   {group.category === "Configuration" ? (
                     <p className="mt-2 text-sm leading-6 text-[#526174]">Range-checked gait, foot, floor-grip, jump, and collision settings. Physical calibration remains under development.</p>
                   ) : null}
-                  {group.category === "Safety" && selectedRobot === "navi" ? (
-                    <p className="mt-2 text-sm leading-6 text-[#526174]">Stop active movement normally or trigger Navi&apos;s software emergency-stop posture.</p>
-                  ) : null}
                 </div>
                 <div className="col-start-2 flex w-full shrink-0 items-center justify-between gap-3 sm:col-start-3 sm:row-start-1 sm:w-auto sm:justify-start">
                   <span data-sdk-typeface="interface" className="font-interface text-sm font-medium text-[#1a73e8]">{group.items.length} functions</span>
@@ -2100,11 +1875,8 @@ function FocusedBrowseFunctionsSection() {
                   const postureDocumentation = selectedRobot === "master" && group.category === "Sensing"
                     ? masterWebsitePostureFunctions.find((command) => command.name === item.name)
                     : undefined;
-                  const useMovementTrailingDescriptionLayout = group.category === "Movement"
-                    && (selectedRobot === "aegis" || selectedRobot === "navi");
-                  const useTrailingDescriptionLayout = selectedRobot === "master"
-                    || selectedRobot === "aegis"
-                    || selectedRobot === "navi";
+                  const useMovementTrailingDescriptionLayout = group.category === "Movement" && selectedRobot === "aegis";
+                  const useTrailingDescriptionLayout = true;
                   const useCompactFunctionLayout = useTrailingDescriptionLayout;
                   const jointTorqueRows = selectedRobot === "master" ? masterJointTorqueReference(item.name) : [];
                   const suppressTorqueStatus = selectedRobot === "master"
@@ -2120,8 +1892,20 @@ function FocusedBrowseFunctionsSection() {
                         {masterJointGroupStarts[item.name]}
                       </div>
                     ) : null}
-                  <details data-sdk-function-name={item.name} className="group min-w-0 bg-white/55">
+                  <details
+                    data-sdk-function-name={item.name}
+                    onToggle={(event) => {
+                      const intended = functionDetailIntentRef.current.delete(item.name);
+                      if (event.currentTarget.open && intended) {
+                        onboarding.recordFunctionDetailViewed(selectedRobot, item.name);
+                      }
+                    }}
+                    className="group min-w-0 bg-white/55"
+                  >
                     <summary
+                      onClick={(event) => {
+                        if (event.isTrusted) functionDetailIntentRef.current.add(item.name);
+                      }}
                       data-sdk-function-summary-layout={useCompactFunctionLayout ? "compact-leading" : "default"}
                       data-sdk-description-layout={useTrailingDescriptionLayout ? "trailing-column" : undefined}
                       data-sdk-master-description-layout={selectedRobot === "master" ? "trailing-column" : undefined}
@@ -2210,7 +1994,6 @@ function FocusedBrowseFunctionsSection() {
                             <p className="mt-1 text-xs leading-5 text-[#704b00]">{item.platformNote}</p>
                           </div>
                         ) : null}
-                        {item.access?.tier === "premium" ? <PremiumFeaturePanel item={item} /> : null}
                         {jointTorqueRows.length ? (
                           <section data-sdk-function-joint-torque={item.name} className="mt-4 min-w-0 border border-[#c9d8e8] bg-white p-3">
                             <p className="text-xs font-medium uppercase tracking-[0.14em] text-[#334155]">Joint torque limits</p>
@@ -2351,13 +2134,11 @@ function FocusedBrowseFunctionsSection() {
                       {shouldHideReferencePreview(item, selectedRobot) ? null : (
                         <div className="min-w-0 bg-white/70 p-4">
                           <p data-sdk-typeface="interface" className="mb-3 font-interface text-xs uppercase tracking-[0.12em] text-[#1a73e8]">
-                            <code data-sdk-typeface="code" className="font-mono">{selectedRobot === "navi" && item.name === "lateral" ? "lateral_left" : item.name}</code>{" "}
-                            <span>{selectedRobot === "navi" ? "on Navi" : "preview"}</span>
+                            <code data-sdk-typeface="code" className="font-mono">{item.name}</code>{" "}
+                            <span>preview</span>
                           </p>
                           {selectedRobot === "master" ? (
                             <MasterSimulationPreviewPanel command={item.name} />
-                          ) : selectedRobot === "navi" ? (
-                            <NaviSimulationPreview command={resolvePreviewCommand(item.name)} />
                           ) : (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
@@ -2380,8 +2161,11 @@ function FocusedBrowseFunctionsSection() {
           ))}
           </div>
         </div>
+        )}
       </div>
-    </section>
+    </section>;
+      }}
+    </ViewSdkOnboardingCoordinator>
   );
 }
 

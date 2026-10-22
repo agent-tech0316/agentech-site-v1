@@ -239,3 +239,33 @@ test("EAIS quick previews stay inside the viewport after opening from a scrolled
   assert.deepEqual(phone.get("margin"), ["0"]);
   assert.deepEqual(phone.get("max-height"), ["92vh", "92dvh"]);
 });
+
+test("unavailable accessory cards stay image-led, non-navigable, and visibly disabled without muting their artwork", async () => {
+  const [showcase, cssSource] = await Promise.all([
+    readWorkspaceFile("components/eais-showcase.tsx"),
+    readWorkspaceFile("app/agentech-products/eais/eais-showcase.module.css")
+  ]);
+
+  assert.match(showcase, /canOpenEaisWork/);
+  assert.match(showcase, /data-eais-availability=\{work\.availability\}/);
+  assert.match(showcase, /data-eais-cover-framing="accessory-board"/);
+  assert.match(showcase, /<button[^>]*type="button"[^>]*disabled[^>]*>[\s\S]*?Unavailable<\/button>/);
+  assert.match(showcase, />Unavailable<\/span>/);
+
+  const css = postcss.parse(cssSource);
+  const unavailableCard = new Map<string, string>();
+  const accessoryImage = new Map<string, string>();
+  css.walkRules(".unavailableCard", (rule) => {
+    rule.walkDecls((declaration) => { unavailableCard.set(declaration.prop, declaration.value); });
+  });
+  css.walkRules('.page [data-eais-cover-framing="accessory-board"] img', (rule) => {
+    rule.walkDecls((declaration) => { accessoryImage.set(declaration.prop, declaration.value); });
+  });
+
+  assert.equal(unavailableCard.get("cursor"), "default");
+  assert.equal(accessoryImage.get("object-fit"), "contain", "portrait design boards must remain completely visible");
+  assert.equal(accessoryImage.get("object-position"), "center");
+  assert.equal(accessoryImage.get("transform"), "none");
+  assert.equal(accessoryImage.has("opacity"), false, "unavailable artwork must stay full color");
+  assert.equal(accessoryImage.has("filter"), false, "unavailable artwork must not be grayscaled or dimmed");
+});

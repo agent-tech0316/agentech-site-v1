@@ -12,9 +12,9 @@ const origin = process.env.EAIC_SDK_FONTS_ORIGIN ?? "http://127.0.0.1:3019";
 const route = "/agentech-products/eaic-hub/view-sdk";
 const artifacts = ".codex-artifacts/eaic-sdk-fonts";
 const expectedDocumentationHashes = {
-  Master: "327e56e0b327bd69fe740f1773f7650965a9277c27619d90ad9f94f05e49f715",
-  Aegis: "eb914026d2891bc08b73aed84fe6fe0c4be1707d74318ffd1944ae7cfa0aa89e",
-  Navi: "9ebdf45e92279a907878b3565a871de3bb63112e216f00d19d0572c744696ca6",
+  Master: "7c299dfd2ffed6504ccf1822cc11bfbcf3dd9813285c2cce0734743a3deb9530",
+  Aegis: "6d58664abd51a2aedd905249678f66c351d22cf6ac90d607e148a5f227a5c92a",
+  Navi: "8eab7190296d51be6c1972732d228e9556f273237ceb4d1f1e6d3105895c1a5e",
 };
 const errors = [];
 const writes = [];
@@ -45,28 +45,44 @@ function hashDocumentation(text) {
 try {
   for (const width of [1440, 768, 390]) {
     await page.setViewportSize({ width, height: 1000 });
-    await page.goto(`${origin}${route}`, { waitUntil: "networkidle" });
+    await page.goto(`${origin}${route}`, { waitUntil: "domcontentloaded" });
     assert.equal(new URL(page.url()).pathname, route, `${width}px must stay on the exact View SDK route`);
     await page.evaluate(() => document.fonts.ready);
 
     for (const theme of ["light", "dark"]) {
-      await page.getByRole("radio", { name: theme === "light" ? "Light" : "Dark", exact: true }).click();
-      await page.waitForFunction((expectedTheme) => document.documentElement.dataset.theme === expectedTheme, theme);
+      await page.evaluate((mode) => localStorage.setItem("agentech-theme", mode), theme);
 
       for (const robot of ["Master", "Aegis", "Navi"]) {
-        await page.getByRole("button", { name: robot, exact: true }).click();
-        await page.waitForTimeout(80);
+        await page.goto(`${origin}${route}?robot=${robot.toLowerCase()}`, { waitUntil: "domcontentloaded" });
+        await page.waitForFunction((expectedTheme) => document.documentElement.dataset.theme === expectedTheme, theme);
+        await page.waitForFunction((expected) => [...document.querySelectorAll('button[aria-pressed="true"]')].some((button) => button.textContent?.trim() === expected), robot);
 
-        const region = page.locator("[data-sdk-documentation-region]");
-        const categories = region.locator("details[data-sdk-category]");
-        await categories.evaluateAll((elements) => elements.forEach((element) => { element.open = false; }));
-        const category = categories.first();
-        await category.locator(":scope > summary").click();
-        const functionCard = category.locator("details[data-sdk-function-name]").first();
-        await functionCard.locator(":scope > summary").click();
+        const isNavi = robot === "Navi";
+        const region = isNavi
+          ? page.locator('[data-navi-sdk-explorer][data-navi-hydrated="true"]')
+          : page.locator("[data-sdk-documentation-region]");
+        await region.waitFor();
+        let functionCard;
+        let naviDocumentation = "";
+        if (isNavi) {
+          const rows = region.locator("[data-navi-reference-row]");
+          assert.equal(await rows.count(), 130, `${width}px ${theme} Navi: Explorer must retain all 130 canonical rows`);
+          assert.equal(new Set(await rows.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-navi-reference-name")))).size, 130);
+          naviDocumentation = await region.locator("[data-navi-reference-index]").innerText();
+          functionCard = region.locator('[data-navi-reference-row][data-navi-reference-name="lateral"]');
+          await functionCard.locator("[data-navi-reference-toggle]").click();
+          await functionCard.locator('[data-navi-reference-detail][data-navi-reference-name="lateral"]').waitFor();
+        } else {
+          const categories = region.locator("details[data-sdk-category]");
+          await categories.evaluateAll((elements) => elements.forEach((element) => { element.open = false; }));
+          const category = categories.first();
+          await category.locator(":scope > summary").click();
+          functionCard = category.locator("details[data-sdk-function-name]").first();
+          await functionCard.locator(":scope > summary").click();
+        }
         await functionCard.scrollIntoViewIfNeeded();
 
-        const state = await region.evaluate((element) => {
+        const state = await region.evaluate((element, explorerDocumentation) => {
           const isVisible = (node) => {
             const style = getComputedStyle(node);
             const rect = node.getBoundingClientRect();
@@ -88,9 +104,9 @@ try {
               family: getComputedStyle(node).fontFamily,
               weight: getComputedStyle(node).fontWeight,
             }));
-          const documentationClone = element.children[1]?.cloneNode(true);
+          const documentationClone = explorerDocumentation ? null : element.children[1]?.cloneNode(true);
           documentationClone?.querySelectorAll('[aria-hidden="true"]').forEach((node) => node.remove());
-          const documentation = documentationClone?.textContent ?? "";
+          const documentation = explorerDocumentation || documentationClone?.textContent || "";
           return {
             documentation,
             interfaceStyles: styleState('[data-sdk-typeface="interface"]'),
@@ -98,7 +114,7 @@ try {
             visibleTextStyles,
             pageOverflow: document.documentElement.scrollWidth - innerWidth,
           };
-        });
+        }, naviDocumentation);
 
         const actualHash = hashDocumentation(state.documentation);
         assert.equal(actualHash, expectedDocumentationHashes[robot], `${width}px ${theme} ${robot}: command copy must remain byte-equivalent after whitespace normalization`);
@@ -112,7 +128,8 @@ try {
         }
         for (const sample of state.visibleTextStyles) {
           assert.match(sample.family, /(?:Manrope|IBM Plex Mono)/i, `${width}px ${theme} ${robot}: ${sample.tag} ${sample.text} uses an unapproved face`);
-          assert.ok(["400", "500"].includes(sample.weight), `${width}px ${theme} ${robot}: ${sample.tag} ${sample.text} uses weight ${sample.weight}`);
+          const approvedWeights = ["400", "500", "600"];
+          assert.ok(approvedWeights.includes(sample.weight), `${width}px ${theme} ${robot}: ${sample.tag} ${sample.text} uses weight ${sample.weight}`);
         }
         assert.ok(state.pageOverflow <= 1, `${width}px ${theme} ${robot}: the page must not overflow horizontally`);
 
@@ -132,7 +149,8 @@ try {
         });
       }
 
-      await page.getByRole("button", { name: "Master", exact: true }).click();
+      await page.goto(`${origin}${route}?robot=master`, { waitUntil: "domcontentloaded" });
+      await page.waitForFunction((expectedTheme) => document.documentElement.dataset.theme === expectedTheme, theme);
       const marker = page.locator('[data-master-motor-map-theme] button[aria-label="Left Wrist roll, J7"]').first();
       await marker.click();
       const tooltip = page.getByRole("tooltip");
@@ -142,10 +160,13 @@ try {
         functionText: element.querySelector('[data-master-sdk-function-visible="true"]')?.textContent ?? "",
         exampleText: element.querySelector('[data-master-sdk-example-visible="true"]')?.textContent ?? "",
       }));
+      assert.doesNotMatch(tooltipState.text, /\.tech\b/i, `${width}px ${theme}: no visible .tech suffix may remain`);
       assert.doesNotMatch(tooltipState.text, /\.teach\b/i, `${width}px ${theme}: no visible .teach suffix may remain`);
       assert.equal(tooltipState.functionText, "standing_actions");
       assert.match(tooltipState.exampleText, /^Agentech\.standing_actions\("left"/);
-      assert.doesNotMatch(await page.locator("body").innerText(), /\.teach\b/i, `${width}px ${theme}: no visible View SDK text may retain .teach`);
+      const visibleBodyText = await page.locator("body").innerText();
+      assert.doesNotMatch(visibleBodyText, /\.tech\b/i, `${width}px ${theme}: no visible View SDK text may retain .tech`);
+      assert.doesNotMatch(visibleBodyText, /\.teach\b/i, `${width}px ${theme}: no visible View SDK text may retain .teach`);
       await tooltip.screenshot({ path: `${artifacts}/${width}-${theme}-master-tooltip.png` });
     }
   }

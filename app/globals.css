@@ -1001,6 +1001,109 @@ select {
   color-scheme: dark;
 }
 
+/* View SDK onboarding stays inside the EAIC task theme and never creates a body overlay. */
+:root[data-theme="light"] .eaic-task-theme [data-eaic-sdk-onboarding="true"] {
+  color-scheme: light;
+  color: #17191d;
+}
+
+:root[data-theme="light"] .eaic-task-theme [data-eaic-sdk-onboarding-coach] {
+  border-color: #bdc8d9;
+  background: #ffffff;
+  color: #20242b;
+}
+
+.eaic-task-theme [data-eaic-sdk-onboarding-halo="true"] {
+  box-shadow: 0 0 0 2px #f5f4f1;
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-eaic-sdk-onboarding="true"] {
+  border-color: #2a3440;
+  color: #e5edf5;
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-eaic-sdk-onboarding="true"] :is(h2, [data-eaic-sdk-onboarding-step] span:first-child) {
+  color: #e5edf5 !important;
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-eaic-sdk-onboarding="true"] #view-sdk-onboarding-heading + p {
+  color: #b7c1cb !important;
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-eaic-sdk-onboarding-step] > span:first-child > span:last-child {
+  color: #e5edf5 !important;
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-eaic-sdk-onboarding-step] > span:nth-child(n + 2) {
+  color: #b7c1cb !important;
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-eaic-sdk-onboarding="true"] [data-eaic-sdk-onboarding-step] {
+  border-color: #425365;
+  background: #11151b;
+  color: #d8e1ef;
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-eaic-sdk-onboarding="true"] [data-eaic-sdk-onboarding-step-state="current"] {
+  border-color: #7cc4ff;
+  box-shadow: 0 0 0 1px #7cc4ff;
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-eaic-sdk-onboarding="true"] [data-sdk-next-actions="true"] {
+  border-color: #425365;
+  background: #101d2e;
+  color: #e5edf5;
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-eaic-sdk-onboarding="true"] [data-sdk-next-actions="true"] :is(p, a:not([class*="bg-[#1a73e8]"])) {
+  color: #c4ced8 !important;
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-eaic-sdk-onboarding-coach] {
+  border-color: #425365;
+  background: #0d1117;
+  color: #e5edf5;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.48);
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-eaic-sdk-onboarding-coach] p {
+  color: #b7c1cb;
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-eaic-sdk-onboarding-coach] button:not([class*="bg-[#1a73e8]"]) {
+  border-color: #566574;
+  color: #d8e1ef;
+}
+
+:root[data-theme="dark"] .eaic-task-theme [data-eaic-sdk-onboarding-halo="true"] {
+  box-shadow: 0 0 0 2px #040506;
+}
+
+@media (max-width: 767px) {
+  .eaic-task-theme [data-eaic-sdk-onboarding-coach] {
+    inset-inline: 16px !important;
+    width: auto !important;
+    max-width: none;
+  }
+}
+
+@media (max-width: 1279px) {
+  body:has(.agentech-library-page) [data-site-header] {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eaic-task-theme [data-eaic-sdk-onboarding="true"] *,
+  .eaic-task-theme [data-eaic-sdk-onboarding-coach],
+  .eaic-task-theme [data-eaic-sdk-onboarding-halo="true"] {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Team: retain the original dark gradients while providing a complete light palette. */
 :root[data-theme="light"] .about-theme-page {
   background: #f5f4f1;

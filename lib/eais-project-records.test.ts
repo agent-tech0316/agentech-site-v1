@@ -41,6 +41,6 @@ test("discovery search finds proposed sensors and architecture and still respect
   assert.deepEqual(showcase.filterEaisWorks("robot-arms", "  RGB-D  ").map((work) => work.slug), ["prototype-sort-at-sight"]);
   assert.ok(showcase.filterEaisWorks("humanoids", "person tracking").some((work) => work.slug === "prototype-walk-together"));
   assert.deepEqual(showcase.filterEaisWorks("drones", "person tracking"), []);
-  assert.equal(showcase.filterEaisWorks("for-you", "  ").length, showcase.prototypeWorks.length);
+  assert.equal(showcase.filterEaisWorks("for-you", "  ").length, showcase.eaisWorkLibrary.length);
   assert.deepEqual(showcase.filterEaisWorks("trending", "").map((work) => work.slug), ["prototype-night-run-rover", "prototype-gesture-lab", "prototype-trail-check"]);
 });

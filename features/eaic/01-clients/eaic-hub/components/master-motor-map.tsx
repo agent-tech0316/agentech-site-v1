@@ -9,7 +9,7 @@ function formatRange(minimum: number, maximum: number, unit: string) {
 }
 
 function visibleSdkControlText(value: string) {
-  return value.replaceAll(".teach", "");
+  return value.replaceAll(".teach", "").replaceAll(".tech", "");
 }
 
 type RobotJointViewProps = {

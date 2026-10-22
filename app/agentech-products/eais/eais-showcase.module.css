@@ -12,6 +12,8 @@
   --line: rgba(177, 205, 235, 0.18);
   --accent: #91dfff;
   --accent-ink: #061721;
+  --unavailable-bg: #202b38;
+  --unavailable-ink: #aeb8c3;
 }
 
 .page {
@@ -33,6 +35,8 @@
   --line: rgba(16, 30, 48, 0.15);
   --accent: #0c6f9d;
   --accent-ink: #fff;
+  --unavailable-bg: #ebe9e5;
+  --unavailable-ink: #66707a;
 }
 
 :global(:root[data-theme="dark"]) .page { background: var(--canvas); }
@@ -109,12 +113,17 @@
 .featureImage { display: block; height: 224px; overflow: hidden; position: relative; }
 .featureImage img, .workImage img { object-fit: cover; transition: transform 340ms cubic-bezier(.2,.8,.2,1); }
 .featureCard:hover img, .workCard:hover img { transform: scale(1.045); }
+.unavailableCard { cursor: default; }
+.unavailableCard:hover { border-color: var(--line); transform: none; }
+.unavailableCard:hover img { transform: none; }
 .featureCardCopy, .workCopy { display: grid; gap: 8px; padding: 16px; }
 .featureCardCopy small, .workCopy small { color: var(--accent); }
 .featureCardCopy strong, .workCopy strong, .libraryCardTitle { font-family: var(--font-brand); font-size: 24px; letter-spacing: -0.045em; line-height: 1.05; }
 .featureCardCopy em, .workCopy em, .libraryBodyCopy { color: var(--muted); }
 .featureCardCopy b, .workCopy b, .outlineAction { color: var(--ink); font-family: var(--font-sans); font-size: 11px; margin-top: 4px; }
 .featureCardCopy b span, .workCopy b span { color: var(--accent); font-size: 14px; margin-left: 4px; }
+.unavailableStatus { align-items: center; background: var(--unavailable-bg); border-radius: 8px; color: var(--unavailable-ink); display: inline-flex; font-family: var(--font-sans); font-size: 10px; font-weight: 600; justify-self: start; letter-spacing: .08em; min-height: 26px; padding: 5px 9px; text-transform: uppercase; }
+.unavailableButton { align-items: center; background: var(--unavailable-bg); border: 1px solid var(--line); border-radius: 12px; color: var(--unavailable-ink); cursor: not-allowed; display: inline-flex; font-family: var(--font-sans); font-size: 11px; font-weight: 700; justify-content: center; justify-self: stretch; margin-top: 4px; min-height: 44px; padding: 0 14px; }
 .paginationSummary { color: var(--muted); font-family: var(--font-sans); font-size: 12px; margin: -12px 0 20px; }
 .pagination { align-items: center; display: flex; gap: 8px; justify-content: center; margin-top: 26px; }
 .paginationPages { align-items: center; display: flex; gap: 8px; }
@@ -158,6 +167,8 @@
 .dialogImage img { object-fit: cover; }
 .page [data-eais-cover-framing="full-body"] { background: #fff; }
 .page [data-eais-cover-framing="full-body"] img { object-fit: contain; object-position: center; transform: none; }
+.page [data-eais-cover-framing="accessory-board"] { background: var(--surface-raised); }
+.page [data-eais-cover-framing="accessory-board"] img { object-fit: contain; object-position: center; transform: none; }
 .dialogCopy { padding: clamp(28px, 4vw, 54px) clamp(24px, 4vw, 48px); }
 .dialogCopy h2 { font-size: clamp(38px, 4vw, 58px); line-height: .96; margin: 13px 0 18px; }
 .dialogSummary { color: var(--muted); font-size: 14px; line-height: 1.62; margin: 0; }

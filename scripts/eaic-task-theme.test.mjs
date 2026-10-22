@@ -23,6 +23,10 @@ const naviReferenceSource = readFileSync(
   new URL("../features/eaic/02-unified-api/projects-validation/navi-sdk-reference.ts", import.meta.url),
   "utf8",
 );
+const naviExplorerSource = readFileSync(
+  new URL("../features/eaic/01-clients/eaic-hub/components/navi-sdk-explorer.tsx", import.meta.url),
+  "utf8",
+);
 
 let baseUrl = process.env.EAIC_THEME_TEST_BASE_URL ?? "";
 let serverProcess;
@@ -202,7 +206,7 @@ test("left-aligns every SDK function signature at the start of its command row",
   }
 });
 
-test("keeps every robot's SDK controls together after a custom disclosure arrow", () => {
+test("keeps the Aegis and Master SDK controls together after a custom disclosure arrow", () => {
   const html = pages.get("/agentech-products/eaic-hub/view-sdk") ?? "";
   const compactMasterRows = [...html.matchAll(/data-sdk-function-name="([^"]+)"[^>]*><summary data-sdk-function-summary-layout="compact-leading"/g)]
     .map((match) => match[1]);
@@ -210,8 +214,10 @@ test("keeps every robot's SDK controls together after a custom disclosure arrow"
   assert.equal(compactMasterRows.length, 45, "every Master command row should use the leading compact layout");
   assert.match(
     workbenchSource,
-    /const useTrailingDescriptionLayout = selectedRobot === "master"[\s\S]*?\|\| selectedRobot === "aegis"[\s\S]*?\|\| selectedRobot === "navi"/,
+    /selectedRobot === "navi" \? \([\s\S]*?<NaviSdkExplorer[\s\S]*?canonicalItems=\{naviFunctions\}[\s\S]*?globalSafetyLimits=\{naviSafetyLimits\}[\s\S]*?onFunctionDetailViewed=\{\(\{ robot, functionName \}\) => onboarding\.recordFunctionDetailViewed\(robot, functionName\)\}/,
   );
+  assert.match(workbenchSource, /const useMovementTrailingDescriptionLayout = group\.category === "Movement" && selectedRobot === "aegis"/);
+  assert.match(workbenchSource, /const useTrailingDescriptionLayout = true/);
   assert.match(workbenchSource, /data-sdk-function-summary-layout=\{useCompactFunctionLayout/);
   assert.match(workbenchSource, /data-sdk-description-layout=\{useTrailingDescriptionLayout \? "trailing-column"/);
   assert.match(workbenchSource, /data-sdk-function-arrow="true"/);
@@ -219,7 +225,7 @@ test("keeps every robot's SDK controls together after a custom disclosure arrow"
   assert.match(workbenchSource, /xl:grid-cols-\[24px_max-content_auto_minmax\(32px,1fr\)_minmax\(360px,40%\)\]/);
 });
 
-test("keeps the six Navi Athletics commands while using the unified SDK row renderer", () => {
+test("keeps the six Navi Athletics commands in the delegated canonical Explorer", () => {
   const athleticsFunctions = [...naviReferenceSource.matchAll(
     /\{\s*name: "([^"]+)",\s*category: "Athletics"/g,
   )].map((match) => match[1]);
@@ -232,7 +238,9 @@ test("keeps the six Navi Athletics commands while using the unified SDK row rend
     "sideflip",
     "kick",
   ]);
-  assert.match(workbenchSource, /const useCompactFunctionLayout = useTrailingDescriptionLayout/);
+  assert.match(naviExplorerSource, /data-navi-reference-index="true"/);
+  assert.match(naviExplorerSource, /results\.map\(\(\{ reference \}\) =>/);
+  assert.doesNotMatch(naviExplorerSource, /data-sdk-function-name=/);
 });
 
 test("lays out the four Master SDK summary metrics in one equal-width desktop row", () => {
@@ -616,6 +624,56 @@ test("highlights every profile's selected values in the same purple as x", () =>
   assert.match(styles, /\[data-sdk-profile-placeholder="true"\][\s\S]*?\[data-sdk-profile-value="true"\][\s\S]*?color:\s*#c4b5fd/, "values share x's dark-theme color");
 });
 
+test("scopes View SDK onboarding Light and Dark styles beneath eaic-task-theme", () => {
+  const styles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  const stylesheet = postcss.parse(styles);
+  const onboardingRules = [];
+  let reducedMotionRule = null;
+  let phoneInsetRule = null;
+
+  stylesheet.walkRules((rule) => {
+    if (!rule.selector.includes("[data-eaic-sdk-onboarding")) return;
+    onboardingRules.push(rule);
+    assert.match(rule.selector, /\.eaic-task-theme\s+/, `${rule.selector} must stay inside the EAIC task page`);
+    assert.doesNotMatch(rule.selector, /\bbody\b|::(?:before|after)|(?:^|,)\s*\*/, `${rule.selector} must not create a global overlay`);
+
+    if (rule.parent?.type === "atrule" && rule.parent.name === "media" && rule.parent.params.includes("prefers-reduced-motion: reduce")) {
+      reducedMotionRule = rule;
+    }
+    if (rule.parent?.type === "atrule" && rule.parent.name === "media" && rule.parent.params.includes("max-width: 767px")) {
+      phoneInsetRule = rule;
+    }
+  });
+
+  assert.ok(onboardingRules.length >= 5, "the onboarding surface, coach and halo need explicit scoped theme rules");
+  assert.match(workbenchSource, /<section className="bg-\[\#f5f4f1\]/, "Light keeps the shared warm off-white page canvas");
+  assert.match(
+    styles,
+    /:root\[data-theme="light"\]\s+\.eaic-task-theme\s+\[data-eaic-sdk-onboarding="true"\]/,
+    "Light has an explicit scoped onboarding treatment",
+  );
+  assert.match(
+    styles,
+    /:root\[data-theme="dark"\]\s+\.eaic-task-theme\s+\[data-eaic-sdk-onboarding="true"\]/,
+    "Dark has an explicit onboarding surface treatment",
+  );
+  assert.match(
+    styles,
+    /:root\[data-theme="dark"\]\s+\.eaic-task-theme\s+\[data-eaic-sdk-onboarding="true"\]\s+#view-sdk-onboarding-heading\s*\+\s*p[\s\S]*?color:\s*#b7c1cb/i,
+    "Dark progress copy uses a readable muted token",
+  );
+  assert.match(
+    styles,
+    /:root\[data-theme="dark"\]\s+\.eaic-task-theme\s+\[data-eaic-sdk-onboarding-step\]\s*>\s*span:first-child\s*>\s*span:last-child[\s\S]*?color:\s*#e5edf5/i,
+    "Dark step labels use the primary readable token",
+  );
+  assert.ok(reducedMotionRule, "reduced motion must target the onboarding coach or halo");
+  assert.equal(reducedMotionRule.nodes.find((node) => node.type === "decl" && node.prop === "transition")?.value, "none");
+  assert.equal(reducedMotionRule.nodes.find((node) => node.type === "decl" && node.prop === "animation")?.value, "none");
+  assert.ok(phoneInsetRule, "phone mode must have an onboarding-specific inset rule");
+  assert.equal(phoneInsetRule.nodes.find((node) => node.type === "decl" && node.prop === "inset-inline")?.value, "16px");
+});
+
 test("lists each native joint maximum effort in a compact two-column torque table", () => {
   const html = sdkHtml();
   const expected = JSON.parse(readFileSync(new URL("./fixtures/master-native-model-effort.json", import.meta.url), "utf8"));
@@ -919,6 +977,34 @@ test("renders Start Coding with the regenerated transparent Aegis blueprint", ()
   assert.match(html, /dog-blueprint-transparent-v4\.png/);
   assert.doesNotMatch(html, /dog-blueprint\.png/);
   assert.match(html, /<link rel="preload" as="image"[^>]*dog-blueprint-transparent-v4\.png/, "the above-the-fold robot image should be preloaded");
+});
+
+test("preserves the approved bounded Start Coding onboarding and physical-run boundary", () => {
+  const html = pages.get(taskRoutes[0][1]) ?? "";
+
+  assert.match(html, /data-eaic-start-guide="true"/);
+  assert.match(html, /Beginner Quick Start/);
+  assert.match(html, /Step 1 of 4/);
+  assert.equal((html.match(/data-eaic-start-step=/g) ?? []).length, 4);
+  assert.match(html, /private SDK repository access/i);
+  assert.match(html, /prepares and copies code/i);
+  assert.match(html, /does not preview, authenticate, send, or run it/i);
+  assert.match(workbenchSource, /data-eaic-start-full-file="true"/, "the completed state should expose the full-file panel after the fourth step");
+  assert.match(html, /href="\/agentech-products\/eaic-hub\/view-sdk"/);
+  assert.match(html, /href="\/agentech-products\/eaic-hub\/software-check"/);
+});
+
+test("preserves the approved human-goal-first View SDK purpose and truthful next step", () => {
+  const html = pages.get(taskRoutes[1][1]) ?? "";
+
+  assert.match(html, /Start with an action/i);
+  assert.match(html, /Make your robot do something\./);
+  assert.match(html, /Find an action/);
+  assert.match(html, /See how it works/);
+  assert.match(html, /Try it/);
+  assert.match(html, /pre-recorded references and do not move a physical robot/i);
+  assert.match(html, /href="\/agentech-products\/eaic-hub\/software-check"/);
+  assert.match(html, /After copying, paste the code into Code Certification/i);
 });
 
 test("distributes the four Starter Rules evenly and centers every label", () => {
