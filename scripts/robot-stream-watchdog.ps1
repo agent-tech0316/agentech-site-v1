@@ -20,6 +20,16 @@ foreach ($key in @("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ROBOT_RUNNER_SE
   }
 }
 
+# Refresh explicit Master settings from the current Windows user configuration.
+# A persistent watchdog must refresh before each child launch, not only at login.
+function Import-MasterGatewayUserEnvironment {
+  foreach ($masterKey in @("AGENTECH_MASTER_DEPLOYMENT_FILE", "AGENTECH_MASTER_SSH_PASSWORD", "AGENTECH_MASTER_STANDING_DEPLOYMENT")) {
+    $masterUserValue = [Environment]::GetEnvironmentVariable($masterKey, "User")
+    [Environment]::SetEnvironmentVariable($masterKey, $masterUserValue, "Process")
+  }
+}
+Import-MasterGatewayUserEnvironment
+
 $missing = @("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ROBOT_HOST", "ROBOT_SSH_USER") | Where-Object {
   -not [Environment]::GetEnvironmentVariable($_, "Process")
 }
