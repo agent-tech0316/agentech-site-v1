@@ -1,13 +1,22 @@
 {
   "schema_version": 1,
   "scope": "master-upper-body",
-  "unsupported_commands": {"movement_a": "The current SDK public replay has no live transport; the historical MANIPULATE_DEFAULT launcher is not used."},
+  "unsupported_commands": {},
   "commands": {
     "enter_stand_hand_guide": {
-      "parameters": {"side": {"type": "guide_side"}},
-      "required": ["side"],
-      "positional": ["side"],
-      "validator": "none"
+      "parameters": {
+        "side": {
+          "type": "guide_side"
+        }
+      },
+      "required": [
+        "side"
+      ],
+      "positional": [
+        "side"
+      ],
+      "validator": "none",
+      "backend": "mode_entry"
     },
     "adjust_right_shoulder": {
       "parameters": {
@@ -34,7 +43,8 @@
         "axis",
         "degrees"
       ],
-      "validator": "shoulder"
+      "validator": "shoulder",
+      "backend": "raw_upper_body"
     },
     "adjust_left_shoulder": {
       "parameters": {
@@ -61,7 +71,8 @@
         "axis",
         "degrees"
       ],
-      "validator": "shoulder"
+      "validator": "shoulder",
+      "backend": "raw_upper_body"
     },
     "adjust_right_elbow": {
       "parameters": {
@@ -83,7 +94,8 @@
       "positional": [
         "degrees"
       ],
-      "validator": "elbow"
+      "validator": "elbow",
+      "backend": "raw_upper_body"
     },
     "adjust_left_elbow": {
       "parameters": {
@@ -105,7 +117,8 @@
       "positional": [
         "degrees"
       ],
-      "validator": "elbow"
+      "validator": "elbow",
+      "backend": "raw_upper_body"
     },
     "adjust_both_elbows": {
       "parameters": {
@@ -127,7 +140,8 @@
       "positional": [
         "degrees"
       ],
-      "validator": "elbow"
+      "validator": "elbow",
+      "backend": "raw_upper_body"
     },
     "adjust_elbow": {
       "parameters": {
@@ -160,7 +174,8 @@
         "side",
         "degrees"
       ],
-      "validator": "elbow_selector"
+      "validator": "elbow_selector",
+      "backend": "raw_upper_body"
     },
     "adjust_right_wrist": {
       "parameters": {
@@ -194,7 +209,8 @@
         "axis",
         "degrees"
       ],
-      "validator": "wrist"
+      "validator": "wrist",
+      "backend": "raw_upper_body"
     },
     "adjust_left_wrist": {
       "parameters": {
@@ -228,7 +244,8 @@
         "axis",
         "degrees"
       ],
-      "validator": "wrist"
+      "validator": "wrist",
+      "backend": "raw_upper_body"
     },
     "adjust_wrist": {
       "parameters": {
@@ -262,7 +279,8 @@
         "axis",
         "degrees"
       ],
-      "validator": "wrist"
+      "validator": "wrist",
+      "backend": "raw_upper_body"
     },
     "adjust_upper_body": {
       "parameters": {
@@ -293,7 +311,8 @@
       },
       "required": [],
       "positional": [],
-      "validator": "upper_body"
+      "validator": "upper_body",
+      "backend": "raw_upper_body"
     },
     "adjust_waist": {
       "parameters": {
@@ -337,7 +356,9 @@
         "axis",
         "degrees"
       ],
-      "validator": "waist"
+      "validator": "waist",
+      "backend": "raw_upper_body",
+      "result_type": "waist_adjustment"
     },
     "return_waist_to_neutral": {
       "parameters": {
@@ -347,7 +368,8 @@
       },
       "required": [],
       "positional": [],
-      "validator": "none"
+      "validator": "none",
+      "backend": "raw_upper_body"
     },
     "restore_stand_hand_guide": {
       "parameters": {
@@ -358,13 +380,15 @@
       },
       "required": [],
       "positional": [],
-      "validator": "none"
+      "validator": "none",
+      "backend": "owner_control"
     },
     "restore_stand_default": {
       "parameters": {},
       "required": [],
       "positional": [],
-      "validator": "none"
+      "validator": "none",
+      "backend": "owner_control"
     },
     "move_arms_to": {
       "parameters": {
@@ -382,7 +406,8 @@
       },
       "required": [],
       "positional": [],
-      "validator": "move_arms"
+      "validator": "move_arms",
+      "backend": "raw_upper_body"
     },
     "move_elbows_to": {
       "parameters": {
@@ -399,7 +424,8 @@
       "positional": [
         "degrees"
       ],
-      "validator": "none"
+      "validator": "none",
+      "backend": "raw_upper_body"
     },
     "move_mirrored_arms_to": {
       "parameters": {
@@ -416,7 +442,8 @@
       "positional": [
         "targets"
       ],
-      "validator": "mirror_targets"
+      "validator": "mirror_targets",
+      "backend": "raw_upper_body"
     },
     "mirror_arm_pose": {
       "parameters": {
@@ -431,7 +458,8 @@
       "positional": [
         "source_side"
       ],
-      "validator": "none"
+      "validator": "none",
+      "backend": "raw_upper_body"
     },
     "movement_b": {
       "parameters": {
@@ -441,13 +469,417 @@
       },
       "required": [],
       "positional": [],
-      "validator": "none"
+      "validator": "none",
+      "backend": "raw_upper_body"
     },
     "showcase": {
       "parameters": {},
       "required": [],
       "positional": [],
-      "validator": "none"
+      "validator": "none",
+      "backend": "raw_upper_body"
+    },
+    "wave": {
+      "parameters": {
+        "hand": {
+          "type": "string",
+          "values": [
+            "left",
+            "right"
+          ]
+        }
+      },
+      "required": [
+        "hand"
+      ],
+      "positional": [
+        "hand"
+      ],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "blow_kiss": {
+      "parameters": {
+        "hand": {
+          "type": "string",
+          "values": [
+            "left",
+            "right"
+          ]
+        }
+      },
+      "required": [
+        "hand"
+      ],
+      "positional": [
+        "hand"
+      ],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "raise_hand": {
+      "parameters": {
+        "hand": {
+          "type": "string",
+          "values": [
+            "left",
+            "right"
+          ]
+        }
+      },
+      "required": [
+        "hand"
+      ],
+      "positional": [
+        "hand"
+      ],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "salute": {
+      "parameters": {
+        "hand": {
+          "type": "string",
+          "values": [
+            "left",
+            "right"
+          ]
+        }
+      },
+      "required": [
+        "hand"
+      ],
+      "positional": [
+        "hand"
+      ],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "handshake": {
+      "parameters": {
+        "hand": {
+          "type": "string",
+          "values": [
+            "left",
+            "right"
+          ]
+        }
+      },
+      "required": [
+        "hand"
+      ],
+      "positional": [
+        "hand"
+      ],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "high_five": {
+      "parameters": {
+        "hand": {
+          "type": "string",
+          "values": [
+            "left",
+            "right"
+          ]
+        }
+      },
+      "required": [
+        "hand"
+      ],
+      "positional": [
+        "hand"
+      ],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "chest_wave": {
+      "parameters": {
+        "hand": {
+          "type": "string",
+          "values": [
+            "left",
+            "right"
+          ]
+        }
+      },
+      "required": [
+        "hand"
+      ],
+      "positional": [
+        "hand"
+      ],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "clap": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "cross_arms": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "hug": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "cheer": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "wave_goodbye": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "raise_hands": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "scratch_head": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "heart": {
+      "parameters": {
+        "hand": {
+          "type": "string",
+          "values": [
+            "left",
+            "right",
+            "both",
+            "stand"
+          ]
+        },
+        "posture": {
+          "type": "string",
+          "values": [
+            "stand"
+          ],
+          "nullable": true
+        },
+        "operator_ready": {
+          "type": "boolean"
+        },
+        "feet_planted": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "positional": [
+        "hand"
+      ],
+      "validator": "standing_heart",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
+    "close_door": {
+      "parameters": {
+        "side": {
+          "type": "side"
+        },
+        "arm_duration_seconds": {
+          "type": "number",
+          "nullable": true
+        },
+        "waist_max_duration_seconds": {
+          "type": "number",
+          "nullable": true
+        }
+      },
+      "required": [
+        "side"
+      ],
+      "positional": [
+        "side"
+      ],
+      "validator": "none",
+      "backend": "raw_upper_body"
+    },
+    "golf": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "native_golf",
+      "standing_namespace": true
+    },
+    "golf_put": {
+      "parameters": {
+        "operator_ready": {
+          "type": "boolean"
+        },
+        "mechanically_supported": {
+          "type": "boolean"
+        },
+        "arm_duration_seconds": {
+          "type": "number"
+        },
+        "waist_max_duration_seconds": {
+          "type": "number"
+        },
+        "include_stroke": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "native_golf",
+      "standing_namespace": true
+    },
+    "stiff": {
+      "parameters": {
+        "level": {
+          "type": "string",
+          "values": [
+            "hard",
+            "medium",
+            "soft",
+            "firm"
+          ]
+        },
+        "operator_ready": {
+          "type": "boolean"
+        },
+        "mechanically_supported": {
+          "type": "boolean"
+        },
+        "preflight": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "positional": [
+        "level"
+      ],
+      "validator": "none",
+      "backend": "native_golf",
+      "standing_namespace": true
+    },
+    "accept_current_hold": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "owner_control"
+    },
+    "release_returned_hold": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "owner_control"
+    },
+    "release_return_hold": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "owner_control"
+    },
+    "stay": {
+      "parameters": {
+        "seconds": {
+          "type": "number",
+          "max": 300
+        }
+      },
+      "required": [],
+      "positional": [
+        "seconds"
+      ],
+      "validator": "stay",
+      "backend": "passive"
+    },
+    "movement_a": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "movement_a"
+    },
+    "status": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "passive"
+    },
+    "get_status": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "passive"
+    },
+    "get_motion_readiness": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "passive"
+    },
+    "action_catalog": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "passive"
+    },
+    "undo_waist": {
+      "parameters": {
+        "movement": {
+          "type": "result_ref",
+          "result_type": "waist_adjustment"
+        },
+        "max_duration_seconds": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "movement"
+      ],
+      "positional": [
+        "movement"
+      ],
+      "validator": "none",
+      "backend": "raw_upper_body"
     }
   }
 }

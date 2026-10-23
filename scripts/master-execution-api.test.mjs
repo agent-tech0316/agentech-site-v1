@@ -30,9 +30,66 @@ test("Master supports preferred explicit bilateral raw-mode entry and runtime au
   assert.match(masterExecutionStarterCode, /adjust_both_elbows/);
   assert.match(masterExecutionStarterCode, /adjust_waist/);
   assert.equal(checkMasterExecutionCode(masterExecutionStarterCode).status, "PASS");
-  const unavailable = checkMasterExecutionCode('Agentech.movement_a()');
-  assert.equal(unavailable.status, "FAIL");
-  assert.match(unavailable.findings[0].message, /unavailable for scheduled live execution/);
+  assert.equal(checkMasterExecutionCode('Agentech.movement_a()').status, "PASS");
+});
+
+test("Master schedules connected standing presets, arm and waist sequences, and explicit owner operations", () => {
+  const { checkMasterExecutionCode } = loadTypeScriptModule(`${root}projects-validation/master-execution-contract.ts`);
+  for (const code of [
+    'Agentech.movement_a()',
+    ...['wave', 'blow_kiss', 'raise_hand', 'salute', 'handshake', 'high_five', 'chest_wave'].map(name => `Agentech.${name}("left")`),
+    ...['clap', 'cross_arms', 'hug', 'cheer', 'wave_goodbye', 'raise_hands', 'scratch_head', 'golf', 'accept_current_hold', 'release_returned_hold', 'release_return_hold', 'status', 'get_status', 'get_motion_readiness', 'action_catalog'].map(name => `Agentech.${name}()`),
+    'Agentech.heart("both", posture="stand")', 'Agentech.heart()',
+    'Agentech.close_door("right", arm_duration_seconds=10, waist_max_duration_seconds=30)',
+    'Agentech.golf_put(operator_ready=True, mechanically_supported=True, arm_duration_seconds=10, include_stroke=True)',
+    'Agentech.stiff("soft")', 'Agentech.stiff("hard", operator_ready=True, mechanically_supported=True)',
+    'Agentech.stay(3)',
+    'Agentech.adjust_upper_body(right_arm={"wrist_yaw": 1}, torque={"right_wrist_yaw_joint": 0.2})',
+  ]) assert.equal(checkMasterExecutionCode(code).status, 'PASS', code);
+  for (const code of [
+    'Agentech.wave("both")', 'Agentech.wave()', 'Agentech.heart(posture="sit")',
+    'Agentech.stiff("passive")', 'Agentech.stay(301)', 'Agentech.stay(0)',
+    'Agentech.close_door("both")', 'Agentech.golf_put(include_stroke=1)',
+    'Agentech.turn_head(5, posture="stand")', 'Agentech.sit()', 'Agentech.check_heart_support()',
+    'Agentech.adjust_waist(yaw=1, torque={"left_hip_pitch_joint": 1})',
+  ]) assert.equal(checkMasterExecutionCode(code).status, 'FAIL', code);
+});
+
+test("Master normalizes only canonical imported constants and supported standing namespace calls", () => {
+  const { checkMasterExecutionCode } = loadTypeScriptModule(`${root}projects-validation/master-execution-contract.ts`);
+  const imports = 'from agentech import Agentech, left, right, both, stand, master';
+  for (const source of [
+    `${imports}\nAgentech.use(master)\nAgentech.standing_actions.wave(right)\nAgentech.heart(both, posture=stand)`,
+    `${imports}\nAgentech.standing_actions.heart()\nAgentech.standing_actions.golf()\nAgentech.standing_actions.stiff("soft")`,
+  ]) assert.equal(checkMasterExecutionCode(source).status, 'PASS', source);
+  for (const source of [
+    'Agentech.wave(right)',
+    'from agentech import right as picked\nAgentech.wave(picked)',
+    `${imports}\nAgentech.seated_actions.heart()`,
+    `${imports}\nAgentech.standing_actions.adjust_waist(yaw=1)`,
+    `${imports}\nAgentech.standing_actions.heart(posture=stand)`,
+    `${imports}\nAgentech.standing_actions.heart(both)`,
+    `${imports}\nAgentech.standing_actions._master.wave(right)`,
+    `${imports}\nAgentech.wave(right.__class__)`,
+  ]) assert.equal(checkMasterExecutionCode(source).status, 'FAIL', source);
+});
+
+test("Master undo accepts only an earlier captured waist adjustment result", () => {
+  const { checkMasterExecutionCode } = loadTypeScriptModule(`${root}projects-validation/master-execution-contract.ts`);
+  const program = 'waist_move = Agentech.adjust_waist(yaw=2)\nAgentech.undo_waist(waist_move, max_duration_seconds=8)';
+  const accepted = checkMasterExecutionCode(program);
+  assert.equal(accepted.status, 'PASS');
+  assert.deepEqual(accepted.commands, ['adjust_waist', 'undo_waist']);
+  assert.equal(checkMasterExecutionCode(program.replace('undo_waist(waist_move,', 'undo_waist(movement=waist_move,')).status, 'PASS');
+  for (const source of [
+    'Agentech.undo_waist(waist_move)',
+    'waist_move = Agentech.return_waist_to_neutral()\nAgentech.undo_waist(waist_move)',
+    'waist_move = Agentech.adjust_waist(yaw=2)\nwaist_move = Agentech.adjust_waist(yaw=3)\nAgentech.undo_waist(waist_move)',
+    'waist_move = Agentech.adjust_waist(yaw=2)\nAgentech.undo_waist({"$master_result": "waist_move"})',
+    'waist_move = {"waistResultSignature": "fake"}\nAgentech.undo_waist(waist_move)',
+    'Agentech = Agentech.adjust_waist(yaw=2)',
+    'waist_move = Agentech.adjust_waist(yaw=2)\nAgentech.undo_waist(waist_move.copy())',
+  ]) assert.equal(checkMasterExecutionCode(source).status, 'FAIL', source);
 });
 
 test("normal product model selection accepts Master and preserves Navi/Aegis", () => {

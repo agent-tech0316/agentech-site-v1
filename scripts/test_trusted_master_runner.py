@@ -98,17 +98,19 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.plan_path.write_text(json.dumps(self.plan))
         self.deployment['plan_sha256'] = hashlib.sha256(self.plan_path.read_bytes()).hexdigest()
         self.deployment_path.write_text(json.dumps(self.deployment))
-        with self.assertRaisesRegex(ValueError, 'movement_a'):
-            self.run_plan()
+        self.adapter.validate.side_effect = ValueError('Movement A requires an enabled trusted deployment')
+        result = self.run_plan()
+        self.assertEqual(result['outcome'], 'failed')
+        self.assertIn('enabled trusted deployment', result['error']['message'])
         self.adapter.execute.assert_not_called()
 
     def test_preflight_rejects_unsupported_plan_before_sdk_or_robot(self):
-        self.plan['commands'] = [{'name': 'movement_a', 'args': {}, 'line': 1}]
+        self.plan['commands'] = [{'name': 'walk_forward', 'args': {}, 'line': 1}]
         self.plan_path.write_text(json.dumps(self.plan))
         self.deployment['plan_sha256'] = hashlib.sha256(self.plan_path.read_bytes()).hexdigest()
         self.deployment_path.write_text(json.dumps(self.deployment))
         factory = Mock(return_value=self.adapter)
-        with self.assertRaisesRegex(ValueError, 'movement_a'):
+        with self.assertRaisesRegex(ValueError, 'walk_forward'):
             self.runner.preflight(self.plan_path, self.deployment_path, adapter_factory=factory)
         factory.assert_not_called()
 
@@ -151,6 +153,56 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.runner.require_completed('restore_stand_hand_guide', {'upperBodyPoseVerified': True, 'absoluteReturnVerified': True})
         with self.assertRaises(RuntimeError):
             self.runner.require_completed('restore_stand_hand_guide', {'absoluteReturnVerified': True})
+
+    def replace_commands(self, commands):
+        self.plan['commands'] = commands
+        self.plan_path.write_text(json.dumps(self.plan))
+        self.deployment['plan_sha256'] = hashlib.sha256(self.plan_path.read_bytes()).hexdigest()
+        self.deployment_path.write_text(json.dumps(self.deployment))
+
+    def test_movement_a_receipt_retains_real_preset_owner_without_raw_entry(self):
+        self.replace_commands([{'name': 'movement_a', 'args': {}}])
+        owner = {**self.adapter.check_ready.return_value, 'ownerMode': 'movement-a',
+            'aimdkMcMode': 'MANIPULATE_DEFAULT', 'guidedSides': ['right']}
+        self.adapter.check_ready.return_value = owner
+        self.adapter.execute.return_value = {'ok': True, 'reachedTopHold': True,
+            'endpointVerified': True, 'ownerBinding': owner}
+        receipt = self.run_plan()
+        self.assertEqual(receipt['outcome'], 'completed')
+        self.assertEqual(receipt['handoff_mode'], 'retained-movement-a')
+        self.adapter.prepare_mode.assert_not_called()
+
+    def test_native_preset_receipt_has_no_fabricated_publisher(self):
+        self.replace_commands([{'name': 'wave', 'args': {'hand': 'left'}}])
+        owner = {'ownerMode': 'native-standing', 'nativeOwner': 'native-mc',
+            'aimdkMcMode': 'STAND_DEFAULT', 'sdk_fresh_ready_verified': True,
+            'presetActionsReady': True, 'standingStateVerified': True, 'noActivePublisher': True}
+        self.adapter.native_ready.return_value = owner
+        self.adapter.check_ready.return_value = owner
+        self.adapter.execute.return_value = {'succeeded': True, 'task_id': 7, 'task_state': 1,
+            'posture_before': 'STAND_DEFAULT', 'posture_after': 'STAND_DEFAULT'}
+        receipt = self.run_plan()
+        self.assertEqual(receipt['outcome'], 'completed')
+        self.assertEqual(receipt['handoff_mode'], 'native-standing')
+        self.assertNotIn('publisherPid', receipt['final_owner_binding'])
+        self.adapter.prepare_mode.assert_not_called()
+
+    def test_undo_receives_actual_successful_result_from_same_session(self):
+        self.replace_commands([{'name': 'adjust_waist', 'args': {'yaw': 1}, 'save_result_as': 'move'},
+            {'name': 'undo_waist', 'args': {'movement': {'$master_result': 'move'}}}])
+        first = {'measuredEndpointVerified': True, 'poweredHoldVerified': True, 'sdkSignature': 'test-bound-result'}
+        def execute(name, arguments):
+            if name == 'undo_waist': self.assertIs(arguments['movement'], first)
+            return first
+        self.adapter.execute.side_effect = execute
+        receipt = self.run_plan()
+        self.assertEqual(receipt['outcome'], 'completed')
+        self.assertEqual(receipt['completed_count'], 2)
+
+    def test_forged_undo_reference_refused_before_adapter(self):
+        self.replace_commands([{'name': 'undo_waist', 'args': {'movement': {'$master_result': 'missing'}}}])
+        with self.assertRaises(ValueError): self.run_plan()
+        self.adapter.execute.assert_not_called()
 
     def test_final_hold_observation_failure_is_a_failed_session(self):
         self.adapter.check_ready.side_effect = [self.adapter.check_ready.return_value, RuntimeError('owner fault after command')]

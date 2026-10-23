@@ -75,6 +75,44 @@ test('Master receipt cannot claim retained-hold handoff without verified owner c
   assert.throws(() => parseMasterExecutionResult(JSON.stringify({ ...value, final_owner_binding: { ...owner, publisherPid: 99 } }), expected), /hold/);
 });
 
+test('Movement A handoff requires a continuous verified native manipulation owner', () => {
+  const owner = { requestId: 'movement-a-42', publisherPid: 4242, ownerMode: 'movement-a',
+    aimdkMcMode: 'MANIPULATE_DEFAULT', nativeOwner: 'native-mc', sdk_fresh_ready_verified: true, guidedSides: ['right'] };
+  const value = { ...receipt(), handoff_ready: true, handoff_mode: 'retained-movement-a',
+    owner_binding: owner, final_owner_binding: owner };
+  const result = parseMasterExecutionResult(JSON.stringify(value), expected);
+  assert.equal(result.handoff_mode, 'retained-movement-a');
+  assert.equal(result.handoff_ready, true);
+  for (const patch of [{ requestId: 'other' }, { publisherPid: 99 }, { ownerMode: 'current-hold' },
+    { aimdkMcMode: 'STAND_DEFAULT' }, { nativeOwner: 'other' }, { sdk_fresh_ready_verified: false }, { guidedSides: ['left'] }]) {
+    assert.throws(() => parseMasterExecutionResult(JSON.stringify({ ...value, final_owner_binding: { ...owner, ...patch } }), expected), /handoff/);
+  }
+  for (const patch of [{ requestId: '' }, { publisherPid: 0 }]) {
+    assert.throws(() => parseMasterExecutionResult(JSON.stringify({ ...value, owner_binding: { ...owner, ...patch } }), expected), /handoff/);
+  }
+  assert.throws(() => parseMasterExecutionResult(JSON.stringify({ ...value, owner_hold_preserved: false }), expected), /handoff/);
+});
+
+test('native-standing handoff requires initial and final native evidence without a publisher identity', () => {
+  const owner = { ownerMode: 'native-standing', nativeOwner: 'native-mc', aimdkMcMode: 'STAND_DEFAULT',
+    presetActionsReady: true, standingStateVerified: true, noActivePublisher: true, sdk_fresh_ready_verified: true };
+  const value = { ...receipt(), handoff_ready: true, handoff_mode: 'native-standing', owner_hold_preserved: false,
+    owner_binding: owner, final_owner_binding: owner };
+  const result = parseMasterExecutionResult(JSON.stringify(value), expected);
+  assert.equal(result.handoff_ready, true);
+  assert.equal(result.handoff_mode, 'native-standing');
+  assert.equal(result.owner_binding.requestId, undefined);
+  assert.equal(result.final_owner_binding.publisherPid, undefined);
+  for (const binding of ['owner_binding', 'final_owner_binding']) {
+    for (const patch of [{ ownerMode: 'current-hold' }, { nativeOwner: 'other' }, { aimdkMcMode: 'MANIPULATE_DEFAULT' },
+      { presetActionsReady: false }, { standingStateVerified: false }, { noActivePublisher: false }, { sdk_fresh_ready_verified: false },
+      { requestId: 'invented-owner', publisherPid: 4242 }]) {
+      assert.throws(() => parseMasterExecutionResult(JSON.stringify({ ...value, [binding]: { ...owner, ...patch } }), expected), /handoff/);
+    }
+  }
+  assert.throws(() => parseMasterExecutionResult(JSON.stringify({ ...value, owner_hold_verified: false }), expected), /handoff/);
+});
+
 test('failed final Master hold verification is retained as execution failure', () => {
   const failure = { type: 'RuntimeError', message: 'owner faulted', command: 'verify_master_hold' };
   const value = { ...receipt(), outcome: 'failed', owner_hold_verified: false, error: failure, hold_observation_error: failure };

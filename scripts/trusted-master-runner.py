@@ -9,6 +9,7 @@ import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -18,12 +19,10 @@ import tempfile
 import time
 import uuid
 
-from master_gateway_spec import validate_master_command
+from master_gateway_spec import MASTER_COMMANDS, validate_master_command, validate_master_plan
 
 MAX_COMMANDS = 200
 SHA256 = re.compile(r'^[0-9a-f]{64}$')
-MOVEMENT_A_GAP = ('Movement A has no connected live public replay method in the selected current SDK; '
-                  'the historical MANIPULATE_DEFAULT launcher is not an approved adapter')
 HANDOFF_GAP = ('The current held owner has not been verified for the next session. '
                'Automatic cleanup leaves the existing controller unchanged; a failed, ambiguous or '
                'deliberately replaced owner requires fresh current-state handoff verification. '
@@ -97,11 +96,12 @@ def load_bound_plan(plan_path, config, session_end=None):
     if not isinstance(commands, list) or not 1 <= len(commands) <= MAX_COMMANDS:
         raise ValueError(f'Master plan must contain 1 through {MAX_COMMANDS} commands')
     for command in commands:
-        if not isinstance(command, dict) or set(command) - {'name', 'args', 'line', 'source_args'}:
+        if not isinstance(command, dict) or set(command) - {'name', 'args', 'line', 'source_args', 'save_result_as'}:
             raise ValueError('invalid Master command record')
         validate_master_command(command.get('name'), command.get('args'))
         if command.get('line') is not None and (type(command['line']) is not int or command['line'] < 1):
             raise ValueError('invalid Master command line')
+    validate_master_plan(commands)
     return plan, start, end
 
 
@@ -171,6 +171,8 @@ class ExistingOwnerControl:
 
 class SDKAdapter:
     def __init__(self, config):
+        self.config = config
+        self._movement_a = None
         root = Path(config['sdk_root']).resolve()
         api = root / 'agentech' / 'robots' / 'master' / 'api.py'
         expected = config.get('sdk_api_sha256')
@@ -211,19 +213,75 @@ class SDKAdapter:
     def validate(self, commands):
         for command in commands:
             name = command['name']
-            if name == 'movement_a': raise RuntimeError(MOVEMENT_A_GAP)
+            if name == 'movement_a':
+                self.movement_a_adapter()
+                continue
             method = getattr(self.planner, name, None)
             if not callable(method): raise ValueError(f'selected Master SDK has no {name} method')
+            # These SDK methods perform real observations even on a dry client.
+            # Undo requires the signed live result from this exact SDK instance.
+            if name in {'status', 'get_status', 'get_motion_readiness', 'action_catalog', 'undo_waist'}:
+                continue
             plan = method(**command['args'])
             if isinstance(plan, dict) and plan.get('qualificationState') == 'simultaneous-public-call-pending':
                 raise RuntimeError('selected SDK supports this upper-body combination as a plan only; live path requires waist plus both_elbows or admitted arm torque')
 
+    def movement_a_adapter(self):
+        if self._movement_a is None:
+            spec = importlib.util.spec_from_file_location('_master_gateway_movement_a',
+                Path(__file__).with_name('master-movement-a-adapter.py'))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            self._movement_a = module.MovementAAdapter(self.config,
+                inspect_owner=lambda: self._owner_factory().inspect_active_ready(required_sides=('right',)),
+                admission_check=self._admit)
+        return self._movement_a
+
+    def native_ready(self, *, require_presets=True):
+        evidence = self.robot.get_motion_readiness()
+        if (not isinstance(evidence, dict) or evidence.get('aimdkMcMode') != 'STAND_DEFAULT'
+            or evidence.get('manipulationPublishers') != 0
+            or any(evidence.get(key) is not True for key in ('standingStateVerified', 'nativeCommandOwnersVerified',
+                'nativeBalanceEvidenceVerified', 'completeArmCommandFrameVerified', 'completeArmStateFrameVerified'))
+            or evidence.get('fault')):
+            raise RuntimeError('Master native standing ownership and fresh telemetry are not verified')
+        presets = evidence.get('presetActionsReady') is True and evidence.get('standingStateVerified') is True
+        if require_presets and not presets:
+            raise RuntimeError(evidence.get('readinessReason') or 'Master native presets require verified native standing; explicit restoration may be needed')
+        return {**evidence, 'ownerMode': 'native-standing' if presets else 'native-hold',
+            'nativeOwner': 'native-mc', 'noActivePublisher': True,
+            'observed_at': _iso(time.time()), 'sdk_fresh_ready_verified': True}
+
     def check_ready(self):
+        if self.binding is not None and self.binding.get('ownerMode') == 'movement-a':
+            owner = self.movement_a_adapter().check_ready()
+            if any(owner.get(key) != self.binding.get(key) for key in ('requestId', 'publisherPid')):
+                raise RuntimeError('Movement A owner identity changed')
+            return owner
+        if self.binding is None:
+            owner = self._owner_factory().inspect_active_ready(required_sides=('right',))
+            if owner is None:
+                return self.native_ready(require_presets=False)
+            if owner.get('ownerMode') == 'movement-a':
+                self.binding = self.movement_a_adapter().check_ready()
+                return self.binding
         owner = self.robot._standing_current_hold_control().inspect_active_ready(required_sides=('left', 'right'))
         return {**{key: owner.get(key) for key in ('requestId', 'publisherPid', 'ownerMode', 'nativeOwner', 'aimdkMcMode', 'standingState', 'guidedSides', 'nonce')},
                 'observed_at': _iso(time.time()), 'sdk_fresh_ready_verified': True}
 
-    def preflight_mode(self):
+    def preflight_mode(self, commands=None):
+        if commands:
+            first = commands[0]['name']
+            backend = MASTER_COMMANDS[first]['backend']
+            if backend == 'movement_a':
+                return self.movement_a_adapter().preflight()
+            if backend == 'native_preset':
+                return {'mode_entry_required': False, 'owner': self.native_ready(), 'robot_commands_sent': False}
+            if backend in {'passive', 'owner_control', 'native_golf'}:
+                # Existing explicit recovery and golf methods own their own live
+                # admission. A readiness observation must not block fault recovery.
+                return {'mode_entry_required': False, 'owner': None,
+                    'sdk_command_admission_required': True, 'robot_commands_sent': False}
         owner = self._owner_factory().inspect_active_ready(required_sides=('left', 'right'))
         if owner is None:
             # No launch or mode request here. Existing entry performs its live
@@ -240,6 +298,8 @@ class SDKAdapter:
     def prepare_mode(self):
         self._admit()
         if self.binding is not None:
+            if self.binding.get('ownerMode') != 'current-hold':
+                raise RuntimeError('Raw adjustments require bilateral raw STAND_DEFAULT; explicitly restore the current preset owner first')
             return self.check_ready()
         current = self._owner_factory().inspect_active_ready(required_sides=('left', 'right'))
         if current is not None:
@@ -256,7 +316,11 @@ class SDKAdapter:
 
     def execute(self, name, arguments):
         self._admit()
-        if name == 'movement_a': raise RuntimeError(MOVEMENT_A_GAP)
+        backend = MASTER_COMMANDS[name]['backend']
+        if backend == 'movement_a':
+            result = self.movement_a_adapter().execute()
+            self.binding = result['ownerBinding']
+            return result
         # Bind every top-level SDK call to the same live owner. Each downstream
         # ensure_ready also uses ExistingOwnerControl, closing the bootstrap race.
         # Native stiffness restore has its own stricter no-publisher admission.
@@ -265,10 +329,24 @@ class SDKAdapter:
             self._admit()
             return {'operation': 'enter-stand-hand-guide', 'rawModeVerified': True,
                     'dry_run': False, 'ownerBinding': owner}
-        if name != 'restore_stand_default':
+        if backend == 'raw_upper_body':
             self.prepare_mode()
+        elif backend == 'native_preset':
+            self.native_ready()
         self._admit()
-        result = getattr(self.robot, name)(**arguments)
+        if backend == 'native_golf':
+            # The existing composite SDK operation owns its explicit raw/native
+            # transitions and admission. Do not replace them with a gateway mode
+            # transition or manufacture any operator acknowledgments.
+            wrapped = self.robot._standing_current_hold_control
+            self.robot._standing_current_hold_control = self._owner_factory
+            try:
+                result = getattr(self.robot, name)(**arguments)
+            finally:
+                self.robot._standing_current_hold_control = wrapped
+            self.binding = None
+        else:
+            result = getattr(self.robot, name)(**arguments)
         if isinstance(result, dict) and (result.get('ownerReleased') is True or result.get('ownerReleasedAfterBothReturnsVerified') is True):
             self.binding = None
         return result
@@ -279,13 +357,40 @@ def require_completed(name, result):
         raise RuntimeError('Master result is failed, dry-run, or lacks authoritative evidence')
     if result.get('status') in {'candidate', 'not-qualified'}:
         raise RuntimeError('Master result is an unqualified plan')
-    if name == 'enter_stand_hand_guide':
+    backend = MASTER_COMMANDS[name]['backend']
+    if backend == 'native_preset':
+        complete = (result.get('succeeded') is True and type(result.get('task_id')) is int
+            and result['task_id'] > 0 and result.get('task_state') == 1
+            and result.get('posture_before') == 'STAND_DEFAULT' and result.get('posture_after') == 'STAND_DEFAULT')
+    elif name == 'movement_a':
+        complete = (result.get('ok') is True and result.get('reachedTopHold') is True
+            and result.get('endpointVerified') is True and isinstance(result.get('ownerBinding'), dict))
+    elif backend == 'passive':
+        complete = name != 'stay' or (result.get('controller_owner_unchanged') is True
+            and result.get('joint_targets_unchanged') is True and result.get('joint_gains_unchanged') is True)
+    elif backend == 'native_golf':
+        complete = result.get('succeeded') is True
+    elif name == 'close_door':
+        complete = result.get('allEndpointsVerified') is True and result.get('waistEndpointVerified') is True
+    elif name == 'accept_current_hold':
+        complete = (result.get('accepted') is True and result.get('motionCommandsSent') is False
+            and type(result.get('nonce')) is int and isinstance(result.get('requestId'), str)
+            and type(result.get('publisherPid')) is int and result['publisherPid'] > 0)
+    elif name in {'release_returned_hold', 'release_return_hold'}:
+        observation = result.get('releaseObservation', {})
+        complete = (result.get('ownerReleased') is True
+            and result.get('phase') == 'hold-released-waist-unverified'
+            and observation.get('ownerProcessExited') is True
+            and observation.get('publisherCount') == 0
+            and observation.get('publisherLeaseReleased') is True
+            and observation.get('rawMcMode') == 'STAND_DEFAULT')
+    elif name == 'enter_stand_hand_guide':
         complete = result.get('rawModeVerified') is True and isinstance(result.get('ownerBinding'), dict)
     elif name == 'restore_stand_hand_guide':
         complete = result.get('upperBodyPoseVerified') is True and result.get('absoluteReturnVerified') is True
     elif name == 'restore_stand_default':
         complete = result.get('succeeded') is True
-    elif name in {'adjust_waist', 'return_waist_to_neutral'}:
+    elif name in {'adjust_waist', 'return_waist_to_neutral', 'undo_waist'}:
         complete = result.get('measuredEndpointVerified') is True and result.get('poweredHoldVerified') is True
     elif name == 'adjust_upper_body' and 'armAdjustment' in result:
         require_completed('adjust_both_elbows', result['armAdjustment'])
@@ -303,11 +408,9 @@ def require_completed(name, result):
 def preflight(plan_path, deployment_path, *, session_end=None, adapter_factory=SDKAdapter):
     config = load_deployment(deployment_path)
     plan, _, _ = load_bound_plan(plan_path, config, session_end)
-    if any(command['name'] == 'movement_a' for command in plan['commands']):
-        raise RuntimeError(MOVEMENT_A_GAP)
     adapter = adapter_factory(config)
     adapter.validate(plan['commands'])
-    return {'ready': True, 'robot_model': 'master', **adapter.preflight_mode(),
+    return {'ready': True, 'robot_model': 'master', **adapter.preflight_mode(plan['commands']),
             'plan_sha256': config['plan_sha256'], 'robot_commands_sent': False}
 
 
@@ -333,16 +436,19 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
     active = None
     try:
         admitted()
-        if any(command['name'] == 'movement_a' for command in plan['commands']):
-            raise RuntimeError(MOVEMENT_A_GAP)
         with master_lease(lease):
             adapter = adapter_factory(config)
             adapter.admission_check = admitted
             adapter.validate(plan['commands'])
             admitted()
-            if plan['commands'][0]['name'] != 'restore_stand_default':
+            first_backend = MASTER_COMMANDS[plan['commands'][0]['name']]['backend']
+            if first_backend in {'raw_upper_body', 'mode_entry'}:
                 adapter.prepare_mode()
                 receipt['owner_binding'] = adapter.check_ready()
+            elif first_backend == 'native_preset':
+                receipt['owner_binding'] = adapter.native_ready()
+                receipt['owner_hold_preserved'] = False
+            saved_results = {}
             for index, command in enumerate(plan['commands'], 1):
                 admitted()
                 active = dict(command_index=index, name=command['name'], args=command['args'],
@@ -350,13 +456,36 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
                     status='failed', result=None, error=None, started_at=_iso(now()), duration_ms=0)
                 tick = time.monotonic()
                 try:
-                    result = adapter.execute(command['name'], command['args'])
+                    arguments = dict(command['args'])
+                    if command['name'] == 'undo_waist':
+                        arguments['movement'] = saved_results[arguments['movement']['$master_result']]
+                    result = adapter.execute(command['name'], arguments)
                     active['result'] = result
                     require_completed(command['name'], result)
+                    if command.get('save_result_as'):
+                        saved_results[command['save_result_as']] = result
                     active.update(result=result, status='completed')
                     receipt['completed_count'] += 1
                     if result.get('ownerReleased') is True or result.get('ownerReleasedAfterBothReturnsVerified') is True:
                         receipt['owner_hold_preserved'] = False
+                        receipt['owner_release_verified'] = True
+                    backend = MASTER_COMMANDS[command['name']]['backend']
+                    if backend == 'movement_a':
+                        receipt['owner_binding'] = result['ownerBinding']
+                        receipt['owner_hold_preserved'] = True
+                    elif backend in {'owner_control', 'native_golf'} or 'owner_binding' not in receipt:
+                        receipt['owner_binding'] = adapter.check_ready()
+                    elif (backend in {'raw_upper_body', 'mode_entry'}
+                        and receipt['owner_binding'].get('ownerMode') != 'current-hold'):
+                        # Explicit release/native operations may precede a new raw
+                        # entry. Verify that new owner without pretending it was
+                        # continuous with the earlier native or released owner.
+                        receipt['owner_binding'] = adapter.check_ready()
+                        receipt['owner_hold_preserved'] = True
+                    if receipt.get('owner_binding', {}).get('noActivePublisher') is True:
+                        receipt['owner_hold_preserved'] = False
+                    receipt.setdefault('ownership_checkpoints', []).append({
+                        'after_command': index, 'binding': receipt.get('owner_binding')})
                     receipt['commands'].append(active)
                     active = None
                 finally:
@@ -372,11 +501,17 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
                 if (isinstance(initial, dict) and isinstance(final, dict)
                     and all(initial.get(key) == final.get(key) and final.get(key) is not None
                             for key in ('requestId', 'publisherPid', 'ownerMode'))
-                    and final.get('ownerMode') == 'current-hold'
-                    and final.get('aimdkMcMode') == 'STAND_DEFAULT'
+                    and final.get('ownerMode') in {'current-hold', 'movement-a'}
+                    and final.get('aimdkMcMode') == ('STAND_DEFAULT' if final.get('ownerMode') == 'current-hold' else 'MANIPULATE_DEFAULT')
                     and final.get('nativeOwner') == 'native-mc'
                     and final.get('sdk_fresh_ready_verified') is True):
-                    receipt.update(handoff_ready=True, handoff_mode='retained-hold', handoff_blocker=None)
+                    receipt.update(handoff_ready=True, handoff_mode=('retained-hold' if final['ownerMode'] == 'current-hold' else 'retained-movement-a'), handoff_blocker=None)
+                elif (isinstance(initial, dict) and isinstance(final, dict)
+                    and all(binding.get('ownerMode') == 'native-standing'
+                        and binding.get('presetActionsReady') is True
+                        and binding.get('noActivePublisher') is True
+                        and binding.get('sdk_fresh_ready_verified') is True for binding in (initial, final))):
+                    receipt.update(handoff_ready=True, handoff_mode='native-standing', handoff_blocker=None)
             except Exception as error:
                 receipt['hold_observation_error'] = {'type': type(error).__name__, 'message': str(error)}
                 if receipt['owner_hold_preserved']:

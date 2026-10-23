@@ -3,8 +3,11 @@ import type { SoftwareCheckReport } from "./agentech-validation";
 
 type Literal = null | boolean | number | string | Literal[] | { [key: string]: Literal };
 type Parameter = { type: string; nullable?: boolean; min?: number; max?: number; values?: string[] };
-type Command = { parameters: Record<string, Parameter>; required?: string[]; positional?: string[]; validator?: string };
+type Command = { parameters: Record<string, Parameter>; required?: string[]; positional?: string[]; validator?: string; backend?: string; standing_namespace?: boolean; result_type?: string };
 const commands = contract.commands as Record<string, Command>;
+const sdkConstants: Record<string, string> = { left: "left", right: "right", both: "both", stand: "stand", master: "master" };
+const reservedResultNames = new Set(["Agentech", ...Object.keys(sdkConstants), ..."False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield".split(" ")]);
+const validResultName = (name: string) => /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name) && !reservedResultNames.has(name);
 export const masterExecutionCommandNames = Object.freeze(Object.keys(commands));
 export const masterExecutionStarterCode = `from agentech import Agentech
 Agentech.use("master")
@@ -20,7 +23,7 @@ const finite = (value: Literal) => typeof value === "number" && Number.isFinite(
 /** Parses data literals only. No Python evaluation, identifier lookup or attribute execution. */
 class LiteralParser {
   index = 0;
-  constructor(readonly text: string) {}
+  constructor(readonly text: string, readonly constants: Record<string, string> = {}, readonly results: Set<string> = new Set()) {}
   whitespace() { while (/\s/.test(this.text[this.index] ?? "") && this.index < this.text.length) this.index++; }
   value(depth = 0): Literal {
     if (depth > 6) throw new Error("Literal nesting is too deep.");
@@ -73,9 +76,11 @@ class LiteralParser {
     for (const [token, value] of [["None", null], ["True", true], ["False", false]] as const) {
       if (this.text.slice(start, start + token.length) === token) { this.index += token.length; return value; }
     }
+    const identifier = this.text.slice(start).match(/^[A-Za-z_]\w*/)?.[0];
+    if (identifier && Object.hasOwn(this.constants, identifier)) { this.index += identifier.length; return this.constants[identifier]; }
     throw new Error("Only literal numbers, strings, maps, lists, booleans and None are accepted.");
   }
-  arguments(positional: string[]): Record<string, Literal> {
+  arguments(positional: string[], resultParameters: string[] = []): Record<string, Literal> {
     const result: Record<string, Literal> = Object.create(null);
     let position = 0;
     let sawNamed = false;
@@ -89,7 +94,13 @@ class LiteralParser {
         key = positional[position++];
       }
       if (Object.hasOwn(result, key)) throw new Error(`Duplicate parameter '${key}'.`);
-      result[key] = this.value();
+      if (resultParameters.includes(key)) {
+        this.whitespace();
+        const reference = this.text.slice(this.index).match(/^[A-Za-z][A-Za-z0-9_]*/)?.[0];
+        if (!reference || !this.results.has(reference)) throw new Error("undo_waist requires an earlier named adjust_waist result from this program.");
+        this.index += reference.length;
+        result[key] = { $master_result: reference };
+      } else result[key] = this.value();
       this.whitespace();
       if (this.index >= this.text.length) break;
       if (this.text[this.index++] !== ",") throw new Error("Expressions and nested calls are not accepted.");
@@ -135,10 +146,12 @@ function validParameter(value: Literal, parameter: Parameter): boolean {
   if (parameter.type === "guide_side") return value === "both";
   if (parameter.type === "wrist_axis") return finite(value) || (typeof value === "string" && axes.has(value));
   if (parameter.type === "boolean") return typeof value === "boolean";
+  if (parameter.type === "result_ref") return isObject(value) && Object.keys(value).length === 1 && typeof value.$master_result === "string" && validResultName(value.$master_result);
   if (parameter.type === "arm_map") return isObject(value) && Object.keys(value).length > 0 && Object.entries(value).every(([key, item]) => armKeys.has(key) && finite(item));
   if (parameter.type === "waist_map") return isObject(value) && Object.keys(value).length > 0 && Object.entries(value).every(([key, item]) => axes.has(key) && finite(item));
   if (parameter.type === "torque") {
-    const allowed = new Set([...armKeys, ...axes, "right", "left", "right_arm", "left_arm", "both_elbows", "waist", "elbow"]);
+    const jointNames = ["left", "right"].flatMap(side => [...armKeys].map(axis => `${side}_${axis}_joint`));
+    const allowed = new Set([...armKeys, ...axes, ...jointNames, ...[...axes].map(axis => `waist_${axis}_joint`), "right", "left", "right_arm", "left_arm", "both_elbows", "waist", "elbow"]);
     const valid = (item: Literal, depth = 0): boolean => finite(item) || (depth < 3 && isObject(item) && Object.keys(item).length > 0 && Object.entries(item).every(([key, child]) => allowed.has(key) && valid(child, depth + 1)));
     return valid(value);
   }
@@ -168,6 +181,8 @@ function validateArguments(name: string, spec: Command, args: Record<string, Lit
   if (has("max_duration_seconds") && Number(args.max_duration_seconds) <= 0) throw new Error("max_duration_seconds must be positive.");
   if (has("speed") && Number(args.speed) <= 0) throw new Error("speed must be positive.");
   if (has("maximum_degrees_per_second") && Number(args.maximum_degrees_per_second) <= 0) throw new Error("maximum_degrees_per_second must be positive.");
+  for (const key of ["arm_duration_seconds", "waist_max_duration_seconds", "seconds"]) if (has(key) && Number(args[key]) <= 0) throw new Error(`${key} must be positive.`);
+  if (spec.validator === "standing_heart" && args.hand === "stand" && has("posture")) throw new Error("Heart posture was provided twice.");
   if (spec.validator === "elbow_selector") {
     if (has("degrees") === has("position")) throw new Error("Provide exactly one of degrees or position.");
     if (has("speed") && has("duration_seconds")) throw new Error("Choose speed or duration_seconds.");
@@ -184,25 +199,38 @@ export function checkMasterExecutionCode(source: string): SoftwareCheckReport {
   try {
     if (source.length > 64_000) throw new Error("Master programs must be at most 64,000 characters.");
     let setupSeen = false;
+    const importedConstants: Record<string, string> = Object.create(null);
+    const savedResults = new Set<string>();
     for (const statement of sourceStatements(source)) {
       try {
-        if (statement.text === "from agentech import Agentech") {
+        const imported = statement.text.match(/^from\s+agentech\s+import\s+([\s\S]+)$/);
+        if (imported) {
           if (accepted.length || setupSeen) throw new Error("Put the Agentech import before setup and commands.");
+          const names = imported[1].replace(/^\(([\s\S]*)\)$/, "$1").split(",").map(name => name.trim()).filter(Boolean);
+          if (!names.length || names.some(name => name !== "Agentech" && !Object.hasOwn(sdkConstants, name))) throw new Error("Import only Agentech and the canonical left, right, both, stand or master constants; aliases are not accepted.");
+          for (const name of names) if (Object.hasOwn(sdkConstants, name)) importedConstants[name] = sdkConstants[name];
           continue;
         }
-        const match = statement.text.match(/^Agentech\.([A-Za-z_]\w*)\s*\(([\s\S]*)\)$/);
+        const match = statement.text.match(/^(?:([A-Za-z_]\w*)\s*=\s*)?Agentech\.(standing_actions\.)?([A-Za-z_]\w*)\s*\(([\s\S]*)\)$/);
         if (!match) throw new Error("Use direct Agentech SDK calls with literal arguments; Python control flow and assignments are not accepted.");
-        const [, name, raw] = match;
-        if (name === "use") {
-          const args = new LiteralParser(raw).arguments(["robot"]);
+        const [, saveResultAs, namespace, name, raw] = match;
+        if (name === "use" && !namespace) {
+          if (saveResultAs) throw new Error("Robot setup cannot be assigned to a result name.");
+          const args = new LiteralParser(raw, importedConstants).arguments(["robot"]);
           if (accepted.length || setupSeen || Object.keys(args).length !== 1 || args.robot !== "master") throw new Error('Setup must be one Agentech.use("master") call before commands.');
           setupSeen = true; continue;
         }
         if (Object.hasOwn(contract.unsupported_commands, name)) throw new Error(`${name}() is unavailable for scheduled live execution in the current SDK deployment.`);
         if (!Object.hasOwn(commands, name)) throw new Error(`${name}() is not enabled for Master's upper-body execution contract. Walking and raw controller calls are excluded.`);
         const spec = commands[name];
-        validateArguments(name, spec, new LiteralParser(raw).arguments(spec.positional ?? []));
+        if (saveResultAs && (spec.result_type !== "waist_adjustment" || !validResultName(saveResultAs) || savedResults.has(saveResultAs))) throw new Error("Only adjust_waist results can be captured, using a unique ordinary name.");
+        if (namespace && !spec.standing_namespace) throw new Error(`${name}() is not available through standing_actions.`);
+        const resultParameters = Object.entries(spec.parameters).filter(([, parameter]) => parameter.type === "result_ref").map(([key]) => key);
+        const args = new LiteralParser(raw, importedConstants, savedResults).arguments(namespace && name === "heart" ? [] : spec.positional ?? [], resultParameters);
+        if (namespace && name === "heart" && (Object.hasOwn(args, "hand") || Object.hasOwn(args, "posture"))) throw new Error("standing_actions.heart() accepts only operator_ready and feet_planted.");
+        validateArguments(name, spec, args);
         accepted.push(name);
+        if (saveResultAs) savedResults.add(saveResultAs);
       } catch (error) {
         findings.push({ code: "MASTER_CONTRACT_INVALID", line: statement.line, message: error instanceof Error ? error.message : "Invalid Master command." });
       }

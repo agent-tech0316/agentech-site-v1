@@ -8,6 +8,7 @@ import { aegisFunctions, aegisStarterCode, type AgentechFunction } from "@/featu
 import { naviFunctions, naviSafetyLimits, naviStarterCode } from "@/features/eaic/02-unified-api/projects-validation/navi-sdk-reference";
 import { masterReferenceCategories, masterSafetyLimits } from "@/features/eaic/02-unified-api/projects-validation/master-sdk-reference";
 import { checkMasterExecutionCode, masterExecutionStarterCode } from "@/features/eaic/02-unified-api/projects-validation/master-execution-contract";
+import { masterMovementAReviewedCode, masterScheduledMethodCount, masterScheduledMethodGroups } from "@/features/eaic/01-clients/eaic-hub/contracts/master-execution-documentation";
 import { masterSimulationPreviews, resolveMasterSimulationVariant } from "@/lib/master-simulation-previews";
 import { masterActionFunctions } from "@/features/eaic/01-clients/eaic-hub/contracts/master-action-documentation";
 import { MasterActionReference } from "@/features/eaic/01-clients/eaic-hub/components/master-action-reference";
@@ -736,6 +737,32 @@ function CopyCodeButton({
   );
 }
 
+
+function MasterScheduledMethodReference() {
+  return (
+    <details data-master-scheduled-methods="true" className="w-full min-w-0 rounded-[12px] border border-[#d8d3ca] bg-[#faf9f6] p-4">
+      <summary className="cursor-pointer text-sm font-semibold text-[#111111]">Scheduled Master programs · {masterScheduledMethodCount} supported methods</summary>
+      <p className="mt-3 text-xs leading-5 text-[#5f6368]">Use these methods in Code Certification. Walking, head control, bow and seated actions are outside this execution contract. The full SDK reference remains available in View SDK.</p>
+      <div className="mt-4 grid gap-4">
+        {masterScheduledMethodGroups.map((group) => (
+          <div key={group.id} data-master-method-group={group.id} className="min-w-0">
+            <h3 className="text-sm font-semibold text-[#303134]">{group.title}</h3>
+            <p className="mt-1 text-xs leading-5 text-[#5f6368]">{group.description}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {group.methods.map((name) => <code key={name} className="break-all rounded border border-[#dce7f2] bg-white px-2 py-1 font-mono text-[11px] text-[#006a5c]">{name}</code>)}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="relative mt-4 rounded-[10px] border border-[#dce7f2] bg-white p-3">
+        <CopyCodeButton value={masterMovementAReviewedCode} className="absolute right-2 top-2" />
+        <p className="pr-12 text-xs font-semibold text-[#1a73e8]">Movement A · reviewed-code example</p>
+        <pre className="mt-3 min-w-0 overflow-auto whitespace-pre-wrap font-mono text-xs leading-6 text-[#303134] [overflow-wrap:anywhere]">{masterMovementAReviewedCode}</pre>
+        <p className="mt-2 text-xs leading-5 text-[#5f6368]">Copying or loading this example does not run the robot. Submit it for review and schedule an approved session; current readiness is checked at execution.</p>
+      </div>
+    </details>
+  );
+}
 
 function MasterSimulationPreviewPanel({ command }: { command: string }) {
   const previewEntry = masterSimulationPreviews[command];
@@ -1773,6 +1800,7 @@ function FocusedBrowseFunctionsSection() {
 
         {selectedRobot === "master" ? (
           <>
+            <MasterScheduledMethodReference />
             <MasterHeartbeat />
             <MasterMotorMap />
             <MasterJointMotionGuide />
@@ -3449,10 +3477,28 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                     >
                       Load Master upper-body example
                     </button>
-                    <p className="text-xs leading-5 text-[#5f6368]">Use the example or upload your own arm and waist code. No walking.</p>
+                    <button
+                      type="button"
+                      data-master-movement-a-starter="true"
+                      disabled={softwarePassed || isRunningPhysicalCheck || isRunningSoftwareCheck}
+                      onClick={() => {
+                        setUploadedFileName("");
+                        setUploadedOriginalCode("");
+                        updateCode(masterMovementAReviewedCode);
+                        setRequestStatus("Movement A example loaded for review. Run Master Command Check before scheduling.");
+                      }}
+                      className="min-h-11 rounded-[10px] border border-[#1a73e8]/35 bg-[#eaf2fd] px-3 py-2 text-xs font-semibold text-[#1a73e8] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Load Movement A example
+                    </button>
+                    <p className="text-xs leading-5 text-[#5f6368]">Use an example or upload your own supported Master code. No walking.</p>
                     <p data-master-guidance-prerequisite="true" className="w-full text-xs leading-5 text-[#5f6368]">
                       Adjustments require raw STAND_DEFAULT guidance. You can enter it explicitly with <code>Agentech.enter_stand_hand_guide(&quot;both&quot;)</code>; otherwise, the first adjustment enters and verifies guidance through the SDK before moving.
                     </p>
+                    <p data-master-native-preset-prerequisite="true" className="w-full text-xs leading-5 text-[#5f6368]">
+                      Movement A uses the retained SDK right-arm preset. Native standing gestures require a verified native-ready state; no automatic raw-to-preset return is added.
+                    </p>
+                    <MasterScheduledMethodReference />
                   </div>
                 ) : null}
               </div>
@@ -3492,7 +3538,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                   <p className="mt-2 text-xs leading-5 text-[#5f6368]">
                     {masterLiveTestSelected
                       ? masterPresentation.viewOnlyNotice
-                      : masterArmCodeSelected ? "Checks supported Master arm and waist commands and adjustments for a scheduled session."
+                      : masterArmCodeSelected ? "Checks supported Master methods for a scheduled session."
                       : robotModel === "Navi" ? "Checks this submission against the latest Navi SDK." : "Checks this submission against the Aegies SDK."}
                   </p>
                 </div>

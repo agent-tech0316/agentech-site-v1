@@ -3,12 +3,23 @@ from __future__ import annotations
 
 import json
 import math
+import keyword
+import re
 from pathlib import Path
 
 MASTER_CONTRACT = json.loads(Path(__file__).with_name('master-command-contract.json').read_text(encoding='utf-8'))
 MASTER_COMMANDS = MASTER_CONTRACT['commands']
 ARM_AXES = frozenset({'shoulder_pitch', 'shoulder_roll', 'shoulder_yaw', 'elbow', 'wrist_yaw', 'wrist_pitch', 'wrist_roll'})
 AXES = frozenset({'pitch', 'roll', 'yaw'})
+RESULT_NAME = re.compile(r'^[A-Za-z][A-Za-z0-9_]{0,63}$')
+
+
+def valid_master_result_name(value):
+    return (isinstance(value, str) and bool(RESULT_NAME.fullmatch(value)) and not keyword.iskeyword(value)
+            and value not in {'Agentech', 'left', 'right', 'both', 'stand', 'master'})
+TORQUE_KEYS = ARM_AXES | AXES | {'right', 'left', 'right_arm', 'left_arm', 'both_elbows', 'waist'} | {
+    f'{side}_{axis}_joint' for side in ('left', 'right') for axis in ARM_AXES
+} | {f'waist_{axis}_joint' for axis in AXES}
 
 
 def _number(value):
@@ -19,7 +30,7 @@ def _numeric_tree(value, depth=0):
     if _number(value):
         return True
     return (depth < 3 and isinstance(value, dict) and bool(value) and len(value) <= 32
-            and all(isinstance(k, str) and not k.startswith('_') and _numeric_tree(v, depth+1)
+            and all(k in TORQUE_KEYS and _numeric_tree(v, depth+1)
                     for k, v in value.items()))
 
 
@@ -28,11 +39,13 @@ def _check_type(value, spec, name):
         return
     kind = spec['type']
     good = False
-    if kind == 'number': good = _number(value)
+    if 'values' in spec: good = isinstance(value, str) and value in spec['values']
+    elif kind == 'number': good = _number(value) and (spec.get('min') is None or value >= spec['min']) and (spec.get('max') is None or value <= spec['max'])
     elif kind == 'axis': good = isinstance(value, str) and value in AXES
     elif kind == 'side': good = isinstance(value, str) and value in {'left', 'right'}
     elif kind == 'guide_side': good = value == 'both'
     elif kind == 'boolean': good = type(value) is bool
+    elif kind == 'result_ref': good = isinstance(value, dict) and set(value) == {'$master_result'} and valid_master_result_name(value['$master_result'])
     elif kind == 'wrist_axis': good = _number(value) or isinstance(value, str) and value in AXES
     elif kind in {'arm_map', 'waist_map'}:
         axes = ARM_AXES if kind == 'arm_map' else AXES
@@ -59,6 +72,12 @@ def validate_master_command(name: object, arguments: object) -> None:
         _check_type(value, command['parameters'][key], key)
     present = {key for key, value in arguments.items() if value is not None}
     validator = command['validator']
+    for key in ('duration_seconds', 'max_duration_seconds', 'speed', 'maximum_degrees_per_second',
+                'arm_duration_seconds', 'waist_max_duration_seconds', 'seconds'):
+        if key in present and arguments[key] <= 0:
+            raise ValueError(f'Master {key} must be positive')
+    if validator == 'standing_heart' and arguments.get('hand') == 'stand' and 'posture' in present:
+        raise ValueError('Master heart posture was provided twice')
     if validator == 'elbow_selector':
         if len(present & {'degrees', 'position'}) != 1:
             raise ValueError('Master adjust_elbow needs exactly one of degrees or position')
@@ -84,9 +103,13 @@ def validate_master_command(name: object, arguments: object) -> None:
         raise ValueError('Master mirrored targets require all seven arm joints')
 
 
-def bind_master_arguments(name, args, kwargs):
+def bind_master_arguments(name, args, kwargs, *, standing_namespace=False):
     if name not in MASTER_COMMANDS:
         raise ValueError(f'Master command is not approved: {name!r}')
+    if standing_namespace and not MASTER_COMMANDS[name].get('standing_namespace'):
+        raise ValueError(f'Master {name} is not available through standing_actions')
+    if standing_namespace and name == 'heart' and (args or {'hand', 'posture'} & set(kwargs)):
+        raise ValueError('standing_actions.heart accepts only operator_ready and feet_planted')
     positional = MASTER_COMMANDS[name]['positional']
     if len(args) > len(positional):
         raise ValueError(f'Master {name} has too many positional arguments')
@@ -97,3 +120,27 @@ def bind_master_arguments(name, args, kwargs):
         result[key] = value
     validate_master_command(name, result)
     return result
+
+
+def validate_master_plan(commands):
+    """Verify typed references in order without accepting caller-provided SDK evidence."""
+    if not isinstance(commands, list) or not 1 <= len(commands) <= 200:
+        raise ValueError('Master plan requires 1 through 200 commands')
+    results = {}
+    for command in commands:
+        if not isinstance(command, dict) or set(command) - {'name', 'args', 'line', 'source_args', 'save_result_as'}:
+            raise ValueError('invalid Master command record')
+        validate_master_command(command.get('name'), command.get('args'))
+        if command.get('line') is not None and (type(command['line']) is not int or command['line'] < 1):
+            raise ValueError('invalid Master command line')
+        spec = MASTER_COMMANDS[command['name']]
+        for key, parameter in spec['parameters'].items():
+            if parameter['type'] == 'result_ref' and key in command['args']:
+                reference = command['args'][key]['$master_result']
+                if results.get(reference) != parameter['result_type']:
+                    raise ValueError('Master result reference requires an earlier compatible command result')
+        if 'save_result_as' in command:
+            name = command['save_result_as']
+            if not valid_master_result_name(name) or name in results or not spec.get('result_type'):
+                raise ValueError('Master result capture requires a unique name and supported producer')
+            results[name] = spec['result_type']

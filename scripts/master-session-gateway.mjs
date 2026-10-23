@@ -50,18 +50,42 @@ export function parseMasterExecutionResult(text, expected) {
   if (value.handoff_ready) {
     const first = value.owner_binding;
     const last = value.final_owner_binding;
-    if (value.handoff_mode !== 'retained-hold' || value.owner_hold_verified !== true || value.owner_hold_preserved !== true
-      || !first?.requestId || !Number.isInteger(first.publisherPid) || first.publisherPid <= 0
-      || first.requestId !== last?.requestId || first.publisherPid !== last?.publisherPid
-      || last?.ownerMode !== 'current-hold' || last?.aimdkMcMode !== 'STAND_DEFAULT'
-      || last?.nativeOwner !== 'native-mc' || last?.sdk_fresh_ready_verified !== true
-      || !['left', 'right'].every(side => last?.guidedSides?.includes(side))) {
-      throw new Error('Master handoff requires a verified continuous bilateral raw-mode hold');
+    if (value.handoff_mode === 'retained-hold') {
+      if (value.owner_hold_verified !== true || value.owner_hold_preserved !== true
+        || !first?.requestId || !Number.isInteger(first.publisherPid) || first.publisherPid <= 0
+        || first.requestId !== last?.requestId || first.publisherPid !== last?.publisherPid
+        || last?.ownerMode !== 'current-hold' || last?.aimdkMcMode !== 'STAND_DEFAULT'
+        || last?.nativeOwner !== 'native-mc' || last?.sdk_fresh_ready_verified !== true
+        || !['left', 'right'].every(side => last?.guidedSides?.includes(side))) {
+        throw new Error('Master handoff requires a verified continuous bilateral raw-mode hold');
+      }
+    } else if (value.handoff_mode === 'retained-movement-a') {
+      if (value.owner_hold_verified !== true || value.owner_hold_preserved !== true
+        || typeof first?.requestId !== 'string' || !first.requestId
+        || !Number.isInteger(first.publisherPid) || first.publisherPid <= 0
+        || first.requestId !== last?.requestId || first.publisherPid !== last?.publisherPid
+        || last?.ownerMode !== 'movement-a' || last?.aimdkMcMode !== 'MANIPULATE_DEFAULT'
+        || last?.nativeOwner !== 'native-mc' || last?.sdk_fresh_ready_verified !== true
+        || !Array.isArray(last?.guidedSides) || !last.guidedSides.includes('right')) {
+        throw new Error('Master handoff requires a verified continuous Movement A owner');
+      }
+    } else if (value.handoff_mode === 'native-standing') {
+      const verifiedNativeStanding = (binding) => binding?.ownerMode === 'native-standing'
+        && binding.nativeOwner === 'native-mc' && binding.aimdkMcMode === 'STAND_DEFAULT'
+        && binding.presetActionsReady === true && binding.standingStateVerified === true
+        && binding.noActivePublisher === true && binding.sdk_fresh_ready_verified === true
+        && binding.requestId == null && binding.publisherPid == null;
+      if (value.owner_hold_verified !== true || !verifiedNativeStanding(first) || !verifiedNativeStanding(last)) {
+        throw new Error('Master handoff requires verified initial and final native standing without a publisher');
+      }
+    } else {
+      throw new Error('Master handoff requires a recognized verified hold or native-standing mode');
     }
   }
   return { ...result, attempt_id: value.attempt_id, booked_end: value.booked_end,
     handoff_ready: value.handoff_ready, owner_hold_preserved: value.owner_hold_preserved,
     owner_hold_verified: value.owner_hold_verified === true,
+    owner_release_verified: value.owner_release_verified === true,
     handoff_mode: value.handoff_mode ?? null,
     owner_binding: value.owner_binding ?? null,
     final_owner_binding: value.final_owner_binding ?? null,
