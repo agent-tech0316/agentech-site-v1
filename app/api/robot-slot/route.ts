@@ -13,6 +13,8 @@ import {
 import { getServerAccountEmail } from "@/lib/server-account-session";
 import { normalizeAgentechRobotModel } from "@/lib/agentech-robot-model";
 import { isAgentechCompanyEmail } from "@/lib/company-accounts";
+import { masterBookingBlocker } from "@/lib/master-booking-policy";
+import { MASTER_LIVE_TEST_LABEL } from "@/lib/master-live-test-access";
 import { sendEmail } from "@/lib/email";
 import { isValidAccountIdentifier, isValidEmail, normalizeEmail } from "@/lib/prototype-auth";
 import {
@@ -246,7 +248,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (!robotModel) {
-    return NextResponse.json({ error: "Choose Aegies or Navi for this robot slot." }, { status: 400 });
+    return NextResponse.json({ error: "Choose Aegies, Navi or Master for this robot slot." }, { status: 400 });
   }
 
   if (Number.isNaN(requestedScheduledStart.getTime())) {
@@ -323,6 +325,14 @@ export async function POST(request: NextRequest) {
       { error: `Your latest approved code was checked for ${normalizeAgentechRobotModel(codeSubmission.robot_model) ?? "a different robot"}. Select that model or submit and approve new ${robotModel} code.` },
       { status: 409 }
     );
+  }
+
+  if (robotModel === "Master") {
+    if (codeSubmission.run_mode === MASTER_LIVE_TEST_LABEL) {
+      return NextResponse.json({ error: "A camera-only Master audit cannot authorize robot execution. Certify a normal Master program before booking.", errorCode: "MASTER_VIEW_ONLY_AUDIT" }, { status: 403 });
+    }
+    const blocker = masterBookingBlocker(codeSubmission.code, process.env);
+    if (blocker) return NextResponse.json({ error: blocker.error, errorCode: blocker.errorCode }, { status: blocker.status });
   }
 
   const presetDemo = approvedCustomCodeLabel;

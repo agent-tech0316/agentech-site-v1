@@ -23,7 +23,7 @@ export function loadTypeScriptModule(relativePath) {
     };
     const source = fs.readFileSync(filename, "utf8");
     const output = ts.transpileModule(source, {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
       fileName: filename,
     }).outputText;
     new Function("exports", "require", "module", "__filename", "__dirname", output)(

@@ -90,7 +90,7 @@ export function parseExecutionResult(
     error = normalizeError(value.error, "failed execution result");
     if (commands.length > 0 && commands.at(-1).status === "completed" && value.completed_count === value.command_count) {
       // A cleanup failure can occur after every planned command completed.
-      if (error.command !== "stop") {
+      if (error.command !== "stop" && !(value.robot_model === "master" && error.command === "verify_master_hold")) {
         throw new Error("failed execution result does not identify a failed command or cleanup");
       }
     }

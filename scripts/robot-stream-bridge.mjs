@@ -1,10 +1,11 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash, createHmac, randomUUID } from "node:crypto";
-import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import OBSWebSocket from "obs-websocket-js";
+import { createMasterSessionDeployment, masterLaunchBlocker, parseMasterExecutionResult, assertMasterExecutableSubmission } from "./master-session-gateway.mjs";
 import {
   naviLaunchBlocker, parseNaviCleanupResult, loadGatewayState, saveGatewayState,
   selectNaviResetBaseline, reconcileNaviCleanupOutcome,
@@ -40,6 +41,8 @@ const deviceResultsSerializer = join(here, "aegis-device-results.py");
 const gatewaySpec = join(here, "aegis_gateway_spec.py");
 const runnerResultSerializer = join(here, "aegis-runner-result.py");
 const trustedNaviRunner = join(here, "trusted-navi-runner.py");
+const trustedMasterRunner = join(here, "trusted-master-runner.py");
+const masterDeploymentFile = process.env.AGENTECH_MASTER_DEPLOYMENT_FILE;
 const obsHiddenLauncher = join(here, "ensure-obs-running-hidden.vbs");
 const captureUploadUrl = process.env.AGENTECH_CAPTURE_UPLOAD_URL || "https://www.agent-tech.ai/api/agentech-capture";
 const supabaseUrl = process.env.SUPABASE_URL.replace(/\/$/, "").replace(/\/rest\/v1$/, "");
@@ -114,11 +117,18 @@ function robotModel(value) {
   const model = normalized(value);
   if (model === "aegis" || model === "aegies" || !model) return "aegis";
   if (model === "navi") return "navi";
+  if (model === "master") return "master";
   throw new Error(`unsupported robot model: ${value}`);
 }
 function naviEnvironment() {
   return { ...process.env, AGENTECH_NAVI_HOST: naviHost, AGENTECH_NAVI_PORT: naviPort, AGENTECH_SDK_ROOT: agentechSdkRoot,
     AGENTECH_NAVI_OWNER_LOCK:join(runtimeDir,"navi-owner.lock") };
+}
+function masterEnvironment() {
+  const env = { ...process.env };
+  delete env.SUPABASE_SERVICE_ROLE_KEY;
+  delete env.OBS_WEBSOCKET_PASSWORD;
+  return env;
 }
 function sshArgs() { return [...(sshKey ? ["-i", sshKey] : []), "-o", "BatchMode=yes", "-o", "ConnectTimeout=8"]; }
 function run(program, args, options = {}) { return execFileSync(program, args, { encoding: "utf8", timeout: 20000, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], ...options }); }
@@ -155,9 +165,10 @@ async function reviewedSubmission(session) {
     // Compatibility for website deployments created before booking-time pinning:
     // choose only the newest fully reviewed submission that already existed when the booking was made.
     const cutoff = encodeURIComponent(session.created_at);
-    const fallbackQuery = `email=eq.${encodeURIComponent(session.email)}&created_at=lte.${cutoff}&physical_safety_status=eq.passed&ai_security_status=eq.passed&select=id,code,robot_model&order=created_at.desc&limit=1`;
+    const fallbackQuery = `email=eq.${encodeURIComponent(session.email)}&created_at=lte.${cutoff}&physical_safety_status=eq.passed&ai_security_status=eq.passed&select=id,code,robot_model,run_mode,ai_security_model&order=created_at.desc&limit=1`;
     const candidates = await request("agentech_code_submissions", fallbackQuery);
     if (candidates.length !== 1) throw new Error("custom session has no eligible reviewed submission to pin");
+    if (robotModel(session.robot_model) === "master") assertMasterExecutableSubmission(candidates[0]);
     const updated = await request(
       "agentech_robot_sessions",
       `id=eq.${encodeURIComponent(session.id)}&code_submission_id=is.null`,
@@ -167,10 +178,11 @@ async function reviewedSubmission(session) {
     session.code_submission_id = candidates[0].id;
     console.log(`[robot-stream] pinned reviewed submission ${candidates[0].id} to legacy booking ${session.id}.`);
   }
-  const query = `id=eq.${encodeURIComponent(session.code_submission_id)}&email=eq.${encodeURIComponent(session.email)}&physical_safety_status=eq.passed&ai_security_status=eq.passed&select=id,code,robot_model&limit=1`;
+  const query = `id=eq.${encodeURIComponent(session.code_submission_id)}&email=eq.${encodeURIComponent(session.email)}&physical_safety_status=eq.passed&ai_security_status=eq.passed&select=id,code,robot_model,run_mode,ai_security_model&limit=1`;
   const rows = await request("agentech_code_submissions", query);
   if (rows.length !== 1) throw new Error("pinned submission no longer passes both reviews");
   if (robotModel(rows[0].robot_model) !== robotModel(session.robot_model)) throw new Error("session robot model does not match its reviewed submission");
+  if (robotModel(session.robot_model) === "master") assertMasterExecutableSubmission(rows[0]);
   return rows[0];
 }
 
@@ -217,7 +229,7 @@ function stage(session, submission) {
   const sourcePath = join(runtimeDir, `${prefix}.reviewed.py`);
   const planPath = join(runtimeDir, `${prefix}.plan.json`);
   writeFileSync(sourcePath, submission.code, { encoding: "utf8", flag: "wx" });
-  if (selectedModel === "navi") run(localPython, [compiler, sourcePath, submission.id, "navi", planPath]);
+  if (selectedModel === "navi" || selectedModel === "master") run(localPython, [compiler, sourcePath, submission.id, selectedModel, planPath]);
   else run(localPython, [compiler, sourcePath, submission.id, planPath]);
   const plan = JSON.parse(readFileSync(planPath, "utf8"));
   if (plan.source_sha256 !== createHash("sha256").update(submission.code).digest("hex")) throw new Error("compiled plan source hash mismatch");
@@ -247,10 +259,10 @@ function stage(session, submission) {
   state.sessions[session.id] = {
     status: "staged",
     executionModel: selectedModel,
-    executionResultRequired: selectedModel === "aegis",
-    executionResultCollectionAttempted: selectedModel !== "aegis",
-    executionResultPersisted: selectedModel !== "aegis",
-    executionStatus: selectedModel === "aegis" ? "pending" : null,
+    executionResultRequired: selectedModel === "aegis" || selectedModel === "master",
+    executionResultCollectionAttempted: selectedModel !== "aegis" && selectedModel !== "master",
+    executionResultPersisted: selectedModel !== "aegis" && selectedModel !== "master",
+    executionStatus: selectedModel === "aegis" || selectedModel === "master" ? "pending" : null,
     executionSubmissionId: submission.id,
     executionSourceSha256: plan.source_sha256,
     executionPlanSha256: createHash("sha256").update(readFileSync(planPath)).digest("hex"),
@@ -316,6 +328,32 @@ async function claimSession(session) {
 async function launch(session) {
   const item = state.sessions[session.id];
   if (!Number.isFinite(Date.parse(item.end)) || Date.now() >= Date.parse(item.end)) return;
+  if (item.executionModel === "master") {
+    let blocker = masterLaunchBlocker(state.sessions, session.id, item);
+    if (!blocker) {
+      try {
+        if (!masterDeploymentFile) throw new Error("AGENTECH_MASTER_DEPLOYMENT_FILE is not configured");
+        const config = JSON.parse(readFileSync(masterDeploymentFile, "utf8"));
+        const attemptId = item.masterPreparedAttemptId ?? randomUUID();
+        const deployment = createMasterSessionDeployment(config, session, item, attemptId);
+        item.masterPreparedAttemptId = attemptId;
+        item.masterSessionDeployment = join(runtimeDir, `session-${session.id}.${attemptId}.master.json`);
+        item.masterCancelFile = join(runtimeDir, `session-${session.id}.${attemptId}.cancel`);
+        writeFileSync(item.masterSessionDeployment, JSON.stringify(deployment));
+        run(localPython, [trustedMasterRunner, "--check-ready", "--plan", item.localPlan,
+          "--deployment", item.masterSessionDeployment], { env: masterEnvironment(), timeout: 20000 });
+      } catch (error) { blocker = `Master readiness check failed: ${error.message}`; }
+    }
+    if (blocker) {
+      if (item.launchBlockedReason !== blocker) {
+        item.launchBlockedReason = blocker;
+        saveState();
+        console.error(`[robot-stream] session ${session.id} waiting: ${blocker}`);
+      }
+      return;
+    }
+    delete item.launchBlockedReason;
+  }
   if (item.executionModel === "navi") {
     let blocker;
     let baseline;
@@ -351,6 +389,28 @@ async function launch(session) {
     item.endCleanupRequired = false;
     item.endCleanupStatus = "not_started";
     item.streamAvailableDuringSession = false;
+    saveState();
+    return;
+  }
+  if (item.executionModel === "master") {
+    // Persist the attempt before spawn. A crash must not authorize a replay.
+    item.executionAttemptId = item.masterPreparedAttemptId;
+    item.masterHandoffReady = false;
+    item.localExecutionResult = join(runtimeDir, `session-${session.id}.${item.executionAttemptId}.master-result.json`);
+    item.status = "running";
+    saveState();
+    const logFd = openSync(join(runtimeDir, `session-${session.id}.master.log`), "a");
+    try {
+      const child = spawn(localPython, [trustedMasterRunner, "--plan", item.localPlan,
+        "--deployment", item.masterSessionDeployment, "--result-file", item.localExecutionResult,
+        "--session-end", item.end, "--cancel-file", item.masterCancelFile], {
+        detached: true, windowsHide: true, stdio: ["ignore", logFd, logFd], env: masterEnvironment(),
+      });
+      child.on("error", error => console.error(`[robot-stream] Master runner spawn failed: ${error.message}`));
+      if (!child.pid) throw new Error("Master runner process identity is missing; handoff verification required");
+      child.unref();
+      item.pid = String(child.pid);
+    } finally { closeSync(logFd); }
     saveState();
     return;
   }
@@ -403,6 +463,14 @@ async function launch(session) {
 
 async function stopSession(id) {
   const item = state.sessions[id];
+  if (item?.executionModel === "master") {
+    // Cancel admission only; never terminate the persistent robot owner or
+    // replace its held target. The runner independently checks booked expiry.
+    if (item.masterCancelFile) writeFileSync(item.masterCancelFile, "booked session ended\n");
+    item.status = "finished";
+    saveState();
+    return;
+  }
   if (item?.executionModel === "navi" && item.naviSessionGuardian === true) {
     // The detached supervisor enforces the deadline even if this bridge is
     // blocked or restarted. Do not kill it while it is stopping/resetting.
@@ -429,7 +497,8 @@ async function stopSession(id) {
 }
 
 function processRunning(item) {
-  if (item.executionModel === "navi") {
+  if (item.executionModel === "navi" || item.executionModel === "master") {
+    if (!item.pid || !/^\d+$/.test(String(item.pid))) return false;
     try {
       process.kill(Number(item.pid), 0);
       return true;
@@ -594,17 +663,28 @@ function collectExecutionResult(id, item) {
     item.executionResultRequired !== true
     || item.executionResultCollectionAttempted === true
   ) return;
+  // A Master runner may still be finalizing its receipt.
+  // Do not race a live writer; after runner exit, missing evidence fails closed.
+  if ((item.executionModel === "master") && item.localExecutionResult
+      && !existsSync(item.localExecutionResult) && item.pid && processRunning(item)) return;
   item.executionResultCollectionAttempted = true;
   try {
-    const localResult = join(runtimeDir, `session-${id}.execution.json`);
-    run("scp", [...sshArgs(), `${robot}:${item.remoteExecutionResult}`, localResult]);
-    item.executionResult = parseExecutionResult(readFileSync(localResult, "utf8"), {
+    const localResult = (item.executionModel === "master") ? item.localExecutionResult
+      : join(runtimeDir, `session-${id}.execution.json`);
+    if (!(item.executionModel === "master")) {
+      run("scp", [...sshArgs(), `${robot}:${item.remoteExecutionResult}`, localResult]);
+    }
+    const parseResult = item.executionModel === "master" ? parseMasterExecutionResult : parseExecutionResult;
+    item.executionResult = parseResult(readFileSync(localResult, "utf8"), {
       sessionId: id,
       submissionId: item.executionSubmissionId,
       sourceSha256: item.executionSourceSha256,
       planSha256: item.executionPlanSha256,
+      attemptId: item.executionAttemptId,
+      bookedEnd: item.end,
     });
     item.executionStatus = item.executionResult.outcome;
+    if (item.executionModel === "master") item.masterHandoffReady = item.executionResult.handoff_ready === true;
     item.executionResultError = executionErrorMessage(item.executionResult);
     console.log(
       `[robot-stream] collected authoritative ${item.executionStatus} result for session ${id}.`,

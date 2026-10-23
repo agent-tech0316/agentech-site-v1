@@ -60,6 +60,9 @@ type MasterLiveTestStatusDependencies = {
     status: string;
     scheduledStart: string | null;
     scheduledEnd: string | null;
+    approvedRunType?: string | null;
+    presetDemo?: string | null;
+    codeSubmissionId?: string | null;
   } | null>;
 };
 
@@ -228,7 +231,10 @@ export async function handleMasterLiveTestStatus(
           physicalSafetyStatus: "passed",
           aiSecurityStatus: latestAudit.ai_security_status,
         } : null,
-        activeSession: activeSession?.robotModel === "Master" ? activeSession : null,
+        activeSession: activeSession?.robotModel === "Master"
+          && activeSession.approvedRunType === "preset_demo"
+          && activeSession.presetDemo === MASTER_LIVE_TEST_LABEL
+          && activeSession.codeSubmissionId === null ? activeSession : null,
       },
     };
   } catch (error) {

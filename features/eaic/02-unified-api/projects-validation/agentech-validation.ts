@@ -1,5 +1,6 @@
 import { normalizeAgentechRobotModel, type AgentechRobotModel } from "@/features/eaic/02-unified-api/resources-runs/agentech-robot-model";
 import { naviFunctions } from "@/features/eaic/02-unified-api/projects-validation/navi-sdk-reference";
+import { checkMasterExecutionCode } from "./master-execution-contract";
 
 export type CheckFinding = { code: string; message: string; line?: number };
 export type CheckItem = { name: string; status: "PASS" | "FAIL"; detail: string };
@@ -156,6 +157,7 @@ function checkSquatDiagonalComponent(
 
 export function checkAgentechSoftware(code: string, robotModel: AgentechRobotModel | string = "Aegies"): SoftwareCheckReport {
   const selectedRobotModel = normalizeAgentechRobotModel(robotModel) ?? "Aegies";
+  if (selectedRobotModel === "Master") return checkMasterExecutionCode(code);
   const selectedSdkSpec = selectedRobotModel === "Navi" ? naviSdkSpec : agentechSdkSpec;
   const findings: CheckFinding[] = []; const commands: string[] = []; const add = (code: string, message: string, line?: number) => findings.push({ code, message, line });
   const blockedImports = ["os", "sys", "subprocess", "socket", "serial", "mujoco", "unitree", "agibot", "ff_sdk", "mc_sdk_zsl_1_py"];

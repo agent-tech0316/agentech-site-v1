@@ -9,6 +9,9 @@ type ActiveSessionRow = {
   session_status: string;
   scheduled_start: string | null;
   scheduled_end: string | null;
+  approved_run_type: string | null;
+  preset_demo: string | null;
+  code_submission_id: string | null;
 };
 
 export type ActiveRobotViewingSession = {
@@ -17,6 +20,9 @@ export type ActiveRobotViewingSession = {
   status: string;
   scheduledStart: string | null;
   scheduledEnd: string | null;
+  approvedRunType?: string | null;
+  presetDemo?: string | null;
+  codeSubmissionId?: string | null;
 };
 
 function normalizeStatus(status: string) {
@@ -30,7 +36,7 @@ export async function getActiveRobotViewingSession(email: string, now = new Date
       `email=eq.${encodeURIComponent(email)}`,
       `scheduled_start=lte.${encodeURIComponent(nowIso)}`,
       `scheduled_end=gte.${encodeURIComponent(nowIso)}`,
-      "select=id,robot_model,session_status,scheduled_start,scheduled_end",
+      "select=id,robot_model,session_status,scheduled_start,scheduled_end,approved_run_type,preset_demo,code_submission_id",
       "order=scheduled_start.asc",
       "limit=5"
     ].join("&")
@@ -44,6 +50,9 @@ export async function getActiveRobotViewingSession(email: string, now = new Date
     robotModel: normalizeLiveRobotModel(session.robot_model) ?? "Aegies",
     status: session.session_status,
     scheduledStart: session.scheduled_start,
-    scheduledEnd: session.scheduled_end
+    scheduledEnd: session.scheduled_end,
+    approvedRunType: session.approved_run_type,
+    presetDemo: session.preset_demo,
+    codeSubmissionId: session.code_submission_id,
   } satisfies ActiveRobotViewingSession;
 }

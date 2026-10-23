@@ -179,6 +179,9 @@ test("Master status returns its own latest audit without reading the shared Aegi
     getActiveSession: async () => ({
       id: 501,
       robotModel: "Master",
+      approvedRunType: "preset_demo",
+      presetDemo: "Master live stream test (view only)",
+      codeSubmissionId: null,
       status: "requested",
       scheduledStart: "2026-08-11T18:00:00.000Z",
       scheduledEnd: "2026-08-11T18:30:00.000Z",
@@ -188,6 +191,19 @@ test("Master status returns its own latest audit without reading the shared Aegi
   assert.equal(result.status, 200);
   assert.equal(result.body.latestAudit.id, "master-audit-status");
   assert.equal(result.body.activeSession.robotModel, "Master");
+});
+
+test("Master camera-test status never treats a normal custom-code booking as the camera test", async () => {
+  for (const approvedRunType of ["custom_code", undefined]) {
+    const result = await handleMasterLiveTestStatus({ email: victoria }, {
+      listSubmissions: async () => [storedSubmission({ ai_security_status: "passed" })],
+      getActiveSession: async () => ({ id: 502, robotModel: "Master", approvedRunType,
+        presetDemo: "Master live stream test (view only)", codeSubmissionId: "normal-submission",
+        status: "running", scheduledStart: now.toISOString(), scheduledEnd: "2026-08-11T18:30:00.000Z" }),
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.activeSession, null);
+  }
 });
 
 test("Master status fails closed when the current live session belongs to another robot", async () => {

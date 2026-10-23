@@ -13,7 +13,7 @@ type LocalSimulator = {
 };
 
 const simulatorsRoot = path.resolve(process.cwd(), "simulators");
-const localSimulators: Record<AgentechRobotModel, LocalSimulator> = {
+const localSimulators: Record<Exclude<AgentechRobotModel, "Master">, LocalSimulator> = {
   Aegies: {
     root: path.join(simulatorsRoot, "aegis"),
     adapter: "web_adapter.py",
@@ -135,12 +135,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No Agentech code provided." }, { status: 400 });
   }
   if (!robotModel) {
-    return NextResponse.json({ error: "Choose Aegies or Navi." }, { status: 400 });
+    return NextResponse.json({ error: "Choose Aegies, Navi or Master." }, { status: 400 });
   }
 
   const validationErrors = validateAgentechCode(code, robotModel);
   if (validationErrors.length) {
     return NextResponse.json({ error: validationErrors.join(" ") }, { status: 400 });
+  }
+
+  if (robotModel === "Master") {
+    return NextResponse.json({
+      error: "Master upper-body code passed static validation. This route has no qualified Master physics simulation; use Code Certification and the scheduled gateway's runtime checks.",
+      errorCode: "MASTER_SIMULATION_UNAVAILABLE", staticValidationPassed: true,
+      simulationPassed: false, physicalQualified: false, runtimeChecksRequired: true,
+    }, { status: 422 });
   }
 
   const simulatorCode = robotModel === "Navi" ? code : normalizeCanonicalTurnsForMuJoCo(code);

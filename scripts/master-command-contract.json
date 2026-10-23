@@ -1,0 +1,453 @@
+{
+  "schema_version": 1,
+  "scope": "master-upper-body",
+  "unsupported_commands": {"movement_a": "The current SDK public replay has no live transport; the historical MANIPULATE_DEFAULT launcher is not used."},
+  "commands": {
+    "enter_stand_hand_guide": {
+      "parameters": {"side": {"type": "guide_side"}},
+      "required": ["side"],
+      "positional": ["side"],
+      "validator": "none"
+    },
+    "adjust_right_shoulder": {
+      "parameters": {
+        "axis": {
+          "type": "axis"
+        },
+        "degrees": {
+          "type": "number"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "nullable": true
+        },
+        "torque": {
+          "type": "number",
+          "nullable": true
+        }
+      },
+      "required": [
+        "axis",
+        "degrees"
+      ],
+      "positional": [
+        "axis",
+        "degrees"
+      ],
+      "validator": "shoulder"
+    },
+    "adjust_left_shoulder": {
+      "parameters": {
+        "axis": {
+          "type": "axis"
+        },
+        "degrees": {
+          "type": "number"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "nullable": true
+        },
+        "torque": {
+          "type": "number",
+          "nullable": true
+        }
+      },
+      "required": [
+        "axis",
+        "degrees"
+      ],
+      "positional": [
+        "axis",
+        "degrees"
+      ],
+      "validator": "shoulder"
+    },
+    "adjust_right_elbow": {
+      "parameters": {
+        "degrees": {
+          "type": "number"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "nullable": true
+        },
+        "torque": {
+          "type": "number",
+          "nullable": true
+        }
+      },
+      "required": [
+        "degrees"
+      ],
+      "positional": [
+        "degrees"
+      ],
+      "validator": "elbow"
+    },
+    "adjust_left_elbow": {
+      "parameters": {
+        "degrees": {
+          "type": "number"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "nullable": true
+        },
+        "torque": {
+          "type": "number",
+          "nullable": true
+        }
+      },
+      "required": [
+        "degrees"
+      ],
+      "positional": [
+        "degrees"
+      ],
+      "validator": "elbow"
+    },
+    "adjust_both_elbows": {
+      "parameters": {
+        "degrees": {
+          "type": "number"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "nullable": true
+        },
+        "torque": {
+          "type": "torque",
+          "nullable": true
+        }
+      },
+      "required": [
+        "degrees"
+      ],
+      "positional": [
+        "degrees"
+      ],
+      "validator": "elbow"
+    },
+    "adjust_elbow": {
+      "parameters": {
+        "side": {
+          "type": "side"
+        },
+        "degrees": {
+          "type": "number",
+          "nullable": true
+        },
+        "position": {
+          "type": "number",
+          "nullable": true
+        },
+        "speed": {
+          "type": "number",
+          "nullable": true
+        },
+        "torque": {
+          "type": "number",
+          "nullable": true
+        },
+        "duration_seconds": {
+          "type": "number",
+          "nullable": true
+        }
+      },
+      "required": [],
+      "positional": [
+        "side",
+        "degrees"
+      ],
+      "validator": "elbow_selector"
+    },
+    "adjust_right_wrist": {
+      "parameters": {
+        "axis": {
+          "type": "wrist_axis",
+          "nullable": true
+        },
+        "degrees": {
+          "type": "number",
+          "nullable": true
+        },
+        "roll": {
+          "type": "number",
+          "nullable": true
+        },
+        "pitch": {
+          "type": "number",
+          "nullable": true
+        },
+        "yaw": {
+          "type": "number",
+          "nullable": true
+        },
+        "torque": {
+          "type": "torque",
+          "nullable": true
+        }
+      },
+      "required": [],
+      "positional": [
+        "axis",
+        "degrees"
+      ],
+      "validator": "wrist"
+    },
+    "adjust_left_wrist": {
+      "parameters": {
+        "axis": {
+          "type": "wrist_axis",
+          "nullable": true
+        },
+        "degrees": {
+          "type": "number",
+          "nullable": true
+        },
+        "roll": {
+          "type": "number",
+          "nullable": true
+        },
+        "pitch": {
+          "type": "number",
+          "nullable": true
+        },
+        "yaw": {
+          "type": "number",
+          "nullable": true
+        },
+        "torque": {
+          "type": "torque",
+          "nullable": true
+        }
+      },
+      "required": [],
+      "positional": [
+        "axis",
+        "degrees"
+      ],
+      "validator": "wrist"
+    },
+    "adjust_wrist": {
+      "parameters": {
+        "axis": {
+          "type": "wrist_axis",
+          "nullable": true
+        },
+        "degrees": {
+          "type": "number",
+          "nullable": true
+        },
+        "roll": {
+          "type": "number",
+          "nullable": true
+        },
+        "pitch": {
+          "type": "number",
+          "nullable": true
+        },
+        "yaw": {
+          "type": "number",
+          "nullable": true
+        },
+        "torque": {
+          "type": "torque",
+          "nullable": true
+        }
+      },
+      "required": [],
+      "positional": [
+        "axis",
+        "degrees"
+      ],
+      "validator": "wrist"
+    },
+    "adjust_upper_body": {
+      "parameters": {
+        "waist": {
+          "type": "waist_map",
+          "nullable": true
+        },
+        "right_arm": {
+          "type": "arm_map",
+          "nullable": true
+        },
+        "left_arm": {
+          "type": "arm_map",
+          "nullable": true
+        },
+        "both_elbows": {
+          "type": "number",
+          "nullable": true
+        },
+        "duration_seconds": {
+          "type": "number",
+          "nullable": true
+        },
+        "torque": {
+          "type": "torque",
+          "nullable": true
+        }
+      },
+      "required": [],
+      "positional": [],
+      "validator": "upper_body"
+    },
+    "adjust_waist": {
+      "parameters": {
+        "axis": {
+          "type": "axis",
+          "nullable": true
+        },
+        "degrees": {
+          "type": "number",
+          "nullable": true
+        },
+        "yaw": {
+          "type": "number",
+          "nullable": true
+        },
+        "pitch": {
+          "type": "number",
+          "nullable": true
+        },
+        "roll": {
+          "type": "number",
+          "nullable": true
+        },
+        "torque": {
+          "type": "torque",
+          "nullable": true
+        },
+        "max_duration_seconds": {
+          "type": "number"
+        },
+        "expected_start_degrees": {
+          "type": "waist_map",
+          "nullable": true
+        },
+        "stop_at_native_pitch_limit": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "positional": [
+        "axis",
+        "degrees"
+      ],
+      "validator": "waist"
+    },
+    "return_waist_to_neutral": {
+      "parameters": {
+        "max_duration_seconds": {
+          "type": "number"
+        }
+      },
+      "required": [],
+      "positional": [],
+      "validator": "none"
+    },
+    "restore_stand_hand_guide": {
+      "parameters": {
+        "duration_seconds": {
+          "type": "number",
+          "nullable": true
+        }
+      },
+      "required": [],
+      "positional": [],
+      "validator": "none"
+    },
+    "restore_stand_default": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none"
+    },
+    "move_arms_to": {
+      "parameters": {
+        "left": {
+          "type": "arm_map",
+          "nullable": true
+        },
+        "right": {
+          "type": "arm_map",
+          "nullable": true
+        },
+        "duration_seconds": {
+          "type": "number"
+        }
+      },
+      "required": [],
+      "positional": [],
+      "validator": "move_arms"
+    },
+    "move_elbows_to": {
+      "parameters": {
+        "degrees": {
+          "type": "number"
+        },
+        "duration_seconds": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "degrees"
+      ],
+      "positional": [
+        "degrees"
+      ],
+      "validator": "none"
+    },
+    "move_mirrored_arms_to": {
+      "parameters": {
+        "targets": {
+          "type": "arm_map"
+        },
+        "duration_seconds": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "targets"
+      ],
+      "positional": [
+        "targets"
+      ],
+      "validator": "mirror_targets"
+    },
+    "mirror_arm_pose": {
+      "parameters": {
+        "source_side": {
+          "type": "side"
+        },
+        "duration_seconds": {
+          "type": "number"
+        }
+      },
+      "required": [],
+      "positional": [
+        "source_side"
+      ],
+      "validator": "none"
+    },
+    "movement_b": {
+      "parameters": {
+        "maximum_degrees_per_second": {
+          "type": "number"
+        }
+      },
+      "required": [],
+      "positional": [],
+      "validator": "none"
+    },
+    "showcase": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none"
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { normalizeAgentechRobotModel, type AgentechRobotModel } from "@/lib/agentech-robot-model";
+import { checkMasterExecutionCode } from "@/features/eaic/02-unified-api/projects-validation/master-execution-contract";
 
 export type AgentechMovementSafetyLevel = "PASS" | "WARNING" | "FAIL";
 
@@ -9,6 +10,9 @@ export type AgentechMovementSafety = {
   maxDxMeters: number;
   maxDyMeters: number;
   detail: string;
+  validationKind?: "master_upper_body_static_contract";
+  physicalQualified?: false;
+  runtimeChecksRequired?: true;
 };
 
 const warningAxisMeters = 0.9;
@@ -76,6 +80,17 @@ function formatMeters(value: number) {
 
 export function evaluateAgentechMovementSafety(code: string, robotModel: AgentechRobotModel | string = "Aegies"): AgentechMovementSafety {
   const selectedRobotModel = normalizeAgentechRobotModel(robotModel) ?? "Aegies";
+  if (selectedRobotModel === "Master") {
+    const report = checkMasterExecutionCode(code);
+    return {
+      level: report.status, submitReady: report.status === "PASS",
+      maxDistanceMeters: 0, maxDxMeters: 0, maxDyMeters: 0,
+      validationKind: "master_upper_body_static_contract", physicalQualified: false, runtimeChecksRequired: true,
+      detail: report.status === "PASS"
+        ? "Master upper-body static contract passed. Walking is excluded. The gateway must validate fresh posture, controller ownership, remaining joint travel, timing and torque limits before execution. Simulation and physical qualification are separate."
+        : report.findings.map(item => item.message).join(" "),
+    };
+  }
   const pattern = /(?:Agentech|dog)\.(\w+)\(([^)]*)\)/g;
   let match: RegExpExecArray | null;
   let x = 0;

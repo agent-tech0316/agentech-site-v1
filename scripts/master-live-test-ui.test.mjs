@@ -10,20 +10,24 @@ import {
   selectCodeCheckingRobotModel,
 } from "../lib/master-live-test-ui.ts";
 
-const normalModels = ["Aegies", "Navi"];
+const normalModels = ["Aegies", "Navi", "Master"];
 
-test("Master is absent unless the server grants the account capability", () => {
-  assert.deepEqual(getCodeCheckingRobotOptions(normalModels, false), ["Aegies", "Navi"]);
-  assert.deepEqual(getCodeCheckingRobotOptions(normalModels, true), ["Aegies", "Navi", "Master"]);
+test("normal Master certification remains separate from the account-gated camera test", () => {
+  assert.deepEqual(getCodeCheckingRobotOptions(normalModels, false), ["Aegies", "Navi", "Master"]);
+  assert.deepEqual(getCodeCheckingRobotOptions(normalModels, true), ["Aegies", "Navi", "Master", "Master Live Test"]);
 });
 
-test("Master selection is accepted only with server-granted access and never changes the normal model", () => {
-  assert.deepEqual(selectCodeCheckingRobotModel("Master", true, "Navi"), {
+test("camera test selection requires capability while Master selects the normal execution model", () => {
+  assert.deepEqual(selectCodeCheckingRobotModel("Master Live Test", true, "Navi"), {
     normalRobotModel: "Navi",
     masterLiveTestSelected: true,
   });
-  assert.deepEqual(selectCodeCheckingRobotModel("Master", false, "Navi"), {
+  assert.deepEqual(selectCodeCheckingRobotModel("Master Live Test", false, "Navi"), {
     normalRobotModel: "Navi",
+    masterLiveTestSelected: false,
+  });
+  assert.deepEqual(selectCodeCheckingRobotModel("Master", false, "Navi"), {
+    normalRobotModel: "Master",
     masterLiveTestSelected: false,
   });
   assert.deepEqual(selectCodeCheckingRobotModel("Aegies", true, "Navi"), {

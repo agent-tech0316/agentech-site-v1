@@ -19,6 +19,11 @@ export function endSessionCleanupPolicy(plan, robotModel) {
   if (!plan || !Array.isArray(plan.commands) || plan.commands.length === 0) {
     throw new Error("compiled plan must contain commands");
   }
+  if (robotModel === "master") {
+    // The persistent Master owner retains its hold. Never use leg posture,
+    // global stop, damping, or owner termination as scheduled-session cleanup.
+    return { required: false, returnHomeRequired: false, persistentOwner: true };
+  }
   if (robotModel === "navi") {
     return {
       required: true,

@@ -7,6 +7,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragE
 import { aegisFunctions, aegisStarterCode, type AgentechFunction } from "@/features/eaic/02-unified-api/projects-validation/aegis-sdk-reference";
 import { naviFunctions, naviSafetyLimits, naviStarterCode } from "@/features/eaic/02-unified-api/projects-validation/navi-sdk-reference";
 import { masterReferenceCategories, masterSafetyLimits } from "@/features/eaic/02-unified-api/projects-validation/master-sdk-reference";
+import { checkMasterExecutionCode, masterExecutionStarterCode } from "@/features/eaic/02-unified-api/projects-validation/master-execution-contract";
 import { masterSimulationPreviews, resolveMasterSimulationVariant } from "@/lib/master-simulation-previews";
 import { masterActionFunctions } from "@/features/eaic/01-clients/eaic-hub/contracts/master-action-documentation";
 import { MasterActionReference } from "@/features/eaic/01-clients/eaic-hub/components/master-action-reference";
@@ -397,6 +398,7 @@ function simulationClipsForMotionPlan(
   motionPlan: string[],
   robotModel: AgentechRobotModel
 ): HardwareSimulationClip[] {
+  if (robotModel === "Master") return [];
   const clips = motionPlan
     .map((line) => {
       const match = line.match(/^([a-zA-Z_][\w]*)\s*\((.*)\)$/);
@@ -484,6 +486,20 @@ function masterViewOnlyHardwareResult(resultId: string, fileName: string): Hardw
 function buildHardwareChecklist(status: "PASS" | "WARNING" | "FAIL", failureReason = "", movementSafety = defaultMovementSafety(status, failureReason), robotModel: AgentechRobotModel = "Aegies"): HardwareChecklistItem[] {
   const failDetail = failureReason || "Fix the checklist items before simulation can run.";
   const blocked = status === "FAIL";
+  if (robotModel === "Master") {
+    return [
+      {
+        name: "Master upper-body contract",
+        status: blocked ? "FAIL" : "PASS",
+        detail: blocked ? failDetail : "Submitted calls and literal parameters passed the supported Master arm and waist command contract. Walking commands are excluded.",
+      },
+      {
+        name: "Static validation scope",
+        status: blocked ? "FAIL" : "PASS",
+        detail: blocked ? "Correct the reported command or parameter before software review." : "Static upper-body checks passed. This does not establish physical qualification.",
+      },
+    ];
+  }
   return [
     {
       name: "SDK-only usage check",
@@ -617,6 +633,10 @@ const naviMotionCommands = new Set([
 ]);
 
 function commandPlan(code: string, robotModel: AgentechRobotModel = "Aegies") {
+  if (robotModel === "Master") {
+    const trace = checkMasterExecutionCode(code).commands;
+    return { trace, motionCount: trace.length };
+  }
   const trace: string[] = [];
   const lines = code.split(/\r?\n/);
   const aegisCommands = new Set([
@@ -2210,6 +2230,7 @@ function HardwareResultPanel({ result }: { result: HardwareResult }) {
   const warning = result.status === "WARNING";
   const selectedRobotModel = normalizeAgentechRobotModel(result.robotModel) ?? "Aegies";
   const isNavi = selectedRobotModel === "Navi";
+  const isMaster = selectedRobotModel === "Master";
   const [activeClipIndex, setActiveClipIndex] = useState(0);
   const activeClip = result.simulationClips[Math.min(activeClipIndex, Math.max(result.simulationClips.length - 1, 0))];
 
@@ -2275,13 +2296,21 @@ function HardwareResultPanel({ result }: { result: HardwareResult }) {
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="rounded-[22px] border border-black/8 bg-white/70 p-5 shadow-[0_28px_80px_rgba(17,17,17,0.08)]">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#1a73e8]">{isNavi ? "Navi SDK Hardware Preview" : "MuJoCo Simulation Video"}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#1a73e8]">{isMaster ? "Master Validation Scope" : isNavi ? "Navi SDK Hardware Preview" : "MuJoCo Simulation Video"}</p>
             <p className="mt-2 text-sm leading-6 text-[#334155]">
-              {isNavi
+              {isMaster
+                ? "Master simulation is not available for this submission. Validation checks the command contract; the trusted runner checks current robot readiness when the scheduled session starts."
+                : isNavi
                 ? "The app validates the submitted commands against the latest reviewed Navi SDK. Navi execution uses the exact SDK calls after scheduling."
                 : "The app reads the uploaded Agentech commands and shows what the code does on the selected robot."}
             </p>
-            {passed && activeClip ? (
+            {isMaster ? (
+              <div data-master-static-result="true" className="mt-4 rounded-[14px] border border-black/10 bg-[#faf9f6] p-5 text-sm leading-6 text-[#334155]">
+                {passed
+                  ? "Static upper-body checks passed. This does not establish physical qualification. Continue with Software Security, then request a time slot."
+                  : result.simulationError || "Correct the command validation findings before continuing."}
+              </div>
+            ) : passed && activeClip ? (
               <div className="mt-4">
                 <div className="border border-[#dce7f2] bg-black">
                   <HardwareSimulationMedia
@@ -2357,9 +2386,9 @@ function HardwareResultPanel({ result }: { result: HardwareResult }) {
                   <div className="min-w-0 break-words px-3 py-3 text-[#07142e]">Only Agentech SDK is allowed.</div>
                 </div>
                 <div className="grid grid-cols-[100px_minmax(0,1fr)] sm:grid-cols-[120px_minmax(0,1fr)]">
-                  <div className="bg-[#f8fbff] px-3 py-3 font-semibold text-[#526174]">Move Box</div>
+                  <div className="bg-[#f8fbff] px-3 py-3 font-semibold text-[#526174]">{isMaster ? "Execution" : "Move Box"}</div>
                   <div className="min-w-0 break-words px-3 py-3 text-[#07142e] [overflow-wrap:anywhere]">
-                    {result.movementSafety.level}: max {result.movementSafety.maxDistanceMeters.toFixed(3)}m, dx {result.movementSafety.maxDxMeters.toFixed(3)}m, dy {result.movementSafety.maxDyMeters.toFixed(3)}m
+                    {isMaster ? "Arms and waist; no walking. Live readiness is checked at execution." : `${result.movementSafety.level}: max ${result.movementSafety.maxDistanceMeters.toFixed(3)}m, dx ${result.movementSafety.maxDxMeters.toFixed(3)}m, dy ${result.movementSafety.maxDyMeters.toFixed(3)}m`}
                   </div>
                 </div>
               </div>
@@ -2400,7 +2429,7 @@ function HardwareResultPanel({ result }: { result: HardwareResult }) {
               </span>
             </p>
             <p className="mt-4 text-sm leading-6 text-[#334155]">{result.finalHint}</p>
-            {passed ? (
+            {isMaster ? null : passed ? (
               <button
                 type="button"
                 className="mt-4 w-full rounded-full border border-[#1a73e8] bg-[#1a73e8] px-4 py-3 text-sm font-semibold text-white"
@@ -2459,7 +2488,8 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
   const [simFrames, setSimFrames] = useState<SimFrame[]>([{ x: 0, y: 0, z: 0.37, yaw: 0, pitch: 0 }]);
   const [simFrameIndex, setSimFrameIndex] = useState(0);
   const [renderedFrames, setRenderedFrames] = useState<string[]>([]);
-  const displayedRobotModel = masterLiveTestSelected ? "Master" : robotModel;
+  const displayedRobotModel = masterLiveTestSelected ? "Master Live Test" : robotModel;
+  const masterArmCodeSelected = robotModel === "Master" && !masterLiveTestSelected;
   const codeCheckingRobotOptions = getCodeCheckingRobotOptions(robotModelOptions, masterLiveTestAccess);
   const masterPresentation = masterLiveTestPresentation(masterLiveTestExpiresAt);
 
@@ -2476,10 +2506,13 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
   const selectedTask = task ? getAgentechLibraryTask(task) : undefined;
   const runMode = masterLiveTestSelected
     ? "Master live stream test (view only)"
+    : masterArmCodeSelected ? "Master scheduled upper-body session"
     : selectedTask?.slug === "software-check" ? "Code certification" : "Physical hardware limit and capability test";
   const runModeDescription =
     masterLiveTestSelected
       ? masterPresentation.viewOnlyNotice
+      : masterArmCodeSelected
+      ? "Validate supported arm and waist commands, then complete Software Security and request a time slot. Physical execution is checked by the trusted runner when the session starts."
       : selectedTask?.slug === "software-check"
       ? "Run Hardware Safety first. After it passes, click Run Software Security to scan the exact same file."
       : "Step 3 checks physical limits, robot capability, command duration, speed, angle, and risky movements.";
@@ -2493,6 +2526,8 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
   const focusedReviewCopy =
     masterLiveTestSelected
       ? "Enter any test text, then create a 3-minute Master viewing session. The text is recorded only for audit and never executes on the robot."
+      : masterArmCodeSelected
+      ? "Upload or paste Master arm and waist code. Complete Master Command Check, then Software Security to request a supervised time slot."
       : selectedTask?.slug === "software-check"
       ? "Complete Hardware Safety first, then run Software Security. Passing both unlocks a robot time-slot request."
       : "Physical Hardware Check runs first. It protects the robot body by checking command limits, motion duration, model compatibility, and risky movements.";
@@ -2576,7 +2611,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
           throw new Error(payload.error ?? "Unable to load the latest Physical Hardware Check.");
         }
 
-        if (payload.masterLiveTestAccess === true) {
+        if (payload.masterLiveTestAccess === true && !submissionQuery.id && !payload.latestSubmission) {
           const masterStatusResponse = await fetch("/api/master-live-test", {
             method: "GET",
             cache: "no-store",
@@ -2645,7 +2680,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
           return;
         }
 
-        if (latestSubmission.robotModel === "Master") {
+        if (latestSubmission.robotModel === "Master" && latestSubmission.id.startsWith("master-live-test-")) {
           if (payload.masterLiveTestAccess !== true) {
             setRequestStatus("This account does not have access to the Master live test.");
             return;
@@ -2686,7 +2721,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
         }
 
         const restoredRobotModel = normalizeAgentechRobotModel(latestSubmission.robotModel) ?? "Aegies";
-        const restoredCode = ensureRequiredStand(latestSubmission.code);
+        const restoredCode = restoredRobotModel === "Master" ? latestSubmission.code : ensureRequiredStand(latestSubmission.code);
         const restoredPlan = commandPlan(restoredCode, restoredRobotModel);
         const movementSafety = evaluateAgentechMovementSafety(restoredCode, restoredRobotModel);
         setRobotModel(restoredRobotModel);
@@ -2724,7 +2759,9 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
           motionPlan: restoredPlan.trace,
           simulationClips: simulationClipsForMotionPlan(restoredPlan.trace, restoredRobotModel),
           simulationError: "",
-          finalHint: "The saved Physical Hardware Check passed. This submission is ready for Software Check.",
+          finalHint: restoredRobotModel === "Master"
+            ? "Saved static upper-body checks passed. This does not establish physical qualification. This submission is ready for Software Security."
+            : "The saved Physical Hardware Check passed. This submission is ready for Software Check.",
           movementSafety
         });
         setRequestStatus(
@@ -2803,7 +2840,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
   }
 
   function updateCode(nextCode: string, preferredCommand?: string, selectedModel: AgentechRobotModel = robotModel) {
-    const normalizedCode = ensureRequiredStand(nextCode);
+    const normalizedCode = selectedModel === "Master" ? nextCode : ensureRequiredStand(nextCode);
     setCode(normalizedCode);
     if (commandPlan(normalizedCode, selectedModel).trace.length) {
       setReviewInputError("");
@@ -2837,7 +2874,9 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
     if (!nextModel || nextModel === robotModel) return;
     setRobotModel(nextModel);
     updateCode(code, undefined, nextModel);
-    setRequestStatus(`Selected ${nextModel}. Run Hardware Safety again so this code is checked against the ${nextModel} SDK.`);
+    setRequestStatus(nextModel === "Master"
+      ? "Selected Master. Upload or paste arm and waist code, or load the example, then run Master Command Check."
+      : `Selected ${nextModel}. Run Hardware Safety again so this code is checked against the ${nextModel} SDK.`);
   }
 
   function changeCodeCheckingRobotModel(value: string) {
@@ -3061,12 +3100,12 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
       return;
     }
 
-    const reviewCode = ensureRequiredStand(code);
+    const reviewCode = robotModel === "Master" ? code : ensureRequiredStand(code);
     if (reviewCode !== code) {
       setCode(reviewCode);
     }
     const reviewPlan = commandPlan(reviewCode, robotModel);
-    if (!reviewCode.trim() || !reviewPlan.trace.length) {
+    if (!reviewCode.trim() || (robotModel !== "Master" && !reviewPlan.trace.length)) {
       const message = "Add at least one supported Agentech command in the editor before running the check.";
       setPhysicalSubmissionId("");
       setPhysicalSafetyPassed(false);
@@ -3177,7 +3216,9 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
         motionPlan: reviewPlan.trace,
         simulationClips: simulationClipsForMotionPlan(reviewPlan.trace, robotModel),
         simulationError: "",
-        finalHint: "All checks passed. This result is ready to submit for further review."
+        finalHint: robotModel === "Master"
+          ? "Static upper-body checks passed. This does not establish physical qualification. Complete Software Security to request a session."
+          : "All checks passed. This result is ready to submit for further review."
       });
       window.sessionStorage.setItem("agentech-latest-physical-review", JSON.stringify({
         id: payload.id,
@@ -3192,7 +3233,9 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
         aiSecurityStatus: "locked"
       }));
       setRequestStatus(
-        continueToSoftware
+        robotModel === "Master"
+          ? "Master upper-body contract passed. Physical execution is checked by the trusted runner when the session starts. You can now run Software Security."
+          : continueToSoftware
           ? `Hardware safety passed for ${payload.commandCount} commands. Starting software security review...`
           : `Hardware safety passed for ${payload.commandCount} commands. You can now run Software Security.`
       );
@@ -3229,7 +3272,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
       return;
     }
 
-    const reviewCode = overrides?.reviewCode ?? approvedCodeFile?.code ?? ensureRequiredStand(code);
+    const reviewCode = overrides?.reviewCode ?? approvedCodeFile?.code ?? (robotModel === "Master" ? code : ensureRequiredStand(code));
     const reviewFileName = overrides?.approvedFile.sourceFileName ?? approvedCodeFile?.sourceFileName ?? uploadedFileName;
     const reviewPlan = commandPlan(reviewCode, robotModel);
     setIsRunningSoftwareCheck(true);
@@ -3391,6 +3434,27 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                 <p className="mt-2 text-xs leading-5 text-[#5f6368]">
                   You do not need to upload a file. Type or paste your Python code below, then run Code Certification.
                 </p>
+                {masterArmCodeSelected ? (
+                  <div data-master-arm-starter="true" className="mt-3 flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      disabled={softwarePassed || isRunningPhysicalCheck || isRunningSoftwareCheck}
+                      onClick={() => {
+                        setUploadedFileName("");
+                        setUploadedOriginalCode("");
+                        updateCode(masterExecutionStarterCode);
+                        setRequestStatus("Master example loaded. Edit or upload your own supported arm and waist calls, then run Master Command Check.");
+                      }}
+                      className="min-h-11 rounded-[10px] border border-[#1a73e8]/35 bg-[#eaf2fd] px-3 py-2 text-xs font-semibold text-[#1a73e8] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Load Master upper-body example
+                    </button>
+                    <p className="text-xs leading-5 text-[#5f6368]">Use the example or upload your own arm and waist code. No walking.</p>
+                    <p data-master-guidance-prerequisite="true" className="w-full text-xs leading-5 text-[#5f6368]">
+                      Adjustments require raw STAND_DEFAULT guidance. You can enter it explicitly with <code>Agentech.enter_stand_hand_guide(&quot;both&quot;)</code>; otherwise, the first adjustment enters and verifies guidance through the SDK before moving.
+                    </p>
+                  </div>
+                ) : null}
               </div>
               <textarea
                 aria-invalid={Boolean(reviewInputError)}
@@ -3428,6 +3492,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                   <p className="mt-2 text-xs leading-5 text-[#5f6368]">
                     {masterLiveTestSelected
                       ? masterPresentation.viewOnlyNotice
+                      : masterArmCodeSelected ? "Checks supported Master arm and waist commands and adjustments for a scheduled session."
                       : robotModel === "Navi" ? "Checks this submission against the latest Navi SDK." : "Checks this submission against the Aegies SDK."}
                   </p>
                 </div>
@@ -3496,7 +3561,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                 </label>
                 <div className={`rounded-[14px] border p-3 ${step3PanelClass}`}>
                   <div className="flex items-start justify-between gap-3">
-                    <p className="text-xs uppercase tracking-[0.14em] text-[#526174]">{masterLiveTestSelected ? "Stage 1 - View-Only Access" : "Stage 1 - Hardware Safety"}</p>
+                    <p className="text-xs uppercase tracking-[0.14em] text-[#526174]">{masterLiveTestSelected ? "Stage 1 - View-Only Access" : masterArmCodeSelected ? "Stage 1 - Master Command Check" : "Stage 1 - Hardware Safety"}</p>
                     {hardwarePassed ? (
                       <span className="inline-flex items-center gap-1 border border-[#008a7a] bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#006a5c]">
                         <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3 w-3 fill-none stroke-current stroke-[2.5]">
@@ -3516,7 +3581,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                       </span>
                     ) : null}
                   </div>
-                  <p className="mt-2 font-mono text-xs leading-5 text-[#07142e]">{masterLiveTestSelected ? 0 : plan.motionCount} motion commands</p>
+                  <p className="mt-2 font-mono text-xs leading-5 text-[#07142e]">{masterLiveTestSelected ? 0 : masterArmCodeSelected ? plan.trace.length : plan.motionCount} {masterArmCodeSelected ? "commands" : "motion commands"}</p>
                   <p
                     className={`mt-1 text-xs leading-5 ${
                       hardwareFailed ? "text-[#a51f1f]" : hardwareWarning ? "text-[#9a6700]" : "text-[#526174]"
@@ -3524,12 +3589,15 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                   >
                     {masterLiveTestSelected && hardwarePassed
                       ? "View-only authorization passed. Zero robot commands will be executed."
+                      : masterArmCodeSelected && hardwarePassed
+                      ? "Static upper-body checks passed. This does not establish physical qualification."
                       : hardwarePassed
                       ? "Hardware and parameter limits passed. Software security is running next."
                       : hardwareWarning
                         ? requestStatus
                         : hardwareFailed
                           ? requestStatus
+                          : masterArmCodeSelected ? "Checks supported arm and waist calls, literal parameters, and command limits before scheduling."
                           : "Checks robot commands, parameters, motion limits, and robot-body safety first."}
                   </p>
                   {hardwarePassed && approvedCodeFile ? (
@@ -3624,9 +3692,11 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                   className="w-full rounded-full border border-[#1a73e8] bg-[#1a73e8] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#155fc0] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isRunningPhysicalCheck
-                    ? masterLiveTestSelected ? "Starting Master Live Test..." : "Running Hardware Safety..."
+                    ? masterLiveTestSelected ? "Starting Master Live Test..." : masterArmCodeSelected ? "Checking Master Commands..." : "Running Hardware Safety..."
                     : masterLiveTestSelected
                       ? masterPresentation.actionLabel
+                    : masterArmCodeSelected
+                      ? hardwarePassed || hardwareFailed || hardwareWarning ? "Run Master Command Check Again" : "Run Master Command Check"
                     : hardwarePassed || hardwareFailed || hardwareWarning
                       ? "Run Hardware Safety Again"
                       : "Run Hardware Safety"}
@@ -3656,7 +3726,9 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                       ? canScheduleRobotSlot
                         ? `Master view-only livestream is unlocked${masterLiveTestExpiresAt ? ` until ${new Date(masterLiveTestExpiresAt).toLocaleTimeString()}` : " for the active session"}.`
                         : "Start the 3-minute view-only test to unlock the Master livestream."
-                      : canScheduleRobotSlot ? "Hardware safety and software security passed. You can request a supervised robot time slot now." : "Time-slot requests unlock only after both certification stages pass."}
+                      : canScheduleRobotSlot
+                        ? masterArmCodeSelected ? "Master command validation and software security passed. Request a supervised Master time slot; execution readiness is checked when the session starts." : "Hardware safety and software security passed. You can request a supervised robot time slot now."
+                        : "Time-slot requests unlock only after both certification stages pass."}
                   </p>
                   {canScheduleRobotSlot ? (
                     <Link

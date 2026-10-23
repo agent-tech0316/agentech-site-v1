@@ -38,6 +38,16 @@ function cleanText(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim() : fallback;
 }
 
+function masterReviewEvidence(robotModel: string) {
+  return robotModel === "Master" ? {
+    validationKind: "master_upper_body_static_contract",
+    physicalQualified: false,
+    simulationPassed: false,
+    runtimeChecksRequired: true,
+    validationDetail: "Passed the static upper-body SDK contract. Fresh posture, ownership, joint travel, timing and torque checks are required at the gateway; this review does not establish physical qualification.",
+  } : {};
+}
+
 function extractCommands(code: string) {
   const commands: string[] = [];
   const pattern = /(?:Agentech|dog)\.(\w+)\(([^)]*)\)/g;
@@ -181,6 +191,7 @@ export async function GET(request: NextRequest) {
             uploadedFileName: submission.uploaded_file_name,
             commands: submission.commands,
             physicalSafetyStatus: submission.physical_safety_status,
+            ...masterReviewEvidence(submission.robot_model),
             aiSecurityStatus: submission.ai_security_status,
             creditsCharged: submission.credits_charged,
             createdAt: submission.created_at
@@ -213,7 +224,7 @@ export async function POST(request: NextRequest) {
     const { internalCompanyAccount: internalAccount } = getSoftwareCheckCreditPolicy(email);
 
     if (!robotModel) {
-      return NextResponse.json({ error: "Choose Aegies or Navi before running the hardware check.", errorCode: "INVALID_ROBOT_MODEL" }, { status: 400 });
+      return NextResponse.json({ error: "Choose Aegies, Navi or Master before running the SDK check.", errorCode: "INVALID_ROBOT_MODEL" }, { status: 400 });
     }
 
     if (!isAllowedRunMode(runMode)) {
@@ -291,6 +302,7 @@ export async function POST(request: NextRequest) {
           commands,
           code,
           physicalSafetyStatus: "passed",
+          ...masterReviewEvidence(robotModel),
           movementSafety,
           aiSecurityStatus: "locked",
           creditsCharged: 0,
@@ -304,6 +316,7 @@ export async function POST(request: NextRequest) {
           source,
           uploadedFileName: uploadedFileName || null,
           physicalSafetyStatus: "passed",
+          ...masterReviewEvidence(robotModel),
           movementSafety,
           aiSecurityStatus: "locked",
           status: "physical_hardware_passed",
@@ -340,6 +353,7 @@ export async function POST(request: NextRequest) {
           aiSecurityStatus: "passed",
           riskLevel: "low",
           summary: "Local preview Software Check passed without account credits.",
+          ...masterReviewEvidence(robotModel),
           findings: [],
           creditsCharged: 0,
           creditsBypassed: true,
@@ -389,6 +403,7 @@ export async function POST(request: NextRequest) {
         commands,
         code,
         physicalSafetyStatus: "passed",
+        ...masterReviewEvidence(robotModel),
         movementSafety,
         aiSecurityStatus: "locked",
         creditsCharged: 0
@@ -422,6 +437,7 @@ export async function POST(request: NextRequest) {
         source,
         uploadedFileName: uploadedFileName || null,
         physicalSafetyStatus: "passed",
+        ...masterReviewEvidence(robotModel),
         movementSafety,
         aiSecurityStatus: "locked",
         status: "physical_hardware_passed",
@@ -555,6 +571,7 @@ export async function POST(request: NextRequest) {
         aiSecurityStatus: "passed",
         riskLevel: null,
         summary,
+        ...masterReviewEvidence(robotModel),
         findings: [],
         creditsCharged: 0,
         creditsBypassed: true,
@@ -691,6 +708,7 @@ export async function POST(request: NextRequest) {
       aiSecurityStatus,
       riskLevel: aiResult.review.riskLevel,
       summary: aiResult.review.summary,
+      ...masterReviewEvidence(robotModel),
       findings: aiResult.review.findings,
       creditsCharged,
       creditsBypassed: internalAccount && creditsCharged === 0,

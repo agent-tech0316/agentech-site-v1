@@ -11,7 +11,7 @@ export function getCodeCheckingRobotOptions<const Model extends string>(
   normalModels: readonly Model[],
   masterLiveTestAccess: boolean,
 ) {
-  return masterLiveTestAccess ? [...normalModels, "Master" as const] : [...normalModels];
+  return masterLiveTestAccess ? [...normalModels, "Master Live Test" as const] : [...normalModels];
 }
 
 export function selectCodeCheckingRobotModel<Model extends string>(
@@ -19,7 +19,7 @@ export function selectCodeCheckingRobotModel<Model extends string>(
   masterLiveTestAccess: boolean,
   currentNormalRobotModel: Model,
 ) {
-  if (value === "Master") {
+  if (value === "Master Live Test") {
     return {
       normalRobotModel: currentNormalRobotModel,
       masterLiveTestSelected: masterLiveTestAccess,
