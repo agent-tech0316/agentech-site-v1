@@ -223,6 +223,7 @@ test("every displayed Master profile, configuration and example passes the actua
     encoding: "utf8", maxBuffer: 8 * 1024 * 1024,
   });
   assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stderr || result.stdout || "Master SDK audit produced no output; check MASTER_SDK_ROOT and MASTER_SDK_PYTHON");
   const rows = JSON.parse(result.stdout);
   assert.equal(rows.filter((row) => row.sourceKind === "profile").length,
     masterWebsiteFunctions.reduce((count, item) => count + forms(item).length, 0),
@@ -237,7 +238,6 @@ test("every displayed Master profile, configuration and example passes the actua
     "development labels must not excuse unsupported displayed SDK calls: "
     + [...new Set(rejected.map((row) => row.function))].join(", "));
   assert.ok(rows.every((row) => row.signatureBound), "every displayed call must bind to its SDK method");
-  assert.equal(result.status, 0, result.stderr);
 });
 
 test("the website retains implemented functions while withholding specifically unavailable profiles", () => {

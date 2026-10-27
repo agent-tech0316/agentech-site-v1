@@ -1,8 +1,14 @@
 # Master H.264 Live Stream Operations
 
-## Active architecture
+## Optional Robot cameras architecture
 
-Master uses a robot-side hardware H.264 service and never sends camera JPEG frames to the website:
+Normal Master EAIC sessions can use **External camera**, through the established
+OBS-to-LiveKit stream. The wall/focus path below applies only after the user
+selects **Robot cameras**. See the [current EAIC test and integration
+handoff](master-eaic-handoff-2026-10-26.md) for scheduled motion execution and
+the distinction between observed external video and pending robot-camera tests.
+
+The Robot cameras path uses a robot-side hardware H.264 service and never sends camera JPEG frames to the website:
 
 `Master raw ROS color topics -> NVIDIA H.264 -> AGENTECH01 primary relay :4175 -> one Go LiveKit publisher -> agent-tech.ai`
 
@@ -26,9 +32,13 @@ The approved cameras are exactly Front Main, Front Left, Front Right, and RGB-D 
 
 The developer laptop is not part of production delivery and may be off or disconnected.
 
-The Master Code Checking test is a camera-view authorization only. It creates or reuses a 3-minute `preset_demo` session with no code submission attached to the robot run. Text entered in Code Checking is saved as a zero-command audit artifact and is never executed on Master.
+The separate legacy 3-minute Master camera-view test creates or reuses a
+`preset_demo` session with no code submission attached to robot execution.
+Its text is a zero-command audit artifact. This does **not** describe normal
+EAIC Master software checking: supported Agentech upper-body programs now use
+the normal reviewed/exempt-account booking and trusted execution path.
 
-## Victoria acceptance test
+## Legacy camera-view acceptance test
 
 1. Sign in as `victoria_c@agent-tech.ai`.
 2. Open Code Checking and select **Master**.
@@ -38,7 +48,8 @@ The Master Code Checking test is a camera-view authorization only. It creates or
 6. Confirm Camera Wall shows four moving H.264 tiles from one LiveKit publisher participant.
 7. Focus each camera once. Confirm only the selected tile and named LiveKit track remain, then return to Camera Wall.
 8. Confirm displayed resolution/FPS are measured values and the participant count does not grow across mode changes.
-9. Confirm another company account does not receive the Master option in Code Checking.
+9. Confirm an unentitled account cannot use this restricted camera-view test.
+   Normal Master scheduling follows its normal account and booking policy.
 
 ## Media availability boundary
 

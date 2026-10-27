@@ -41,6 +41,11 @@ The implementation and team-ownership map lives in [`features/eaic/`](features/e
 
 ## Documentation Map
 
+Master EAIC coworkers: see the [October 26 integration and test
+handoff](docs/operations/master-eaic-handoff-2026-10-26.md) for recorded passes,
+remaining failures, timing changes, deployment state, and tomorrow's scheduled
+arm/waist tests. Custom speed and effort testing are still pending.
+
 | Area | Location |
 | --- | --- |
 | App routes and API routes | `app/` |
