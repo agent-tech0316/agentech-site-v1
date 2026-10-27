@@ -57,6 +57,43 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'timezone'):
             self.runner._timestamp('2026-10-27T03:50:51.722870')
 
+    def test_program_transport_scope_covers_commands_and_closes_on_failure(self):
+        from contextlib import contextmanager
+        calls = []
+        delegate = self.adapter
+        class ScopedAdapter:
+            def __getattr__(self, name): return getattr(delegate, name)
+            @contextmanager
+            def plan_connection_session(self):
+                calls.append('opened')
+                try: yield
+                finally: calls.append('closed')
+            def execute(self, name, arguments):
+                self.assert_scope()
+                return delegate.execute(name, arguments)
+            def assert_scope(self):
+                if calls[-1] != 'opened': raise RuntimeError('missing transport scope')
+        for fail in (False,True):
+            with self.subTest(fail=fail):
+                calls.clear()
+                delegate.execute.side_effect = RuntimeError('controller refused') if fail else None
+                result=self.runner.execute_plan(self.plan_path,self.deployment_path,self.result,
+                    adapter_factory=lambda config:ScopedAdapter(),now=lambda:1792670400)
+                self.assertEqual(result['outcome'],'failed' if fail else 'completed')
+                self.assertEqual(calls,['opened','closed'])
+
+    def test_transport_lifetime_allows_inflight_observation_after_booking_end(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        factory=Mock()
+        adapter=self.runner.SDKAdapter.__new__(self.runner.SDKAdapter)
+        adapter.config={'scheduled_end':self.runner._iso(1010.)}
+        name='agentech.robots.master.standing_client_session'
+        with patch.dict(sys.modules,{name:SimpleNamespace(standing_client_session=factory)}), \
+             patch.object(self.runner.time,'time',return_value=1000.):
+            adapter.plan_connection_session()
+        factory.assert_called_once_with(max_duration_seconds=190.)
+
     def test_receipt_binds_identity_and_never_releases_persistent_hold(self):
         receipt = self.run_plan()
         self.assertEqual(receipt['schema_version'], 1)

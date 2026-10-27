@@ -6,7 +6,7 @@ admission; it never kills the persistent owner or sends a generic stop/damping.
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack, nullcontext
 from datetime import datetime, timezone
 import hashlib
 import importlib.util
@@ -237,6 +237,20 @@ class SDKAdapter:
             plan = method(**command['args'])
             if isinstance(plan, dict) and plan.get('qualificationState') == 'simultaneous-public-call-pending':
                 raise RuntimeError('selected SDK supports this upper-body combination as a plan only; live path requires waist plus both_elbows or admitted arm torque')
+
+    def plan_connection_session(self):
+        # Optional optimization from the pinned SDK. Older selected SDKs retain
+        # their existing connections; missing dependencies must still fail.
+        try:
+            from agentech.robots.master.standing_client_session import standing_client_session
+        except ModuleNotFoundError as exc:
+            if exc.name != 'agentech.robots.master.standing_client_session':
+                raise
+            return nullcontext()
+        remaining = _timestamp(self.config['scheduled_end']) - time.time()
+        # Admission still ends at the booking boundary. Keep observation alive
+        # for an already-admitted SDK call and its final ownership check.
+        return standing_client_session(max_duration_seconds=min(3600., max(120., remaining + 180.)))
 
     def movement_a_adapter(self):
         if self._movement_a is None:
@@ -489,11 +503,14 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
     active = None
     try:
         admitted()
-        with master_lease(lease):
+        with master_lease(lease), ExitStack() as connections:
             adapter = adapter_factory(config)
             adapter.admission_check = admitted
             adapter.validate(plan['commands'])
             admitted()
+            session_factory = getattr(type(adapter), 'plan_connection_session', None)
+            if callable(session_factory):
+                connections.enter_context(session_factory(adapter))
             first_backend = MASTER_COMMANDS[plan['commands'][0]['name']]['backend']
             if config.get('recovery_owner_binding') is not None:
                 receipt['owner_binding'] = adapter.check_recovery_owner()
