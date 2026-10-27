@@ -16,7 +16,7 @@ const param = (name: string, type: string, description: string): AgentechParam =
 const movementDuration = () => param("duration_seconds", "number", "Optional movement window in seconds. Requested duration is not guaranteed wall-clock completion; measured endpoint verification remains separate.");
 const maximumDuration = () => param("max_duration_seconds", "number", "Maximum duration or timeout in seconds. This is not a speed setting.");
 const elbowDegrees = () => param("degrees", "number", "Finite nonzero signed relative degrees: positive bends the elbow, negative extends it. Available travel depends on the current pose.");
-const elbowDuration = () => param("duration_seconds", "number", "Optional movement window: 0.5–120 seconds, with average rate no greater than 150 degrees/second and pose-dependent available travel. Omission retains the existing timing profile.");
+const elbowDuration = () => param("duration_seconds", "number", "Optional movement window: 0.5–120 seconds, with average rate no greater than 150 degrees/second and pose-dependent available travel. Omission uses a 20 degrees/second planned peak; short moves reduce the peak to retain acceleration, jerk and snap limits. Measured settling adds time.");
 const torqueParam = (joint = "Right and left elbows"): AgentechParam => ({
   ...param("torque", "number | None", joint + ": signed feedforward torque in N·m. Positive assists the requested direction; negative resists it. Omit for default motion control."),
   allowedRange: "-24 to +24 N·m",
@@ -163,7 +163,7 @@ const elbowFunctions: AgentechFunction[] = [
       param("side", 'string ("left", "right")', 'Select one elbow. Omission defaults to "right".'),
       { ...elbowDegrees(), description: "Signed relative degrees. Exactly one of degrees or position is required; both signs select direction." },
       param("position", "number | None", "Equivalent signed RELATIVE degrees selector, not an absolute target. Supply position or degrees, never both."),
-      param("speed", "number | None", "Positive average degrees/second; derives duration = abs(degrees) / speed. speed and duration_seconds are alternatives. Omitted speed retains the existing timing profile, whose peak rate is not an average-speed default."),
+      param("speed", "number | None", "Positive average degrees/second; derives duration = abs(degrees) / speed. speed and duration_seconds are alternatives. Omit both for a 20 degrees/second planned peak, reduced on short moves by derivative limits. This peak is distinct from a custom average speed."),
       torqueParam(), elbowDuration(),
     ],
   },
@@ -178,7 +178,7 @@ const elbowFunctions: AgentechFunction[] = [
 const shoulderFunctions: AgentechFunction[] = ["right", "left"].map((side) => ({
   name: "adjust_" + side + "_shoulder", category: "Joint Adjustments",
   signature: "Agentech.adjust_" + side + "_shoulder(axis, degrees, *, duration_seconds=None)",
-  summary: "Adjust Master's " + side + " shoulder on one pitch, roll or yaw axis per call.",
+  summary: "Adjust Master's " + side + " shoulder on one pitch, roll or yaw axis per call. Omitted timing uses a 20 degrees/second planned peak; measured settling adds time.",
   example: "Agentech.adjust_" + side + '_shoulder(axis="pitch", degrees=5, torque=20)',
   profiles: shoulderProfiles(side), params: [axisParam(), param("degrees", "number", "Finite nonzero signed relative degrees on the selected shoulder axis."), movementDuration()],
 }));
@@ -186,7 +186,7 @@ const shoulderFunctions: AgentechFunction[] = ["right", "left"].map((side) => ({
 const wristFunctions: AgentechFunction[] = ["adjust_right_wrist", "adjust_left_wrist", "adjust_wrist"].map((name) => ({
   name, category: "Joint Adjustments",
   signature: "Agentech." + name + "(axis=None, degrees=None, *, roll=None, pitch=None, yaw=None)",
-  summary: name === "adjust_wrist" ? "Right-wrist compatibility alias for adjust_right_wrist(). Use the explicit left/right functions to select a side." : "Adjust Master's " + (name.includes("left") ? "left" : "right") + " wrist on one or more axes using independent signed angles.",
+  summary: (name === "adjust_wrist" ? "Right-wrist compatibility alias for adjust_right_wrist(). Use the explicit left/right functions to select a side." : "Adjust Master's " + (name.includes("left") ? "left" : "right") + " wrist on one or more axes using independent signed angles.") + " Default planned peak remains 10 degrees/second.",
   example: "Agentech." + name + '(\n    roll=5, pitch=-3, yaw=2,\n    torque={"roll": 1, "pitch": 1, "yaw": 20}\n)',
   profiles: wristProfiles(name),
   params: [axisParam(), param("degrees", "number | None", "Finite nonzero relative angle for axis/degrees. A single numeric positional value applies the same angle change to all three axes; choose either this form or named axes."), ...["roll", "pitch", "yaw"].map((axis) => ({ ...relativeAxis(axis), description: "Independent finite, nonzero signed " + axis + " degrees in the named-axis form. Wrist calls have no duration, speed, torque or side argument." }))],
@@ -227,7 +227,7 @@ const upperBodyFunctions: AgentechFunction[] = [
       param("right_arm", "mapping | None", "Relative right-arm degrees using any nonempty subset of " + jointSchema + ". Without torque this returns a position-only plan; nonzero arm torque selects the current owner-admitted arm route. Cannot be combined with both_elbows."),
       param("left_arm", "mapping | None", "Relative left-arm degrees using any nonempty subset of " + jointSchema + ". Without torque this returns a position-only plan; nonzero arm torque selects the current owner-admitted arm route. Cannot be combined with both_elbows."),
       param("both_elbows", "number | None", "One identical relative anatomical angle for both elbows. Only explicit waist plus both_elbows selects the current live coordinated route."),
-      { ...movementDuration(), description: "Accepted for explicit waist plus both_elbows or the torque-bearing arm route. Position-only general map plans and both_elbows without waist do not accept duration_seconds." },
+      { ...movementDuration(), description: "Accepted for explicit waist plus both_elbows or the torque-bearing arm route. Omitted timing for waist plus both_elbows respects the default 20 degrees/second elbow peak and native waist timing. Position-only general map plans and both_elbows without waist do not accept duration_seconds." },
     ],
   },
   {

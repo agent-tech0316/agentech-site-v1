@@ -38,7 +38,7 @@ export function timedProfile(
   const key = options.maximum ? "max_duration_seconds" : "duration_seconds";
   const value = options.maximum ? "max_duration" : "duration";
   return {
-    ...jointProfile(label, call(name, args), `${description} ${options.maximum ? "Uses the default maximum duration." : "Uses the SDK's default timing."}`),
+    ...jointProfile(label, call(name, args), `${description} ${options.maximum ? "Uses the default maximum duration." : /^adjust_(?:(?:right|left)_)?(?:shoulder|elbow)s?$/.test(name) || name === "adjust_both_elbows" ? "Default planned peak is 20 degrees/second; short elbow moves retain derivative limits and measured settling adds time." : name.includes("wrist") ? "Default planned peak is 10 degrees/second; measured settling adds time." : "Uses the SDK's default timing."}`),
     customDurationSyntax: call(name, [...args, `${key}=${value}`]),
     customDurationLabel: options.maximum ? "Custom maximum duration" : options.transition ? "Custom gain-transition duration" : "Custom duration",
     customDurationDescription: options.maximum
