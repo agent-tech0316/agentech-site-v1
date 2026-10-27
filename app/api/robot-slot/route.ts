@@ -205,7 +205,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Choose a valid availability window." }, { status: 400 });
   }
 
-  const sessions = await getRobotSessionsInWindow(start.toISOString(), end.toISOString());
+  let sessions: Awaited<ReturnType<typeof getRobotSessionsInWindow>>;
+  try {
+    sessions = await getRobotSessionsInWindow(start.toISOString(), end.toISOString());
+  } catch {
+    return NextResponse.json({ error: "Slot availability is temporarily unavailable. Please try again." }, { status: 503 });
+  }
   const activeStatuses = new Set(["requested", "confirmed", "approved", "scheduled", "pending", "running"]);
   const bookedSlots = sessions
     .filter((session) => activeStatuses.has(session.session_status.replace(/ /g, "_").toLowerCase()))
@@ -342,7 +347,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Choose a start time that keeps the full viewing session within robot hours." }, { status: 400 });
   }
 
-  const conflictingSession = await findRobotSessionConflict(scheduledStart.toISOString(), scheduledEnd.toISOString());
+  let conflictingSession: Awaited<ReturnType<typeof findRobotSessionConflict>>;
+  try {
+    conflictingSession = await findRobotSessionConflict(scheduledStart.toISOString(), scheduledEnd.toISOString());
+  } catch {
+    return NextResponse.json({ error: "Slot availability is temporarily unavailable. Please try again." }, { status: 503 });
+  }
   if (conflictingSession) {
     return NextResponse.json({ error: "That robot slot is already requested. Choose another available time." }, { status: 409 });
   }

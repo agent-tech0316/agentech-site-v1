@@ -1014,6 +1014,7 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
   const [robotSlotModel, setRobotSlotModel] = useState("Aegies");
   const [robotSlotNotes, setRobotSlotNotes] = useState("");
   const [robotSlotMessage, setRobotSlotMessage] = useState("");
+  const [robotSlotAvailabilityError, setRobotSlotAvailabilityError] = useState("");
   const [robotSlotOptions, setRobotSlotOptions] = useState<RobotSlotOption[]>([]);
   const [loadingRobotSlots, setLoadingRobotSlots] = useState(false);
   const [requestingRobotSlot, setRequestingRobotSlot] = useState(false);
@@ -1202,10 +1203,18 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
     const lastStart = candidates[candidates.length - 1].value;
     const lastEnd = new Date(new Date(lastStart).getTime() + durationMinutes * 60 * 1000).toISOString();
     setLoadingRobotSlots(true);
+    setRobotSlotAvailabilityError("");
 
     fetch(`/api/robot-slot?start=${encodeURIComponent(firstStart)}&end=${encodeURIComponent(lastEnd)}`)
-      .then((response) => response.json())
-      .then((result: { bookedSlots?: Array<{ scheduledStart: string | null; scheduledEnd: string | null }> }) => {
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Availability unavailable");
+        const result = await response.json();
+        if (result?.ok !== true || !Array.isArray(result.bookedSlots)) {
+          throw new Error("Invalid availability response");
+        }
+        return result as { bookedSlots: Array<{ scheduledStart: string | null; scheduledEnd: string | null }> };
+      })
+      .then((result) => {
         if (cancelled) {
           return;
         }
@@ -1236,7 +1245,8 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
       })
       .catch(() => {
         if (!cancelled) {
-          setRobotSlotOptions(candidates);
+          setRobotSlotOptions([]);
+          setRobotSlotAvailabilityError("Slot availability is temporarily unavailable. Refresh the page to retry before scheduling.");
         }
       })
       .finally(() => {
@@ -3129,6 +3139,7 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
                   </p>
                 ) : null}
                 {robotSlotMessage ? <p className="text-sm font-semibold text-[#2f70c8]">{robotSlotMessage}</p> : null}
+                {robotSlotAvailabilityError ? <p role="alert" className="text-sm font-semibold text-[#2f70c8]">{robotSlotAvailabilityError}</p> : null}
                 <button
                   type="button"
                   onClick={requestRobotSlot}

@@ -1,19 +1,138 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
+import { createHash } from 'node:crypto';
 import { endSessionCleanupPolicy } from "./robot-stream-session-policy.mjs";
 import { naviLaunchBlocker, parseNaviCleanupResult } from "./navi-session-handoff.mjs";
 import * as handoff from "./navi-session-handoff.mjs";
+import { finalSessionDatabaseStatus } from "./robot-stream-session-policy.mjs";
+import { masterReceiptNeedsReload } from "./master-session-gateway.mjs";
+
+const programExpected = {sessionId:'test',submissionId:'submission',sourceSha256:'a'.repeat(64),
+  planSha256:'b'.repeat(64),attemptId:'attempt',guardianPid:42,bookedEnd:'2026-10-22T04:00:00Z'};
+function programResult(changes = {}) {
+  return {schema_version:1,outcome:'completed',session_id:'test',submission_id:'submission',
+    source_sha256:'a'.repeat(64),plan_sha256:'b'.repeat(64),robot_model:'navi',
+    command_count:1,completed_count:1,started_at:'2026-10-22T03:00:00Z',finished_at:'2026-10-22T03:01:00Z',
+    commands:[{command_index:1,name:'stand',args:{},source_args:{},line:null,status:'completed',
+      result:{succeeded:true},error:null,duration_ms:100}],error:null,attempt_id:'attempt',
+    navi_supervision:{version:1,guardian_pid:42,program_pid:43,program_return_code:0,
+      child_exited:true,deadline_expired:false,booked_end:programExpected.bookedEnd},...changes};
+}
+
+test('local Navi program result rejects unknown owner, plan, child exit and deadline truth', () => {
+  assert.equal(typeof handoff.parseNaviProgramResult, 'function');
+  assert.equal(handoff.parseNaviProgramResult(JSON.stringify(programResult()),programExpected).outcome,'completed');
+  for (const change of [{attempt_id:'other'},{plan_sha256:'c'.repeat(64)}, {robot_model:'aegis'},
+    {navi_supervision:null}, ...[{guardian_pid:99},{program_pid:null},{program_return_code:1},
+      {child_exited:false},{deadline_expired:true},{booked_end:'2026-10-22T05:00:00Z'}]
+      .map(change=>({navi_supervision:{...programResult().navi_supervision,...change}}))]) {
+    assert.throws(()=>handoff.parseNaviProgramResult(JSON.stringify(programResult(change)),programExpected));
+  }
+  for (const text of ['', '{}', '{broken']) assert.throws(()=>handoff.parseNaviProgramResult(text,programExpected));
+});
+
+test('successful stream and damping cannot replace persisted Navi program failure', () => {
+  const failed=programResult({outcome:'failed',completed_count:0,commands:[],
+    error:{type:'RuntimeError',message:'yaw stalled'}});
+  assert.equal(typeof handoff.parseNaviProgramResult, 'function');
+  const result=handoff.parseNaviProgramResult(JSON.stringify(failed),programExpected);
+  assert.equal(finalSessionDatabaseStatus({status:'finished',executionModel:'navi',
+    executionResultRequired:true,executionResultPersisted:true,executionStatus:result.outcome,
+    streamAvailableDuringSession:true,endCleanupStatus:'completed'}),'failed');
+});
+
+test('failed local program retains measured turn trace and separate persistence fault through parser', () => {
+  const error={type:'RuntimeError',message:'yaw stalled',command:'u_turn',command_index:1};
+  const value=programResult({outcome:'failed',completed_count:0,error,
+    persistence_error:{type:'OSError',message:'promotion disk fault'},
+    commands:[{...programResult().commands[0],name:'u_turn',status:'failed',error,
+      result:{feedback_trace_tail:[{elapsed_s:2.3,measured_angle_rad:.002,command_wz_rad_s:.5}]}}]});
+  const parsed=handoff.parseNaviProgramResult(JSON.stringify(value),programExpected);
+  assert.equal(parsed.error.message,'yaw stalled');
+  assert.equal(parsed.commands[0].result.feedback_trace_tail[0].measured_angle_rad,.002);
+  assert.equal(parsed.persistence_error.message,'promotion disk fault');
+});
+
+test('actual bridge collects Navi local outcome without invoking Aegis scp', () => {
+  const item={executionModel:'navi',executionResultRequired:true,localExecutionResult:'local-program',
+    executionAttemptId:'attempt',executionGuardianPid:42,end:programExpected.bookedEnd,
+    executionSubmissionId:'submission',executionSourceSha256:'a'.repeat(64),executionPlanSha256:'b'.repeat(64)};
+  let scp=0;
+  const deps={runtimeDir:'runtime',join:(...parts)=>parts.join('/'),run:()=>{scp++;throw Error('no scp');},
+    sshArgs:()=>[],robot:'robot',readFileSync:path=>{assert.equal(path,'local-program');return JSON.stringify(programResult());},
+    parseNaviProgramResult:(text,expected)=>handoff.parseNaviProgramResult(text,expected),
+    processRunning:()=>false,existsSync:()=>true,executionErrorMessage:()=>null,saveState:()=>{},console:{log(){},error(){}}};
+  bridgeFunction('collectExecutionResult','async function syncExecutionResult',deps)('test',item);
+  assert.equal(scp,0);
+  assert.equal(item.executionStatus,'completed');
+});
+
+test('bridge does not convert an active guardian with no program outcome into premature failure', () => {
+  const item={executionModel:'navi',executionResultRequired:true,localExecutionResult:'local-program',
+    naviCleanupOwner:{pid:42},pid:'42'};
+  const deps={existsSync:()=>false,processRunning:()=>true,saveState:()=>{},console:{log(){},error(){}}};
+  bridgeFunction('collectExecutionResult','async function syncExecutionResult',deps)('test',item);
+  assert.notEqual(item.executionResultCollectionAttempted,true);
+});
+
+test('newly staged Navi session requires authoritative execution persistence', () => {
+  const state={sessions:{}};
+  const code='from agentech import Agentech\nAgentech.stand()\n';
+  const plan={version:2,robot_model:'navi',source_sha256:createHash('sha256').update(code).digest('hex'),
+    commands:[{name:'stand',args:{}}]};
+  const deps={state,runtimeDir:'runtime',join:(...parts)=>parts.join('/'),robotModel:()=> 'navi',
+    writeFileSync:()=>{},run:()=>{},readFileSync:()=>JSON.stringify(plan),createHash,
+    endSessionCleanupPolicy,deviceResultsStateForPlan:()=>({}),remoteDir:'unused',localPython:'python',compiler:'compiler',
+    saveState:()=>{},console:{log(){}}};
+  bridgeFunction('stage','async function ensureSessionStream',deps)(
+    {id:'new',robot_model:'navi',email:'local-test',scheduled_start:'2026-10-22T03:00:00Z',
+      scheduled_end:programExpected.bookedEnd},{id:'submission',code});
+  const item=state.sessions.new;
+  assert.equal(item.executionResultRequired,true);
+  assert.equal(item.executionResultPersisted,false);
+  assert.equal(item.executionResultCollectionAttempted,false);
+  assert.equal(item.executionStatus,'pending');
+  assert.equal(item.remoteExecutionResult,null);
+});
+
+test('dead Navi guardian missing local outcome fails rather than falling back to video', () => {
+  const item={executionModel:'navi',status:'finished',executionResultRequired:true,
+    pid:'42',localExecutionResult:'missing',streamAvailableDuringSession:true,endCleanupStatus:'completed'};
+  const deps={existsSync:()=>false,processRunning:()=>false,readFileSync:()=>{throw Error('missing local outcome');},
+    parseNaviProgramResult:()=>{},saveState:()=>{},console:{log(){},error(){}}};
+  bridgeFunction('collectExecutionResult','async function syncExecutionResult',deps)('test',item);
+  assert.equal(item.executionStatus,'failed');
+  assert.match(item.executionResultError,/missing local outcome/);
+  assert.equal(finalSessionDatabaseStatus(item),null);
+  item.executionResultPersisted=true;
+  assert.equal(finalSessionDatabaseStatus(item),'failed');
+});
 
 const now = Date.parse("2026-09-30T03:00:00Z");
 const resetAt = "2026-09-30T02:00:00Z";
 const previous = (changes = {}) => ({ executionModel: "navi", status: "finished",
   end: "2026-09-30T02:59:00Z", endCleanupRequired: true, endCleanupStatus: "pending", ...changes });
 
-test("scheduled end always resets Navi even if user returned then moved again", () => {
+test("movement admission does not require a home baseline or a prior home success", () => {
+  assert.equal(naviLaunchBlocker({}, "next", now), null);
+  assert.equal(naviLaunchBlocker({old:previous({endCleanupStatus:"failed"})}, "next", now), null);
+  assert.match(naviLaunchBlocker({old:previous({naviCleanupOwner:{pid:null}})}, "next", now), /owns/);
+});
+
+test("damped cleanup is verified without claiming home position or heading", () => {
+  const result = {version:1,ready_for_next_user:true,operation:"damping",succeeded:true,
+    damping_completed:true,home_verified:false,terminal_state:"lowered_damped",elapsed_s:2,
+    final_state:{boot_finish:true,robot_ready:true,error:0,warning:0,estop:1,standing:false,action:0}};
+  const outcome = {version:1,attempt_id:"damp",outcome:"verified",verified_at:resetAt,result};
+  assert.equal(handoff.reconcileNaviCleanupOutcome({attempt_id:"damp"},false,outcome).status,"completed");
+  assert.throws(()=>parseNaviCleanupResult(`[navi-runner] cleanup-result ${JSON.stringify(result)}`));
+});
+
+test("scheduled end always damps Navi without requiring return home", () => {
   for (const commands of [[{name:"forward"}], [{name:"return_to_home"}],
     [{name:"return_to_home"},{name:"forward"}]]) {
-    assert.deepEqual(endSessionCleanupPolicy({commands}, "navi"), {required:true, returnHomeRequired:true});
+    assert.deepEqual(endSessionCleanupPolicy({commands}, "navi"), {required:true, returnHomeRequired:false});
   }
 });
 
@@ -25,7 +144,7 @@ async function tickFixture(failCloud = false, setup = () => {}) {
   const state = {sessions:{old:previous({status:"completed",end:"2000-01-01T00:00:00Z"}),
     next:previous({status:"staged",end:"2999-01-01T00:00:00Z"})}};
   const noop = () => {};
-  const deps = {state, processRunning:()=>false,saveState:noop, collectExecutionResult:noop,
+  const deps = {state, pollNaviHomePreparation:noop,processRunning:()=>false,saveState:noop, collectExecutionResult:noop,
     publishCaptures:noop,collectDeviceResults:noop,syncDeviceResults:noop,syncExecutionResult:noop,
     syncFinalSessionStatus:noop,keepsStreamActive:()=>false,stopObs:noop,stopObsVirtualCamera:noop,
     stopSession:id=>{state.sessions[id].status="finished";},endCleanupCanRun:item=>item.endCleanupStatus!=="completed",
@@ -47,11 +166,53 @@ test("cloud outage cannot prevent local session-end reset", async () => {
   assert.deepEqual(await tickFixture(true), ["reset","cloud"]);
 });
 
+test("a failed Master booking cannot starve a due Navi booking in the same poll", async () => {
+  for (const failedPhase of ["review", "stage", "stream", "launch"]) {
+    const errors = [];
+    const launched = [];
+    await assert.doesNotReject(() => tickFixture(false, (deps, _events, state) => {
+      state.sessions = {};
+      const sessions = [
+        {id:"bad-master", robot_model:"master", scheduled_start:"2000-01-01T00:00:00Z"},
+        {id:"due-navi", robot_model:"navi", scheduled_start:"2000-01-01T00:00:00Z"},
+      ];
+      const fail = (id, phase) => {
+        if (id === "bad-master" && phase === failedPhase) throw new Error(`${phase} refused`);
+      };
+      deps.dueSessions = () => sessions;
+      deps.reviewedSubmission = session => { fail(session.id, "review"); return {}; };
+      deps.stage = session => {
+        fail(session.id, "stage");
+        state.sessions[session.id] = {status:"staged", executionModel:session.robot_model,
+          start:session.scheduled_start, end:"2999-01-01T00:00:00Z"};
+      };
+      deps.ensureSessionStream = id => { fail(id, "stream"); return true; };
+      deps.launch = session => { fail(session.id, "launch"); launched.push(session.id); };
+      deps.console = {error:(...args)=>errors.push(args.join(" "))};
+    }), failedPhase);
+    assert.deepEqual(launched, ["due-navi"], failedPhase);
+    assert.equal(errors.length, 1, failedPhase);
+    assert.match(errors[0], /bad-master/);
+    assert.match(errors[0], new RegExp(`${failedPhase} refused`));
+  }
+});
+
+test("legacy finished captures are not reprocessed during gateway restart", async () => {
+  let attempts = 0;
+  await tickFixture(false, (deps, _events, state) => {
+    state.sessions = {old:previous({executionModel:'aegis',status:'finished',pid:'42',
+      end:'2000-01-01T00:00:00Z',remoteCaptures:['historical.jpg'],publishedCaptures:[]})};
+    deps.dueSessions = () => [];
+    deps.publishCaptures = () => { attempts++; };
+  });
+  assert.equal(attempts, 0);
+});
+
 test("expired Aegis captures publish after local cleanup and remain finished", async () => {
   for (const status of ["running", "finished"]) {
     let captured;
     const events = await tickFixture(false, (deps, events, state) => {
-      const item = previous({executionModel:"aegis",status,end:"2000-01-01T00:00:00Z",
+      const item = previous({executionModel:"aegis",status,executionResultRequired:true,end:"2000-01-01T00:00:00Z",
         pid:"42",remoteCaptures:["first.jpg","second.jpg"],publishedCaptures:["first.jpg"]});
       state.sessions = {old:item};
       captured = item;
@@ -84,7 +245,7 @@ test("expired staged Aegis booking never publishes uncreated captures", async ()
 });
 
 test("expired Aegis capture failure records one attempt instead of retrying every tick", async () => {
-  const item = previous({executionModel:"aegis",status:"running",pid:"42",
+  const item = previous({executionModel:"aegis",status:"running",pid:"42",executionResultRequired:true,
     end:"2000-01-01T00:00:00Z",remoteCaptures:["missing.jpg"],publishedCaptures:[]});
   let attempts = 0;
   const setup = (deps, _events, state) => {
@@ -111,6 +272,7 @@ test("actual tick refuses launch when stream readiness crosses booked end", asyn
 });
 
 function bridgeFunction(name, nextName, deps, async = false) {
+  deps = { masterReceiptNeedsReload, ...deps };
   const source = readFileSync(new URL("./robot-stream-bridge.mjs", import.meta.url), "utf8");
   const declaration = `${async ? "async " : ""}function ${name}`;
   const section = source.slice(source.indexOf(declaration), source.indexOf(nextName, source.indexOf(declaration)));
@@ -311,7 +473,7 @@ test("actual cleanup reconciliation completes once and failed retries stop after
       assert.equal(item.endCleanupStatus,"failed");
       assert.equal(item.endCleanupAttempts,3);
       assert.equal(launched,2);
-      assert.ok(naviLaunchBlocker(deps.state.sessions,"next",now,resetAt));
+      assert.equal(naviLaunchBlocker(deps.state.sessions,"next",now,resetAt), null);
     }
   }
 });
@@ -383,10 +545,11 @@ for (const dependency of ["OBS", "capture publication"]) {
   });
 }
 
-test("next user waits for pending, running, or failed reset even after retry exhaustion", () => {
-  for (const status of ["pending","running","failed"]) {
-    assert.ok(naviLaunchBlocker({old:previous({endCleanupStatus:status,endCleanupAttempts:3})}, "next", now, resetAt));
+test("only a cleanup owner blocks admission; historical home failures do not", () => {
+  for (const status of ["pending","failed"]) {
+    assert.equal(naviLaunchBlocker({old:previous({endCleanupStatus:status,endCleanupAttempts:3})}, "next", now, resetAt), null);
   }
+  assert.ok(naviLaunchBlocker({old:previous({endCleanupStatus:"running"})}, "next", now, resetAt));
   assert.equal(naviLaunchBlocker({old:previous({endCleanupStatus:"completed"})}, "next", now, resetAt), null);
 });
 
@@ -400,7 +563,7 @@ test("verified supervised reset can supersede old failures without rewriting his
   const sessions = {old:previous({end:"2026-09-29T20:00:00Z",endCleanupStatus:"failed"})};
   assert.equal(naviLaunchBlocker(sessions, "next", now, resetAt), null);
   assert.equal(sessions.old.endCleanupStatus, "failed");
-  assert.ok(naviLaunchBlocker(sessions, "next", now, null));
+  assert.equal(naviLaunchBlocker(sessions, "next", now, null), null);
 });
 
 test("new future staged bookings and other robot models do not block reset-complete Navi", () => {

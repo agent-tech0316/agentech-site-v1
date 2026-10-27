@@ -947,14 +947,12 @@ export async function getRobotSessionsStrict(accountEmail: string) {
 }
 
 export async function getRobotSessionsInWindow(startIso: string, endIso: string) {
-  try {
-    const rows = await supabaseRequest<RobotSessionRecord[]>("agentech_robot_sessions", {
-      query: `scheduled_start=gte.${encodeURIComponent(startIso)}&scheduled_start=lt.${encodeURIComponent(endIso)}&select=id,email,access_profile_id,profile_username,profile_type,session_title,robot_model,scheduled_start,scheduled_end,session_status,requested_run_type,approved_run_type,preset_demo,benchmark_status,code_submission_id,price,invoice_number,notes,device_results,device_results_requested,device_results_error,device_results_updated_at,created_at,updated_at&order=scheduled_start.asc`
-    });
-    return rows.map(normalizeRobotSessionDeviceResults);
-  } catch {
-    return [];
-  }
+  // Include sessions already underway when the requested window begins.
+  // A failed availability read must not be represented as an empty schedule.
+  const rows = await supabaseRequest<RobotSessionRecord[]>("agentech_robot_sessions", {
+    query: `scheduled_end=gt.${encodeURIComponent(startIso)}&scheduled_start=lt.${encodeURIComponent(endIso)}&select=id,email,access_profile_id,profile_username,profile_type,session_title,robot_model,scheduled_start,scheduled_end,session_status,requested_run_type,approved_run_type,preset_demo,benchmark_status,code_submission_id,price,invoice_number,notes,device_results,device_results_requested,device_results_error,device_results_updated_at,created_at,updated_at&order=scheduled_start.asc`
+  });
+  return rows.map(normalizeRobotSessionDeviceResults);
 }
 
 function isActiveRobotSession(session: Pick<RobotSessionRecord, "session_status">) {
@@ -963,15 +961,10 @@ function isActiveRobotSession(session: Pick<RobotSessionRecord, "session_status"
 }
 
 export async function findRobotSessionConflict(startIso: string, endIso: string) {
-  let sessions: RobotSessionRecord[] = [];
-  try {
-    sessions = await supabaseRequest<RobotSessionRecord[]>("agentech_robot_sessions", {
-      query: `scheduled_start=lt.${encodeURIComponent(endIso)}&select=id,email,access_profile_id,profile_username,profile_type,session_title,robot_model,scheduled_start,scheduled_end,session_status,requested_run_type,approved_run_type,preset_demo,benchmark_status,code_submission_id,price,invoice_number,notes,device_results,device_results_requested,device_results_error,device_results_updated_at,created_at,updated_at&order=scheduled_start.asc`
-    });
-    sessions = sessions.map(normalizeRobotSessionDeviceResults);
-  } catch {
-    sessions = [];
-  }
+  const rows = await supabaseRequest<RobotSessionRecord[]>("agentech_robot_sessions", {
+    query: `scheduled_start=lt.${encodeURIComponent(endIso)}&select=id,email,access_profile_id,profile_username,profile_type,session_title,robot_model,scheduled_start,scheduled_end,session_status,requested_run_type,approved_run_type,preset_demo,benchmark_status,code_submission_id,price,invoice_number,notes,device_results,device_results_requested,device_results_error,device_results_updated_at,created_at,updated_at&order=scheduled_start.asc`
+  });
+  const sessions = rows.map(normalizeRobotSessionDeviceResults);
   const requestedStart = new Date(startIso).getTime();
   const requestedEnd = new Date(endIso).getTime();
 

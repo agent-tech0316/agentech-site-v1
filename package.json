@@ -50,7 +50,7 @@
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "typecheck": "tsc --noEmit",
     "check": "npm run lint && npm run typecheck && npm run build && npm run test:talents-page",
-    "test:robot-stream-operations": "node --test scripts/robot-stream-operations.test.mjs scripts/robot-stream-process.test.mjs scripts/obs-low-latency-policy.test.mjs",
+    "test:robot-stream-operations": "node --test scripts/robot-stream-operations.test.mjs scripts/robot-stream-process.test.mjs scripts/obs-low-latency-policy.test.mjs scripts/robot-slot-overlap.test.mjs scripts/robot-slot-availability.test.mjs",
     "test:master-session-recordings": "node --experimental-strip-types --test lib/master-session-recordings.test.ts scripts/master-session-recordings-route.test.mjs && node scripts/test-master-recording-schema.mjs",
     "test:vorld-release": "node --experimental-strip-types --test scripts/vorld-download.test.mjs scripts/vorld-release-retention.test.mjs"
   },

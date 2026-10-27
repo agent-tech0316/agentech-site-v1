@@ -8,7 +8,7 @@ import OBSWebSocket from "obs-websocket-js";
 import { createMasterSessionDeployment, masterLaunchBlocker, masterRecoveryForStagedPlan, masterReceiptNeedsReload, parseMasterExecutionResult, assertMasterExecutableSubmission } from "./master-session-gateway.mjs";
 import {
   naviLaunchBlocker, parseNaviCleanupResult, loadGatewayState, saveGatewayState,
-  selectNaviResetBaseline, reconcileNaviCleanupOutcome,
+  selectNaviResetBaseline, reconcileNaviCleanupOutcome, parseNaviProgramResult,
 } from "./navi-session-handoff.mjs";
 import { ensureStreamWithRecovery } from "./obs-stream-recovery.mjs";
 import {
@@ -259,10 +259,10 @@ function stage(session, submission) {
   state.sessions[session.id] = {
     status: "staged",
     executionModel: selectedModel,
-    executionResultRequired: selectedModel === "aegis" || selectedModel === "master",
-    executionResultCollectionAttempted: selectedModel !== "aegis" && selectedModel !== "master",
-    executionResultPersisted: selectedModel !== "aegis" && selectedModel !== "master",
-    executionStatus: selectedModel === "aegis" || selectedModel === "master" ? "pending" : null,
+    executionResultRequired: true,
+    executionResultCollectionAttempted: false,
+    executionResultPersisted: false,
+    executionStatus: "pending",
     executionSubmissionId: submission.id,
     executionSourceSha256: plan.source_sha256,
     executionPlanSha256: createHash("sha256").update(readFileSync(planPath)).digest("hex"),
@@ -357,15 +357,13 @@ async function launch(session) {
   }
   if (item.executionModel === "navi") {
     let blocker;
-    let baseline;
     try {
-      baseline = refreshNaviResetBaseline();
-      blocker = naviLaunchBlocker(state.sessions, session.id, Date.now(), baseline.verified_at);
+      blocker = naviLaunchBlocker(state.sessions, session.id, Date.now());
     } catch (error) { blocker = error.message; }
     if (!blocker) {
       try {
         run(localPython, [trustedNaviRunner, "--check-home-ready"], {
-          env:{...naviEnvironment(),AGENTECH_NAVI_EXPECTED_RESET_RUN_ID:baseline.result.run_id}, timeout:20000 });
+          env:naviEnvironment(), timeout:20000 });
       } catch (error) { blocker = `Navi live readiness check failed: ${error.message}`; }
     }
     if (blocker) {
@@ -419,6 +417,8 @@ async function launch(session) {
     // Reserve ownership before spawn: a crash in the spawn/PID-save window
     // must leave an unverified owner, never another launch opportunity.
     item.naviCleanupOwner = createNaviSessionOwner(session.id);
+    item.executionAttemptId = item.naviCleanupOwner.attempt_id;
+    item.localExecutionResult = `${item.naviCleanupOwner.result_file}.program.json`;
     item.naviSessionGuardian = true;
     item.endCleanupAttempts = 1;
     item.status = "running";
@@ -439,6 +439,7 @@ async function launch(session) {
       child.unref();
       item.pid = String(child.pid);
       owner.pid = String(child.pid);
+      item.executionGuardianPid = child.pid;
       item.localLog = localLog;
     } finally {
       closeSync(logFd);
@@ -525,24 +526,24 @@ function endCleanupCanRun(item) {
   return Number(attempts || 0) < 3;
 }
 
-function reconcileNaviCleanup(item) {
+function reconcileNaviCleanup(item, resolveOutcome = reconcileNaviCleanupOutcome) {
   const owner = item.naviCleanupOwner;
   if (!owner) return {status:"unknown",error:"Persisted Navi cleanup has no recoverable process identity"};
   let outcome;
   try { outcome = JSON.parse(readFileSync(owner.result_file,"utf8")); } catch {}
   if (owner.pid && processRunning({executionModel:"navi",pid:owner.pid})) {
-    return reconcileNaviCleanupOutcome(owner,true,outcome);
+    return resolveOutcome(owner,true,outcome);
   }
   let metadata;
   try { metadata = JSON.parse(readFileSync(owner.owner_file,"utf8")); } catch {}
   if (!owner.pid || metadata?.attempt_id !== owner.attempt_id
       || ["starting","starting_cleanup"].includes(metadata.phase)) {
-    return reconcileNaviCleanupOutcome(owner,null,outcome);
+    return resolveOutcome(owner,null,outcome);
   }
   for (const pid of [metadata.program_pid,metadata.cleanup_pid]) {
-    if (pid && processRunning({executionModel:"navi",pid})) return reconcileNaviCleanupOutcome(owner,true,outcome);
+    if (pid && processRunning({executionModel:"navi",pid})) return resolveOutcome(owner,true,outcome);
   }
-  return reconcileNaviCleanupOutcome(owner,false,outcome);
+  return resolveOutcome(owner,false,outcome);
 }
 
 function finishSessionCleanup(id, item) {
@@ -669,24 +670,26 @@ function collectExecutionResult(id, item) {
     item.executionResultRequired !== true
     || item.executionResultCollectionAttempted === true
   ) return;
-  // A Master runner may still be finalizing its receipt.
-  // Do not race a live writer; after runner exit, missing evidence fails closed.
-  if ((item.executionModel === "master") && item.localExecutionResult
+  // A guardian may still be finalizing its child receipt or performing damping.
+  // Do not race a live writer; after guardian exit, missing evidence fails closed.
+  if (["navi", "master"].includes(item.executionModel) && item.localExecutionResult
       && !existsSync(item.localExecutionResult) && item.pid && processRunning(item)) return;
   item.executionResultCollectionAttempted = true;
   try {
-    const localResult = (item.executionModel === "master") ? item.localExecutionResult
+    const localResult = ["navi", "master"].includes(item.executionModel) ? item.localExecutionResult
       : join(runtimeDir, `session-${id}.execution.json`);
-    if (!(item.executionModel === "master")) {
+    if (!["navi", "master"].includes(item.executionModel)) {
       run("scp", [...sshArgs(), `${robot}:${item.remoteExecutionResult}`, localResult]);
     }
-    const parseResult = item.executionModel === "master" ? parseMasterExecutionResult : parseExecutionResult;
+    const parseResult = item.executionModel === "master" ? parseMasterExecutionResult
+      : item.executionModel === "navi" ? parseNaviProgramResult : parseExecutionResult;
     item.executionResult = parseResult(readFileSync(localResult, "utf8"), {
       sessionId: id,
       submissionId: item.executionSubmissionId,
       sourceSha256: item.executionSourceSha256,
       planSha256: item.executionPlanSha256,
       attemptId: item.executionAttemptId,
+      guardianPid: item.executionGuardianPid,
       bookedEnd: item.end,
     });
     item.executionStatus = item.executionResult.outcome;
@@ -837,7 +840,8 @@ async function tick() {
   for (const [id, item] of Object.entries(state.sessions)) {
     const captures = item.remoteCaptures ?? (item.remoteCapture ? [item.remoteCapture] : []);
     const pendingCaptures = captures.some(capture => !(item.publishedCaptures ?? []).includes(capture));
-    const expiredCaptures = item.status === "finished" && item.pid && pendingCaptures
+    // Catch up result-tracked runs only; a restart must not replay legacy captures.
+    const expiredCaptures = item.status === "finished" && item.executionResultRequired === true && item.pid && pendingCaptures
       && item.capturePublishingError == null;
     if ((item.status === "running" || expiredCaptures) && !processRunning(item)) {
       // Expiry cleanup runs first, but a runner first observed after expiry can
@@ -863,16 +867,22 @@ async function tick() {
   }
   const sessions = await dueSessions();
   for (const session of sessions) {
-    if (!state.sessions[session.id]) {
-      const submission = await reviewedSubmission(session);
-      stage(session, submission);
+    try {
+      if (!state.sessions[session.id]) {
+        const submission = await reviewedSubmission(session);
+        stage(session, submission);
+      }
+      const item = state.sessions[session.id];
+      const launchNow = Date.now();
+      if (launchNow >= Date.parse(item.end)) continue;
+      const streamReady = await ensureSessionStream(session.id, item, launchNow);
+      if (streamReady && item.status === "staged" && Date.now() < Date.parse(item.end)
+          && Date.now() >= Date.parse(session.scheduled_start)) await launch(session);
+    } catch (error) {
+      // A rejected booking must not starve another robot's valid booked slot.
+      // Keep any persisted owner/failure state intact; never manufacture success.
+      console.error(`[robot-stream] session ${session.id} scheduling failed:`, error.message);
     }
-    const item = state.sessions[session.id];
-    const launchNow = Date.now();
-    if (launchNow >= Date.parse(item.end)) continue;
-    const streamReady = await ensureSessionStream(session.id, item, launchNow);
-    if (streamReady && item.status === "staged" && Date.now() < Date.parse(item.end)
-        && Date.now() >= Date.parse(session.scheduled_start)) await launch(session);
   }
   if (!Object.values(state.sessions).some((item) => keepsStreamActive(item, Date.now()))) await stopObsVirtualCamera();
 }

@@ -233,7 +233,7 @@ test("gateway transfers only trusted runtime files and persists authoritative re
   assert.match(source, /"--cleanup-supervisor"/);
   assert.doesNotMatch(source, /"--damp"/);
   assert.match(source, /naviLaunchBlocker\(state.sessions/);
-  assert.match(source, /reconcileNaviCleanupOutcome\(owner/);
+  assert.match(source, /resolveOutcome = reconcileNaviCleanupOutcome/);
   assert.match(source, /"--check-home-ready"/);
   assert.match(source, /await stopObs\(\)/);
   assert.match(source, /await stopObsVirtualCamera\(\)/);
@@ -292,14 +292,14 @@ test("session policy selects model-specific scheduled-end cleanup", () => {
   );
   assert.deepEqual(
     endSessionCleanupPolicy({ commands: [{ name: "stand" }] }, "navi"),
-    { required: true, returnHomeRequired: true },
+    { required: true, returnHomeRequired: false },
   );
   assert.deepEqual(
     endSessionCleanupPolicy(
       { commands: [{ name: "return_to_home" }, { name: "wave_hand" }] },
       "navi",
     ),
-    { required: true, returnHomeRequired: true },
+    { required: true, returnHomeRequired: false },
   );
   assert.deepEqual(
     endSessionCleanupPolicy({ commands: [{ name: "sit" }] }, "aegis"),

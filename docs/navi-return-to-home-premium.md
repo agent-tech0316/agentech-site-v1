@@ -15,28 +15,47 @@ No website field or public SDK argument can modify the home X/Y coordinate.
 
 ## Automatic scheduled-session cleanup
 
-When a Navi booking reaches its scheduled end, the trusted robot gateway always
-runs the original `return_to_home()` with the default camera-facing heading,
-even if the user called it earlier. That SDK function already lowers and damps
-after verified arrival; the gateway does not send a second damping command.
-Cleanup validates the inert session plan and refuses to override an explicit
-`emergency_stop`. Healthy recognized low postures can stand before returning;
-faults, uncertain posture, stale cameras, or a changed robot boot fail closed.
+Current policy is **damp-only**, as requested for the October 2026 showcase.
+At the booked end, the trusted supervisor stops and damps Navi, verifies healthy
+lowered/damped telemetry, and records `home_verified: false`. It does not require
+a home-reset receipt or camera calibration before ordinary movement. Admission
+still requires exclusive ownership, fresh healthy damped/recognized relaxed
+posture, and battery checks. Explicit customer `return_to_home()` remains premium
+and retains its own camera, calibration, and boot-heading requirements.
+Cleanup validates the inert session plan. Explicit return-home cleanup refuses a
+plan containing `emergency_stop`; damp-only cleanup instead applies its fresh
+posture/telemetry checks. Unknown ownership or unhealthy telemetry never counts
+as ready.
 
 The installed gateway now launches a detached trusted supervisor with the absolute
 booked deadline. It retains ownership until that deadline even when the inert
 program finishes early. At expiry it terminates and verifies the program child
-before an exclusive cleanup owner sends SDK stop and the original return-home
-operation. This deadline does not wait for bridge cloud/OBS work or a bridge
+before an exclusive cleanup owner sends SDK stop and damping.
+This deadline does not wait for bridge cloud/OBS work or a bridge
 restart; the action child also has a hard deadline, without a competing SDK stop
 publisher. Other robot services and OBS are not terminated by this supervisor.
 Launch rechecks expiration after stream/readiness/claim waits.
 
-A structured result must
-confirm center within 6 cm (standing before lowering), final heading within
-4 degrees, and healthy lowered/damped telemetry. A failed reset stops motion,
-does not damp blindly, and blocks the next user even after the three-attempt
-retry limit. Stream-delivery status does not imply physical readiness.
+A structured cleanup result must confirm healthy lowered/damped telemetry.
+It must not claim center or facing qualification. Active/unknown prior ownership
+blocks another launch; a later fresh posture check cannot erase a failed command
+result. Command outcomes are identity-bound to the session, submission, source,
+plan, execution attempt, guardian, child exit, and booked deadline. Video or
+successful damping cannot turn a failed command into a successful execution.
+
+Due bookings have independent error boundaries: review/staging/stream/launch
+failure for one booking is logged without starving a later valid booking.
+The availability query includes reservations already underway at the requested
+window start. Database/read failures return retryable JSON503; the scheduling UI
+clears available options instead of displaying an empty, apparently free cell.
+Conflict-read failure aborts reservation before credit spending. The current
+single cell remains shared across robot models; this is not multi-cell routing.
+
+On October 26, a signed-in website movement booking completed all four commands
+(stand, short forward/backward commands, stop) and automatic damped cleanup.
+A separate read-only booking displayed decoded OBS video in Chrome. Camo stayed
+private. Commanded maximum settings did not reach sustained maximum speed;
+return-home and full-cell/all-heading qualification remain separate, deferred work.
 
 Cleanup attempt identity, supervisor PID, child ownership, and an atomic outcome
 are persisted privately. Restart recovery waits for an existing owner and
@@ -46,8 +65,12 @@ is replaced atomically; missing or malformed state fails closed rather than
 forgetting active ownership. A trusted operator must recover/initialize that
 state before restarting, not silently create empty state over an unknown owner.
 
-Next-user readiness requires the verified reset receipt's ROS boot to match the
-current enabled calibration and live boot, alongside healthy damped telemetry.
+### Historical return-home reset evidence (superseded cleanup policy)
+
+The following September/early-October results describe the older automatic-home
+policy, not the current damp-only handoff. That policy required the verified
+reset receipt's ROS boot to match the enabled calibration and live boot,
+alongside healthy damped telemetry.
 A trusted supervised reset can be imported at every admission from
 `C:\AgentechRobotGateway\.robot-stream-runtime\navi-supervised-baseline.json`:
 `{"version":1,"verified_at":"<UTC ISO timestamp>","result":<verified cleanup receipt>}`.
@@ -71,9 +94,10 @@ was created for this check. Deployment backups and the reset receipt are under
 `C:\AgentechRobotGateway\backups\navi-return-20260929`.
 
 Run `npm run test:robot-stream-bridge` and `npm run test:navi-cli-gateway`
-for hardware-free handoff/compiler/runner checks. Robot reboot, changed camera
-placement or an explicit emergency stop requires operator revalidation; never
-clear a blocked reset by marking an old failed session successful.
+for hardware-free handoff/compiler/runner checks. For an explicit home return,
+robot reboot or changed camera placement requires a valid heading/calibration
+binding. Ordinary scheduled movement does not require that home receipt. Never
+clear an explicit emergency stop or mark an old failed session successful.
 
 The deadline-supervisor/restart/receipt changes were installed on 2026-10-05
 (local time), after hardware-free regression tests and independent review.
@@ -94,7 +118,7 @@ Actual customer-booking execution and every-position/every-heading coverage
 were not tested. The rear strip obstructed by the screen remains outside the
 restricted motion envelope; this is not blind navigation around obstacles.
 
-This server-injected cleanup is an operational reset and does not consume the
+The current server-injected damp-only cleanup does not consume the
 customer's premium entitlement. A customer-authored `return_to_home()` call is
 still subject to the access rules below. A direct SDK return also ends damped;
 subsequent movement therefore requires standing again.
