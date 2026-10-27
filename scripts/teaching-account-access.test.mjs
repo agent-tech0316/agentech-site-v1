@@ -9,6 +9,9 @@ registerHooks({ resolve(s,c,next) {
     if(s.startsWith('.') && !/\.[a-z]+$/.test(s)) return next(s+'.ts',c);
     throw e;
   }
+}, load(url,context,next) {
+  if(url.endsWith('.json')) return next(url,{...context,importAttributes:{...context.importAttributes,type:'json'}});
+  return next(url,context);
 }});
 const {NextRequest}=await import('next/server');
 const {createSignedAccountSession}=await import('../lib/server-account-session.ts');
@@ -65,11 +68,13 @@ test('teaching scheduling still rejects code without passed safety reviews',asyn
  assert.match((await res.json()).error,/physical safety gate and AI security scan/);
 });
 const authPolicy = await import('../lib/prototype-auth.ts');
-test('paid AI review exemption is restricted to Victoria and exactly eight teaching accounts',()=>{
+test('paid AI review exemption is restricted to the explicit owner and existing teaching accounts',()=>{
  assert.equal(typeof authPolicy.hasPaidSoftwareReviewExemption,'function');
  for(let i=1;i<=8;i++)assert.equal(authPolicy.hasPaidSoftwareReviewExemption(`skyrockettest${String(i).padStart(3,'0')}`),true);
  assert.equal(authPolicy.hasPaidSoftwareReviewExemption('victoria_c@agent-tech.ai'),true);
- for(const id of ['skyrockettest000','skyrockettest009','skyrockettest01','info@agent-tech.ai','student@example.com'])assert.equal(authPolicy.hasPaidSoftwareReviewExemption(id),false);
+ assert.equal(authPolicy.hasPaidSoftwareReviewExemption('wesleyfan2015@gmail.com'),true);
+ assert.equal(authPolicy.hasPaidSoftwareReviewExemption(' WESLEYFAN2015@GMAIL.COM '),true);
+ for(const id of ['skyrockettest000','skyrockettest009','skyrockettest01','info@agent-tech.ai','student@example.com','wesleyfan2015+test@gmail.com','wesleyfan2015@gmail.com.evil'])assert.equal(authPolicy.hasPaidSoftwareReviewExemption(id),false);
 });
 const codeSubmit=await import('../app/api/agentech-code-submit/route.ts');
 
@@ -125,7 +130,7 @@ test('ordinary accounts still require a reservation to view the stream',async t=
  const res=await route.GET(new NextRequest('https://site.invalid/api/livekit-token',{headers:{authorization:`Bearer ${createSignedAccountSession('student@example.com')}`}}));
  assert.equal(res.status,403);
 });
-test('teaching exemption approves only hardware-passed code without AI calls or fabricated risk',async t=>{
+for (const exemptEmail of ['skyrockettest001','wesleyfan2015@gmail.com']) test(`exemption for ${exemptEmail} approves only hardware-passed code without AI calls or fabricated risk`,async t=>{
  const {mkdtemp,unlink,rmdir}=await import('node:fs/promises');
  const {tmpdir}=await import('node:os');
  const {join}=await import('node:path');
@@ -134,7 +139,7 @@ test('teaching exemption approves only hardware-passed code without AI calls or 
  process.env.NODE_ENV='production';
  t.after(async()=>{delete process.env.AGENTECH_SUBMISSION_DIR;await unlink(join(dir,'exemption-test.json')).catch(()=>{});await rmdir(dir);});
  const code='from agentech import Agentech\nAgentech.stop()';
- const record={id:'exemption-test',email:'skyrockettest001',code,robot_model:'Navi',physical_safety_status:'passed',ai_security_status:'locked',ai_security_reviewed_at:null,commands:['stop()'],source:'pasted_code',created_at:new Date().toISOString()};
+ const record={id:'exemption-test',email:exemptEmail,code,robot_model:'Navi',physical_safety_status:'passed',ai_security_status:'locked',ai_security_reviewed_at:null,commands:['stop()'],source:'pasted_code',created_at:new Date().toISOString()};
  const writes=[];
  t.mock.method(globalThis,'fetch',async(url,init)=>{
   assert.equal(new URL(url).hostname,'teaching-test.invalid','no paid AI or other external calls');

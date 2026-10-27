@@ -2498,6 +2498,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
   const [isRunningSoftwareCheck, setIsRunningSoftwareCheck] = useState(false);
   const [isLoadingReviewGate, setIsLoadingReviewGate] = useState(task === "software-check");
   const [isInternalCompanyAccount, setIsInternalCompanyAccount] = useState(false);
+  const [isSoftwareReviewExempt, setIsSoftwareReviewExempt] = useState(false);
   const [masterLiveTestAccess, setMasterLiveTestAccess] = useState(false);
   const [masterLiveTestSelected, setMasterLiveTestSelected] = useState(false);
   const [masterLiveTestExpiresAt, setMasterLiveTestExpiresAt] = useState("");
@@ -2616,6 +2617,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
         const payload = (await response.json().catch(() => ({ error: "The saved review result could not be read." }))) as {
           error?: string;
           internalAccount?: boolean;
+          softwareReviewExempt?: boolean;
           localPreview?: boolean;
           masterLiveTestAccess?: boolean;
           latestSubmission?: {
@@ -2634,6 +2636,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
         }
 
         setIsInternalCompanyAccount(payload.internalAccount === true);
+        setIsSoftwareReviewExempt(payload.softwareReviewExempt === true);
         setMasterLiveTestAccess(payload.masterLiveTestAccess === true);
         if (!response.ok) {
           throw new Error(payload.error ?? "Unable to load the latest Physical Hardware Check.");
@@ -3678,7 +3681,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                 </div>
                 <div data-code-review-stage="software-security" className={`rounded-[14px] border p-3 ${step4PanelClass}`}>
                   <div className="flex items-start justify-between gap-3">
-                    <p className="text-xs uppercase tracking-[0.14em] text-[#526174]">{masterLiveTestSelected ? "Stage 2 - Execution Isolation" : "Stage 2 - Software Security"}</p>
+                    <p className="text-xs uppercase tracking-[0.14em] text-[#526174]">{masterLiveTestSelected ? "Stage 2 - Execution Isolation" : isSoftwareReviewExempt ? "Stage 2 - Account Exemption" : "Stage 2 - Software Security"}</p>
                     {isLoadingReviewGate ? (
                       <span className="border border-[#93c5fd] bg-[#eaf3ff] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#194f92]">
                         Checking
@@ -3710,16 +3713,20 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                       : isLoadingReviewGate
                       ? "Checking the latest saved Physical Hardware Check for this account."
                       : softwarePassed
-                      ? "Software security passed. Time-slot requests are unlocked."
+                      ? isSoftwareReviewExempt ? "Time-slot requests are unlocked. This account is exempt from paid AI review." : "Software security passed. Time-slot requests are unlocked."
                       : hardwarePassed && softwareReviewStatus !== "locked"
                         ? softwareReviewStatus === "failed" || softwareReviewStatus === "error"
                           ? "Software Security did not pass. Review the findings below."
                           : `Software security status: ${softwareReviewStatus}.`
                       : hardwarePassed
-                        ? isInternalCompanyAccount
+                        ? isSoftwareReviewExempt
+                          ? "Command validation passed. Use your account exemption to schedule without a paid AI review or a charge against the monthly AI allowance."
+                          : isInternalCompanyAccount
                           ? "Unlocked. Company credits can be charged, but credit balance does not block internal testing."
                           : "Hardware passed. Click Run Software Security to complete certification."
-                        : isInternalCompanyAccount
+                        : isSoftwareReviewExempt
+                          ? "Complete command validation first. Paid AI review is exempt for this account; scheduling and live execution checks still apply."
+                          : isInternalCompanyAccount
                           ? "Locked until Step 3 passes. Company credit balance does not block internal testing."
                           : "Locked until Step 3 passes. Uses GPT-5.5 and charges account credits."}
                   </p>
@@ -3760,11 +3767,11 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                   }`}
                 >
                   {isRunningSoftwareCheck
-                    ? "Running Software Security..."
+                    ? isSoftwareReviewExempt ? "Applying Account Exemption..." : "Running Software Security..."
                     : softwarePassed
                       ? "Software Security Passed"
                       : softwareReviewStatus === "locked"
-                        ? "Run Software Security"
+                        ? isSoftwareReviewExempt ? "Use Account Exemption" : "Run Software Security"
                         : "Software Security Used"}
                 </button> : null}
                 <div data-code-review-schedule-gate="true" className={`rounded-[14px] border p-3 ${canScheduleRobotSlot ? "border-[#008a7a] bg-[#e8f7f3]" : "border-black/8 bg-[#faf9f6]"}`}>
@@ -3775,7 +3782,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                         ? `Master view-only livestream is unlocked${masterLiveTestExpiresAt ? ` until ${new Date(masterLiveTestExpiresAt).toLocaleTimeString()}` : " for the active session"}.`
                         : "Start the 3-minute view-only test to unlock the Master livestream."
                       : canScheduleRobotSlot
-                        ? masterArmCodeSelected ? "Master command validation and software security passed. Request a supervised Master time slot; execution readiness is checked when the session starts." : "Hardware safety and software security passed. You can request a supervised robot time slot now."
+                        ? isSoftwareReviewExempt ? "Command validation passed and your account exemption is applied. Request a supervised robot time slot; execution readiness is checked when the session starts." : masterArmCodeSelected ? "Master command validation and software security passed. Request a supervised Master time slot; execution readiness is checked when the session starts." : "Hardware safety and software security passed. You can request a supervised robot time slot now."
                         : "Time-slot requests unlock only after both certification stages pass."}
                   </p>
                   {canScheduleRobotSlot ? (
