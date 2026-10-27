@@ -239,7 +239,7 @@ export function checkMasterExecutionCode(source: string): SoftwareCheckReport {
         findings.push({ code: "MASTER_CONTRACT_INVALID", line: statement.line, message: error instanceof Error ? error.message : "Invalid Master command." });
       }
     }
-    if (!accepted.length) findings.push({ code: "COMMAND_MISSING", message: "Add at least one supported Master upper-body command." });
+    if (!accepted.length && !findings.length) findings.push({ code: "COMMAND_MISSING", message: "Add at least one supported Master upper-body command." });
     if (accepted.length > 200) findings.push({ code: "COMMAND_LIMIT", message: "Master programs support at most 200 commands." });
   } catch (error) { findings.push({ code: "MASTER_SYNTAX_INVALID", message: error instanceof Error ? error.message : "Invalid Master program." }); }
   const status = findings.length ? "FAIL" : "PASS";

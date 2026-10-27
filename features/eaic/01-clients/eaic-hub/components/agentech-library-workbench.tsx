@@ -3167,7 +3167,9 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
           motionPlan: reviewPlan.trace,
           simulationClips: [],
           simulationError: movementSafety.detail,
-          finalHint: "Submission is locked when movement exceeds the 1.0m physical test boundary.",
+          finalHint: robotModel === "Master"
+            ? movementSafety.detail
+            : "Submission is locked when movement exceeds the 1.0m physical test boundary.",
           movementSafety
         });
         setRequestStatus(movementSafety.detail);

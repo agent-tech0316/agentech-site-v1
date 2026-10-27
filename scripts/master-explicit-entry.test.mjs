@@ -11,6 +11,7 @@ test('Master adjustments require explicit prior bilateral entry', () => {
     const report = checkMasterExecutionCode(source);
     assert.equal(report.status, 'FAIL');
     assert.match(JSON.stringify(report.findings), /enter_stand_hand_guide/);
+    assert.equal(report.findings.length, 1);
   }
   assert.equal(checkMasterExecutionCode(`${entry}\n${adjust}`).status, 'PASS');
   assert.equal(checkMasterExecutionCode('Agentech.wave("right")').status, 'PASS');
