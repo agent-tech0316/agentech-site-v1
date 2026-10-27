@@ -18,19 +18,24 @@ export function masterRecoveryForPlan(plan, sessions, id) {
   if (plan?.commands?.length !== 1 || plan.commands[0].name !== 'restore_stand_hand_guide') return null;
   const unresolved = Object.entries(sessions).filter(([otherId, other]) => String(otherId) !== String(id)
     && other.executionModel === 'master' && other.executionAttemptId && !masterHandoffResolved(sessions, otherId, other));
-  if (unresolved.length !== 1) return null;
-  const [previousId, previous] = unresolved[0];
+  if (!unresolved.length) return null;
+  const [previousId, previous] = unresolved[unresolved.length - 1];
   const owner = previous.executionResult?.owner_binding;
   if (!['completed', 'finished'].includes(previous.status) || previous.executionResult?.outcome !== 'failed'
     || owner?.ownerMode !== 'current-hold' || !owner.requestId || !Number.isInteger(owner.publisherPid) || owner.publisherPid <= 0) return null;
+  if (!unresolved.every(([, other]) => ['completed', 'finished'].includes(other.status)
+    && other.executionResult?.outcome === 'failed'
+    && ['requestId', 'publisherPid', 'ownerMode'].every(key => other.executionResult?.owner_binding?.[key] === owner[key]))) return null;
   return { previous_session_id: String(previousId), previous_attempt_id: previous.executionAttemptId,
-    requestId: owner.requestId, publisherPid: owner.publisherPid, ownerMode: owner.ownerMode };
+    requestId: owner.requestId, publisherPid: owner.publisherPid, ownerMode: owner.ownerMode,
+    previous_attempts: unresolved.map(([sessionId, other]) => ({session_id: String(sessionId), attempt_id: other.executionAttemptId})) };
 }
 
 function recoveryMatches(recovery, id, previous) {
   const owner = previous.executionResult?.owner_binding;
-  return recovery?.previous_session_id === String(id) && recovery.previous_attempt_id === previous.executionAttemptId
-    && recovery.requestId === owner?.requestId && recovery.publisherPid === owner?.publisherPid
+  const attemptMatches = (recovery?.previous_session_id === String(id) && recovery.previous_attempt_id === previous.executionAttemptId)
+    || recovery?.previous_attempts?.some(attempt => attempt.session_id === String(id) && attempt.attempt_id === previous.executionAttemptId);
+  return attemptMatches && recovery.requestId === owner?.requestId && recovery.publisherPid === owner?.publisherPid
     && owner?.ownerMode === 'current-hold';
 }
 

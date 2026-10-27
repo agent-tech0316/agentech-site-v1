@@ -41,6 +41,23 @@ test('camera-only Master audits never authorize execution, even when both review
   assert.doesNotThrow(() => assertMasterExecutableSubmission({ run_mode: 'Software check', ai_security_model: 'review-model' }));
 });
 
+test('restore retries cover failed attempts only when the retained owner is identical', () => {
+  const owner={requestId:'retained',publisherPid:123,ownerMode:'current-hold'};
+  const failed=id=>({executionModel:'master',executionAttemptId:`attempt-${id}`,status:'finished',
+    masterHandoffReady:false,executionResult:{outcome:'failed',owner_binding:{...owner}}});
+  const sessions={40:failed(40),41:failed(41)};
+  const plan={commands:[{name:'restore_stand_hand_guide'}]};
+  const recovery=masterRecoveryForPlan(plan,sessions,42);
+  assert.ok(recovery);
+  assert.equal(masterLaunchBlocker(sessions,42,{start,end,masterRecoveryOwner:recovery},Date.parse(start)),null);
+  const completed={executionModel:'master',masterRecoveryOwner:recovery,masterHandoffReady:true,
+    executionResult:{outcome:'completed',restore_verified:true}};
+  assert.equal(masterLaunchBlocker({...sessions,42:completed},43,{start,end},Date.parse(start)),null);
+  sessions[41].executionResult.owner_binding.publisherPid=456;
+  assert.equal(masterRecoveryForPlan(plan,sessions,42),null);
+  assert.match(masterLaunchBlocker(sessions,42,{start,end,masterRecoveryOwner:recovery},Date.parse(start)),/handoff/);
+});
+
 test('Master binds the trusted deployment to the booking and exact staged plan', () => {
   const result = createMasterSessionDeployment({ enabled: true, host: '192.168.4.152', sdk_root: 'C:/sdk' }, session, item, 'attempt-42');
   assert.equal(result.host, '192.168.4.152');
