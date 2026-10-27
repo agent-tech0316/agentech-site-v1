@@ -16,12 +16,22 @@ test("Master controls expose wall, three front RGB cameras, and RGB-D Color", ()
 
 test("Live camera gates Master controls and keeps the shared Aegies/Navi video path", () => {
   assert.match(camera, /activeRobotModel === "Master"/);
-  assert.match(camera, /activeRobotModel === "Master" \? "master-live-1" : roomName/);
+  assert.match(camera, /isMasterCameraSession \? "master-live-1" : roomName/);
   assert.match(camera, /MasterLiveCameraControls/);
 	assert.match(camera, /MasterLivekitCameraGrid/);
   assert.equal((camera.match(/<video\b/g) ?? []).length, 1);
   assert.match(camera, /Navi live session: live video only/);
   assert.match(camera, /Aegies live session: display-mode captures/);
+});
+
+test("Master defaults to the shared external camera and robot cameras require a user choice", () => {
+  assert.match(camera, /useState<"external" \| "robot">\("external"\)/);
+  assert.match(camera, /isMasterSession && masterCameraSource === "robot"/);
+  assert.match(camera, /External camera/);
+  assert.match(camera, /Robot cameras/);
+  assert.match(camera, /setMasterCameraSource\("external"\)/);
+  assert.match(camera, /setMasterCameraSource\("robot"\)/);
+  assert.match(camera, /const masterConnection = isMasterCameraSession/);
 });
 
 test("production Master view switches between one JPEG wall track and one native H264 track", () => {

@@ -1830,7 +1830,7 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
     settings: data.accessProfiles?.length ?? 0
   };
 
-  if (isGatewayOwnerAccount) {
+  if (isGatewayOwnerAccount && !focusedRobotScheduling) {
     return (
       <div className="rounded-[24px] border border-slate-200 bg-white p-8 shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
         <h1 className="text-3xl font-bold text-slate-950">Opening AI Gateway Admin</h1>
@@ -1839,7 +1839,7 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
     );
   }
 
-  if (isGatewayOwnerAccount) {
+  if (isGatewayOwnerAccount && !focusedRobotScheduling) {
     const caps = adminAiUsage?.caps ?? [];
     const usage = adminAiUsage?.usage ?? [];
     const developerProfiles = adminAiUsage?.developerProfiles ?? [];

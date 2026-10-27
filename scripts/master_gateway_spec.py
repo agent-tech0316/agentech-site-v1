@@ -127,6 +127,7 @@ def validate_master_plan(commands):
     if not isinstance(commands, list) or not 1 <= len(commands) <= 200:
         raise ValueError('Master plan requires 1 through 200 commands')
     results = {}
+    raw_entry_seen = False
     for command in commands:
         if not isinstance(command, dict) or set(command) - {'name', 'args', 'line', 'source_args', 'save_result_as'}:
             raise ValueError('invalid Master command record')
@@ -134,6 +135,13 @@ def validate_master_plan(commands):
         if command.get('line') is not None and (type(command['line']) is not int or command['line'] < 1):
             raise ValueError('invalid Master command line')
         spec = MASTER_COMMANDS[command['name']]
+        if spec['backend'] == 'raw_upper_body' and not raw_entry_seen:
+            raise ValueError('Master adjustments require Agentech.enter_stand_hand_guide("both") before adjustment commands')
+        if command['name'] == 'enter_stand_hand_guide':
+            raw_entry_seen = True
+        elif spec['backend'] in {'native_preset', 'native_golf', 'movement_a'} or command['name'] in {
+                'restore_stand_hand_guide', 'restore_stand_default', 'release_returned_hold', 'release_return_hold'}:
+            raw_entry_seen = False
         for key, parameter in spec['parameters'].items():
             if parameter['type'] == 'result_ref' and key in command['args']:
                 reference = command['args'][key]['$master_result']

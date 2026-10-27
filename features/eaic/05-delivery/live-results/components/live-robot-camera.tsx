@@ -90,6 +90,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [teachingViewer, setTeachingViewer] = useState(false);
   const [activeRobotModel, setActiveRobotModel] = useState<LiveRobotModel | null>(null);
+  const [masterCameraSource, setMasterCameraSource] = useState<"external" | "robot">("external");
   const [localMasterPreview, setLocalMasterPreview] = useState(false);
   const [masterSelection, setMasterSelection] = useState<MasterViewSelection>({ mode: "wall" });
   const [masterTracksByName, setMasterTracksByName] = useState<Map<string, RemoteVideoTrack>>(new Map());
@@ -101,7 +102,12 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
   const masterPreview = process.env.NODE_ENV === "development"
     && (process.env.NEXT_PUBLIC_MASTER_CAMERA_PREVIEW === "1" || localMasterPreview);
   const isMasterSession = hasActiveSession && activeRobotModel === "Master";
-  const showMasterControls = isMasterSession || masterPreview;
+  const isMasterCameraSession = isMasterSession && masterCameraSource === "robot";
+  const showMasterControls = isMasterCameraSession || masterPreview;
+
+  useEffect(() => {
+    setMasterCameraSource("external");
+  }, [activeSessionId]);
 
   const changeMasterSelection = useCallback((selection: MasterViewSelection) => {
     masterSelectionRef.current = selection;
@@ -111,12 +117,12 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
   useEffect(() => {
     masterSelectionRef.current = masterSelection;
     const room = activeRoomRef.current;
-    if (room && isMasterSession) applyMasterSubscriptions(room, masterSelection);
-    if (isMasterSession && isViewing) setStatus("Switching camera...");
-  }, [isMasterSession, isViewing, masterSelection]);
+    if (room && isMasterCameraSession) applyMasterSubscriptions(room, masterSelection);
+    if (isMasterCameraSession && isViewing) setStatus("Switching camera...");
+  }, [isMasterCameraSession, isViewing, masterSelection]);
 
   useEffect(() => {
-    if (!isMasterSession || !isViewing) return;
+    if (!isMasterCameraSession || !isViewing) return;
     const expected = expectedMasterTrack(masterSelection);
     if (masterTracksByName.has(expected.trackName)) {
       setStatus("Live robot camera connected.");
@@ -129,10 +135,10 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
         : "The JPEG camera wall did not arrive. Retry Camera Wall.");
     }, 15000);
     return () => window.clearTimeout(timer);
-  }, [isMasterSession, isViewing, masterSelection, masterTracksByName]);
+  }, [isMasterCameraSession, isViewing, masterSelection, masterTracksByName]);
 
   useEffect(() => {
-    if (!isMasterSession || activeSessionId === null) return;
+    if (!isMasterCameraSession || activeSessionId === null) return;
     let active = true;
     async function readMasterSelection() {
       try {
@@ -145,7 +151,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
     }
     void readMasterSelection();
     return () => { active = false; };
-  }, [activeSessionId, changeMasterSelection, isMasterSession]);
+  }, [activeSessionId, changeMasterSelection, isMasterCameraSession]);
 
   useEffect(() => {
     if (process.env.NODE_ENV !== "development") return;
@@ -251,7 +257,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
 
     let activeRoom: Room | null = null;
     const videoElement = videoRef.current;
-    const masterConnection = activeRobotModel === "Master";
+    const masterConnection = isMasterCameraSession;
     let isMounted = true;
     let videoConnected = false;
     let noVideoTimer: ReturnType<typeof setTimeout> | null = null;
@@ -302,7 +308,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
     async function connect() {
       try {
         setStatus("Connecting to live robot camera...");
-        const targetRoomName = activeRobotModel === "Master" ? "master-live-1" : roomName;
+        const targetRoomName = isMasterCameraSession ? "master-live-1" : roomName;
         const response = await fetch(`/api/livekit-token?room=${encodeURIComponent(targetRoomName)}`, { cache: "no-store" });
         const payload = (await response.json()) as { token?: string; error?: string; robotModel?: string };
 
@@ -428,7 +434,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
       if (activeRoomRef.current === activeRoom) activeRoomRef.current = null;
       activeRoom?.disconnect();
     };
-  }, [roomName, isViewing, receiveCapture, activeRobotModel]);
+  }, [roomName, isViewing, receiveCapture, activeRobotModel, isMasterCameraSession]);
 
   useEffect(() => {
     if (!isViewing) {
@@ -483,15 +489,29 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
 
   return (
     <div ref={containerRef}>
+    {isMasterSession ? (
+      <div role="group" aria-label="Master camera source" className="mb-3 flex flex-wrap gap-2">
+        <button type="button" aria-pressed={masterCameraSource === "external"}
+          onClick={() => setMasterCameraSource("external")}
+          className="rounded border border-[#93c5fd] bg-[#101d2e] px-4 py-2 text-sm text-[#dbeafe] aria-pressed:bg-[#1a73e8] aria-pressed:text-white">
+          External camera
+        </button>
+        <button type="button" aria-pressed={masterCameraSource === "robot"}
+          onClick={() => setMasterCameraSource("robot")}
+          className="rounded border border-[#93c5fd] bg-[#101d2e] px-4 py-2 text-sm text-[#dbeafe] aria-pressed:bg-[#1a73e8] aria-pressed:text-white">
+          Robot cameras
+        </button>
+      </div>
+    ) : null}
     {showMasterControls ? (
       <MasterLiveCameraControls
-        preview={masterPreview && !isMasterSession}
+        preview={masterPreview && !isMasterCameraSession}
         selection={masterSelection}
         onSelectionChange={changeMasterSelection}
       />
     ) : null}
     <div className={`mb-3 border px-4 py-3 text-sm leading-6 ${
-      isMasterSession
+      isMasterCameraSession
         ? "border-[#31506a] bg-[#101d2e] text-[#dbeafe]"
         : isNaviSession
         ? "border-[#31506a] bg-[#101d2e] text-[#dbeafe]"
@@ -499,8 +519,10 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
           ? "border-[#31583a] bg-[#102015] text-[#dfffe0]"
           : "border-[#2a3440] bg-[#0d1117] text-[#aeb8c2]"
     }`}>
-      {isMasterSession
-        ? "Master live session: choose the four-camera wall or focus one approved color camera."
+      {isMasterCameraSession
+        ? "Master robot cameras: choose the camera wall or an individual camera."
+        : isMasterSession
+        ? "Master live session: external camera. Choose Robot cameras to view the robot camera wall or an individual camera."
         : isNaviSession
         ? "Navi live session: live video only. Navi does not support Agentech.capture_image(), so no capture preview is shown."
         : showLiveCapturePreview
@@ -508,8 +530,8 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
           : "No active robot session. Saved Aegies captures remain available in the archive below."}
     </div>
     <div className={showLiveCapturePreview ? "grid gap-3 lg:grid-cols-2" : "grid gap-3"}>
-      <div className={isMasterSession ? "relative min-h-64 w-full bg-black" : "relative aspect-video min-h-64 w-full bg-black"}>
-        {isMasterSession ? (
+      <div className={isMasterCameraSession ? "relative min-h-64 w-full bg-black" : "relative aspect-video min-h-64 w-full bg-black"}>
+        {isMasterCameraSession ? (
           <MasterLivekitCameraGrid selection={masterSelection} tracksByName={masterTracksByName} />
         ) : (
           <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover" />

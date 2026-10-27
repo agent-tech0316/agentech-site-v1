@@ -5,6 +5,12 @@ import { loadTypeScriptModule } from "./test-utils/load-typescript-module.mjs";
 
 const workbench = readFileSync(new URL("../features/eaic/01-clients/eaic-hub/components/agentech-library-workbench.tsx", import.meta.url), "utf8");
 
+test("gateway owner accounts retain the focused robot booking form", () => {
+  const dashboard = readFileSync(new URL("../components/account-dashboard.tsx", import.meta.url), "utf8");
+  assert.match(dashboard, /if \(isGatewayOwnerAccount && !focusedRobotScheduling\) \{/);
+  assert.doesNotMatch(dashboard, /if \(isGatewayOwnerAccount\) \{/);
+});
+
 test("Master uses its upper-body contract and offers the reviewed starter in normal certification", () => {
   assert.match(workbench, /checkMasterExecutionCode\(code\)\.commands/);
   assert.match(workbench, /data-master-arm-starter/);
@@ -30,11 +36,11 @@ test("Master result clearly distinguishes static checks from an unavailable simu
   assert.doesNotMatch(workbench, /Walking and waist commands are excluded/);
 });
 
-test("Master explains verified raw guidance and the optional explicit entry call", () => {
+test("Master explains verified raw guidance and the required explicit entry call", () => {
   assert.match(workbench, /data-master-guidance-prerequisite/);
   assert.match(workbench, /Adjustments require raw STAND_DEFAULT guidance/);
   assert.match(workbench, /Agentech\.enter_stand_hand_guide\(&quot;both&quot;\)/);
-  assert.match(workbench, /first adjustment enters and verifies guidance through the SDK before moving/);
+  assert.match(workbench, /Code without explicit entry is rejected/);
 });
 
 test("Master scheduled reference covers every allowed method once and keeps unsupported actions out", () => {

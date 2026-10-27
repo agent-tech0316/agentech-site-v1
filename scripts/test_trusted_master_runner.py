@@ -23,7 +23,8 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.plan = {'version': 2, 'robot_model': 'master', 'submission_id': 'sub', 'source_sha256': 'a'*64,
-                     'commands': [{'name': 'adjust_right_elbow', 'args': {'degrees': 5}, 'line': 1},
+                     'commands': [{'name': 'enter_stand_hand_guide', 'args': {'side': 'both'}, 'line': 1},
+                                  {'name': 'adjust_right_elbow', 'args': {'degrees': 5}, 'line': 2},
                                   {'name': 'adjust_left_elbow', 'args': {'degrees': 5}, 'line': 2}]}
         self.plan_path = self.root / 'plan.json'
         self.plan_path.write_text(json.dumps(self.plan), encoding='utf-8')
@@ -39,7 +40,8 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.adapter.check_ready.return_value = {'requestId': 'request', 'publisherPid': 42, 'ownerMode': 'current-hold',
             'aimdkMcMode': 'STAND_DEFAULT', 'nativeOwner': 'native-mc', 'sdk_fresh_ready_verified': True,
             'guidedSides': ['left', 'right']}
-        self.adapter.execute.return_value = {'accepted': True, 'phase': 'adjusted-hold', 'fault': None,
+        self.adapter.execute.return_value = {'rawModeVerified': True, 'ownerBinding': self.adapter.check_ready.return_value,
+            'accepted': True, 'phase': 'adjusted-hold', 'fault': None,
             'requestId': 'request', 'nonce': 1, 'publisherPid': 42, 'endpointVerified': True}
 
     def run_plan(self, **kwargs):
@@ -50,7 +52,7 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         receipt = self.run_plan()
         self.assertEqual(receipt['schema_version'], 1)
         self.assertEqual(receipt['outcome'], 'completed')
-        self.assertEqual(receipt['completed_count'], 2)
+        self.assertEqual(receipt['completed_count'], 3)
         self.assertEqual(receipt['attempt_id'], 'attempt')
         self.assertTrue(receipt['handoff_ready'])
         self.assertEqual(receipt['handoff_mode'], 'retained-hold')
@@ -136,7 +138,8 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         current = [1792670400]
         def command(name, arguments):
             current[0] = self.runner._timestamp(self.deployment['scheduled_end']) + 1
-            return {'accepted': True, 'phase': 'adjusted-hold', 'fault': None,
+            return {'rawModeVerified': True, 'ownerBinding': self.adapter.check_ready.return_value,
+                'accepted': True, 'phase': 'adjusted-hold', 'fault': None,
                 'requestId': 'request', 'nonce': 1, 'publisherPid': 42}
         self.adapter.execute.side_effect = command
         receipt = self.runner.execute_plan(self.plan_path, self.deployment_path, self.result,
@@ -188,16 +191,19 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.adapter.prepare_mode.assert_not_called()
 
     def test_undo_receives_actual_successful_result_from_same_session(self):
-        self.replace_commands([{'name': 'adjust_waist', 'args': {'yaw': 1}, 'save_result_as': 'move'},
+        self.replace_commands([{'name': 'enter_stand_hand_guide', 'args': {'side': 'both'}},
+            {'name': 'adjust_waist', 'args': {'yaw': 1}, 'save_result_as': 'move'},
             {'name': 'undo_waist', 'args': {'movement': {'$master_result': 'move'}}}])
         first = {'measuredEndpointVerified': True, 'poweredHoldVerified': True, 'sdkSignature': 'test-bound-result'}
         def execute(name, arguments):
+            if name == 'enter_stand_hand_guide':
+                return {'rawModeVerified': True, 'ownerBinding': self.adapter.check_ready.return_value}
             if name == 'undo_waist': self.assertIs(arguments['movement'], first)
             return first
         self.adapter.execute.side_effect = execute
         receipt = self.run_plan()
         self.assertEqual(receipt['outcome'], 'completed')
-        self.assertEqual(receipt['completed_count'], 2)
+        self.assertEqual(receipt['completed_count'], 3)
 
     def test_forged_undo_reference_refused_before_adapter(self):
         self.replace_commands([{'name': 'undo_waist', 'args': {'movement': {'$master_result': 'missing'}}}])
@@ -233,7 +239,7 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.assertEqual(receipt['outcome'], 'completed')
         self.assertEqual(receipt['submission_id'], 7)
 
-    def test_automatic_mode_entry_failure_blocks_all_adjustments(self):
+    def test_explicit_mode_entry_failure_blocks_all_adjustments(self):
         self.adapter.prepare_mode.side_effect = RuntimeError('raw entry failed native balance gate')
         receipt = self.run_plan()
         self.assertEqual(receipt['outcome'], 'failed')
@@ -264,7 +270,7 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         adapter.robot = Mock()
         adapter.prepare_mode = Mock(side_effect=RuntimeError('entry refused'))
         with self.assertRaisesRegex(RuntimeError, 'entry refused'):
-            adapter.execute('adjust_right_elbow', {'degrees': 5})
+            adapter.execute('enter_stand_hand_guide', {'side': 'both'})
         adapter.robot.adjust_right_elbow.assert_not_called()
 
     def test_expiry_after_raw_entry_refuses_requested_adjustment(self):
@@ -276,7 +282,7 @@ class TrustedMasterRunnerTests(unittest.TestCase):
             if expired[0]: raise RuntimeError('session expired after entry')
         adapter.admission_check = admission
         with self.assertRaisesRegex(RuntimeError, 'expired after entry'):
-            adapter.execute('adjust_right_elbow', {'degrees': 5})
+            adapter.execute('enter_stand_hand_guide', {'side': 'both'})
         adapter.robot.adjust_right_elbow.assert_not_called()
 
     @unittest.skipUnless(shutil.which('node'), 'Node is required for the gateway receipt integration')

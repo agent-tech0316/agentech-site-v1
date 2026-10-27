@@ -29,12 +29,13 @@ from a successful `adjust_waist` in the same program, such as
 cannot supply undo evidence. The full SDK documentation remains complete;
 documentation of a method does not add it to this execution allowlist.
 
-An explicit `Agentech.enter_stand_hand_guide(side="both")` is recommended but
-optional. At execution, the runner reuses a verified current bilateral raw
-`STAND_DEFAULT` owner or enters guidance through the existing SDK before the
-first adjustment. It verifies mode and owner, then checks the booking deadline
-again before sending the requested adjustment. Entry failure prevents the
-adjustment. It never substitutes `MANIPULATE_DEFAULT`.
+An explicit `Agentech.enter_stand_hand_guide(side="both")` is required before
+arm or waist adjustments. Certification and the trusted plan validator reject
+omitted or late entry before any command runs. Only the explicit entry call may
+enter guidance through the existing SDK; later adjustments recheck that same
+owner and never bootstrap another one. Restore/release and native-mode operations
+require another explicit entry before subsequent adjustments. Booking expiry,
+controller faults, and owner changes prevent further dispatch.
 
 Native standing presets require fresh native-ready standing evidence. The
 separate proposed rule for switching from raw guidance to presets is undecided.
@@ -106,6 +107,15 @@ Gateway configuration:
 These flags describe deployment configuration, not live physical readiness.
 An unconfigured Master booking is refused before charging booking credits.
 
+Master sessions default to the shared external OBS/LiveKit camera used by Navi.
+Choosing **Robot cameras** opens the dedicated Master camera wall and individual
+robot-camera views; choosing **External camera** returns to the shared feed.
+
+The gateway allows 180 seconds for the SDK client acknowledgment while preserving
+the SDK's default motion speed and force. Adaptive trajectories and settling can
+outlast the SDK client's short default wait. A timeout still fails the session;
+relative adjustments are never replayed automatically.
+
 Deploy the bridge together with `master-session-gateway.mjs`,
 `robot-stream-session-policy.mjs`, `robot-session-execution-result.mjs`,
 `compile-robot-plan.py`, `master-command-contract.json`, `master_gateway_spec.py`,
@@ -124,7 +134,7 @@ npm.cmd run typecheck
 npm.cmd run build
 ```
 
-The focused suites cover optional/automatic mode entry, expiry during entry,
+The focused suites cover mandatory explicit mode entry, expiry during entry,
 invalid plans, target lease conflicts, timeouts, faults, receipt identities,
 view-only rejection, booking authorization and billing, and the normal UI path.
 These checks and SDK dry runs do not establish physical qualification.

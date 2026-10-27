@@ -11,7 +11,7 @@ export const masterScheduledMethodGroups: readonly MasterScheduledMethodGroup[] 
   {
     id: "adjustments",
     title: "Guidance, both arms and waist",
-    description: "Arm and waist adjustments use verified raw STAND_DEFAULT guidance. Explicit bilateral entry is optional; the first adjustment enters and verifies guidance through the SDK. undo_waist accepts only a saved result from a successful adjust_waist call in the same program.",
+    description: "Arm and waist adjustments use verified raw STAND_DEFAULT guidance. An explicit Agentech.enter_stand_hand_guide(\"both\") call is required before adjustments; omitted entry is rejected. undo_waist accepts only a saved result from a successful adjust_waist call in the same program.",
     methods: ["enter_stand_hand_guide", "adjust_right_shoulder", "adjust_left_shoulder", "adjust_right_elbow", "adjust_left_elbow", "adjust_both_elbows", "adjust_elbow", "adjust_right_wrist", "adjust_left_wrist", "adjust_wrist", "adjust_upper_body", "adjust_waist", "return_waist_to_neutral", "undo_waist"],
   },
   {

@@ -187,13 +187,18 @@ class SDKAdapter:
         if not Path(agentech.__file__).resolve().is_relative_to(root):
             raise RuntimeError('another SDK is already imported; refusing mixed deployment')
         from agentech import Master
+        from agentech.robots.master.standing_current_hold_control import StandingOwnerNotReady
+        self._owner_not_ready = StandingOwnerNotReady
         password = os.environ.get('AGENTECH_MASTER_SSH_PASSWORD')
         if not password:
             raise ValueError('AGENTECH_MASTER_SSH_PASSWORD is required')
         options = dict(host=config['host'], port=config.get('port', 21274),
             ssh_username=config.get('ssh_username', 'run'), ssh_port=config.get('ssh_port', 22),
             ssh_password=password, relay_url=config.get('relay_url'),
-            standing_guided_sides='both')
+            standing_guided_sides='both', seated_timeout=180.0)
+        # This bounds client acknowledgment waiting, not motion speed or force.
+        # Default adaptive trajectories may outlast the SDK's 25-second client
+        # default. Never retry a relative command after an ambiguous timeout.
         self.planner = Master(dry_run=True, **options)
         self.robot = Master(dry_run=False, **options)
         if config.get('standing_deployment') is not None:
@@ -201,6 +206,7 @@ class SDKAdapter:
             # validates the absolute robot path before any bootstrap operation.
             os.environ['AGENTECH_MASTER_STANDING_DEPLOYMENT'] = config['standing_deployment']
         self.binding = None
+        self.explicit_raw_entry = False
         self.entry_in_progress = False
         self._owner_factory = self.robot._standing_current_hold_control
         deployment = config.get('standing_deployment')
@@ -259,7 +265,15 @@ class SDKAdapter:
                 raise RuntimeError('Movement A owner identity changed')
             return owner
         if self.binding is None:
-            owner = self._owner_factory().inspect_active_ready(required_sides=('right',))
+            control = self._owner_factory()
+            try:
+                owner = control.inspect_active_ready(required_sides=('left', 'right'))
+            except self._owner_not_ready as bilateral_error:
+                # The SDK binds raw guidance to the exact bilateral return sides.
+                # Only the separate historical Movement A owner uses right-only.
+                owner = control.inspect_active_ready(required_sides=('right',))
+                if not isinstance(owner, dict) or owner.get('ownerMode') != 'movement-a':
+                    raise bilateral_error
             if owner is None:
                 return self.native_ready(require_presets=False)
             if owner.get('ownerMode') == 'movement-a':
@@ -318,6 +332,7 @@ class SDKAdapter:
         self._admit()
         backend = MASTER_COMMANDS[name]['backend']
         if backend == 'movement_a':
+            self.explicit_raw_entry = False
             result = self.movement_a_adapter().execute()
             self.binding = result['ownerBinding']
             return result
@@ -325,15 +340,22 @@ class SDKAdapter:
         # ensure_ready also uses ExistingOwnerControl, closing the bootstrap race.
         # Native stiffness restore has its own stricter no-publisher admission.
         if name == 'enter_stand_hand_guide':
+            self.explicit_raw_entry = False
             owner = self.prepare_mode()
             self._admit()
+            self.explicit_raw_entry = True
             return {'operation': 'enter-stand-hand-guide', 'rawModeVerified': True,
                     'dry_run': False, 'ownerBinding': owner}
         if backend == 'raw_upper_body':
-            self.prepare_mode()
+            if not getattr(self, 'explicit_raw_entry', False):
+                raise RuntimeError('Master adjustments require Agentech.enter_stand_hand_guide("both") before adjustment commands')
+            self.check_ready()
         elif backend == 'native_preset':
             self.native_ready()
         self._admit()
+        if backend in {'native_preset', 'native_golf'} or name in {
+                'restore_stand_hand_guide', 'restore_stand_default', 'release_returned_hold', 'release_return_hold'}:
+            self.explicit_raw_entry = False
         if backend == 'native_golf':
             # The existing composite SDK operation owns its explicit raw/native
             # transitions and admission. Do not replace them with a gateway mode
@@ -442,7 +464,7 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
             adapter.validate(plan['commands'])
             admitted()
             first_backend = MASTER_COMMANDS[plan['commands'][0]['name']]['backend']
-            if first_backend in {'raw_upper_body', 'mode_entry'}:
+            if first_backend == 'mode_entry':
                 adapter.prepare_mode()
                 receipt['owner_binding'] = adapter.check_ready()
             elif first_backend == 'native_preset':

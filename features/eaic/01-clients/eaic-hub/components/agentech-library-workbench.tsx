@@ -3493,7 +3493,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                     </button>
                     <p className="text-xs leading-5 text-[#5f6368]">Use an example or upload your own supported Master code. No walking.</p>
                     <p data-master-guidance-prerequisite="true" className="w-full text-xs leading-5 text-[#5f6368]">
-                      Adjustments require raw STAND_DEFAULT guidance. You can enter it explicitly with <code>Agentech.enter_stand_hand_guide(&quot;both&quot;)</code>; otherwise, the first adjustment enters and verifies guidance through the SDK before moving.
+                      Adjustments require raw STAND_DEFAULT guidance. Add <code>Agentech.enter_stand_hand_guide(&quot;both&quot;)</code> before adjustments. Code without explicit entry is rejected; the gateway does not enter automatically.
                     </p>
                     <p data-master-native-preset-prerequisite="true" className="w-full text-xs leading-5 text-[#5f6368]">
                       Movement A uses the retained SDK right-arm preset. Native standing gestures require a verified native-ready state; no automatic raw-to-preset return is added.

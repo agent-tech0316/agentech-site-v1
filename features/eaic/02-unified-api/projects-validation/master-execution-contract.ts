@@ -199,6 +199,7 @@ export function checkMasterExecutionCode(source: string): SoftwareCheckReport {
   try {
     if (source.length > 64_000) throw new Error("Master programs must be at most 64,000 characters.");
     let setupSeen = false;
+    let rawEntrySeen = false;
     const importedConstants: Record<string, string> = Object.create(null);
     const savedResults = new Set<string>();
     for (const statement of sourceStatements(source)) {
@@ -229,6 +230,9 @@ export function checkMasterExecutionCode(source: string): SoftwareCheckReport {
         const args = new LiteralParser(raw, importedConstants, savedResults).arguments(namespace && name === "heart" ? [] : spec.positional ?? [], resultParameters);
         if (namespace && name === "heart" && (Object.hasOwn(args, "hand") || Object.hasOwn(args, "posture"))) throw new Error("standing_actions.heart() accepts only operator_ready and feet_planted.");
         validateArguments(name, spec, args);
+        if (spec.backend === "raw_upper_body" && !rawEntrySeen) throw new Error('Master adjustments require Agentech.enter_stand_hand_guide("both") before adjustment commands.');
+        if (name === "enter_stand_hand_guide") rawEntrySeen = true;
+        else if (["native_preset", "native_golf", "movement_a"].includes(spec.backend ?? "") || ["restore_stand_hand_guide", "restore_stand_default", "release_returned_hold", "release_return_hold"].includes(name)) rawEntrySeen = false;
         accepted.push(name);
         if (saveResultAs) savedResults.add(saveResultAs);
       } catch (error) {
@@ -241,6 +245,6 @@ export function checkMasterExecutionCode(source: string): SoftwareCheckReport {
   const status = findings.length ? "FAIL" : "PASS";
   return { status, commands: accepted, findings, checklist: [
     { name: "Master upper-body SDK contract", status, detail: findings.length ? "Correct the listed SDK contract errors." : "Literal upper-body SDK calls passed static validation. Walking is excluded." },
-    { name: "Runtime checks", status, detail: "The gateway enters or verifies bilateral raw mode before the first adjustment when entry is omitted, then checks posture, ownership, remaining joint travel, timing and torque limits. Static validation does not establish physical qualification." },
+    { name: "Runtime checks", status, detail: 'Adjustments require an explicit Agentech.enter_stand_hand_guide("both") call first. The gateway verifies posture, ownership, remaining joint travel, timing and torque limits. Static validation does not establish physical qualification.' },
   ] };
 }

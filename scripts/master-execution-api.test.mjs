@@ -10,20 +10,19 @@ const root = "features/eaic/02-unified-api/";
 const rawEntry = 'Agentech.enter_stand_hand_guide(side="both")';
 const inRawMode = code => `${rawEntry}\n${code}`;
 
-test("Master supports preferred explicit bilateral raw-mode entry and runtime automatic entry when omitted", () => {
+test("Master requires explicit bilateral raw-mode entry", () => {
   const { checkMasterExecutionCode, masterExecutionStarterCode } = loadTypeScriptModule(`${root}projects-validation/master-execution-contract.ts`);
   const move = 'Agentech.adjust_both_elbows(degrees=5)';
-  assert.equal(checkMasterExecutionCode(move).status, "PASS");
+  assert.equal(checkMasterExecutionCode(move).status, "FAIL");
   assert.equal(checkMasterExecutionCode(inRawMode(move)).status, "PASS");
   for (const source of [
     `Agentech.enter_stand_hand_guide(side="right")\n${move}`,
     `Agentech.enter_stand_hand_guide()\n${move}`,
   ]) assert.equal(checkMasterExecutionCode(source).status, "FAIL", source);
   for (const source of [
-    `${rawEntry}\n${rawEntry}\n${move}`,
     `${rawEntry}\nAgentech.restore_stand_hand_guide()\n${move}`,
     `${rawEntry}\nAgentech.restore_stand_default()\n${move}`,
-  ]) assert.equal(checkMasterExecutionCode(source).status, "PASS", source);
+  ]) assert.equal(checkMasterExecutionCode(source).status, "FAIL", source);
   assert.equal(checkMasterExecutionCode(`${rawEntry}\nAgentech.restore_stand_hand_guide()\n${rawEntry}\n${move}`).status, "PASS");
   assert.equal(checkMasterExecutionCode(`${rawEntry}\nAgentech.return_waist_to_neutral()\n${move}`).status, "PASS");
   assert.match(masterExecutionStarterCode, /enter_stand_hand_guide\(side="both"\)/);
@@ -45,7 +44,7 @@ test("Master schedules connected standing presets, arm and waist sequences, and 
     'Agentech.stiff("soft")', 'Agentech.stiff("hard", operator_ready=True, mechanically_supported=True)',
     'Agentech.stay(3)',
     'Agentech.adjust_upper_body(right_arm={"wrist_yaw": 1}, torque={"right_wrist_yaw_joint": 0.2})',
-  ]) assert.equal(checkMasterExecutionCode(code).status, 'PASS', code);
+  ]) assert.equal(checkMasterExecutionCode(inRawMode(code)).status, 'PASS', code);
   for (const code of [
     'Agentech.wave("both")', 'Agentech.wave()', 'Agentech.heart(posture="sit")',
     'Agentech.stiff("passive")', 'Agentech.stay(301)', 'Agentech.stay(0)',
@@ -76,10 +75,10 @@ test("Master normalizes only canonical imported constants and supported standing
 
 test("Master undo accepts only an earlier captured waist adjustment result", () => {
   const { checkMasterExecutionCode } = loadTypeScriptModule(`${root}projects-validation/master-execution-contract.ts`);
-  const program = 'waist_move = Agentech.adjust_waist(yaw=2)\nAgentech.undo_waist(waist_move, max_duration_seconds=8)';
+  const program = rawEntry + '\n' + 'waist_move = Agentech.adjust_waist(yaw=2)\nAgentech.undo_waist(waist_move, max_duration_seconds=8)';
   const accepted = checkMasterExecutionCode(program);
   assert.equal(accepted.status, 'PASS');
-  assert.deepEqual(accepted.commands, ['adjust_waist', 'undo_waist']);
+  assert.deepEqual(accepted.commands, ['enter_stand_hand_guide', 'adjust_waist', 'undo_waist']);
   assert.equal(checkMasterExecutionCode(program.replace('undo_waist(waist_move,', 'undo_waist(movement=waist_move,')).status, 'PASS');
   for (const source of [
     'Agentech.undo_waist(waist_move)',
@@ -265,7 +264,7 @@ test("Master booking requires deployment contract and rechecks the saved approve
   const config = { AGENTECH_MASTER_EXECUTION_ENABLED: "true", AGENTECH_MASTER_GATEWAY_PROTOCOL: "master-arm-session-v1" };
   assert.equal(masterBookingBlocker(code, config), null);
   assert.equal(masterBookingBlocker('Agentech.forward()', config).errorCode, "MASTER_PROGRAM_INVALID");
-  assert.equal(masterBookingBlocker('Agentech.adjust_right_elbow(degrees=5)', config), null);
+  assert.equal(masterBookingBlocker('Agentech.adjust_right_elbow(degrees=5)', config).errorCode, "MASTER_PROGRAM_INVALID");
 });
 
 test("normal booking preserves account review and billing gates before creating a Master reservation", () => {
