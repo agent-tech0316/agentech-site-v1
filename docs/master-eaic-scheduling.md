@@ -116,6 +116,18 @@ the SDK's default motion speed and force. Adaptive trajectories and settling can
 outlast the SDK client's short default wait. A timeout still fails the session;
 relative adjustments are never replayed automatically.
 
+After a failed Master session, a separately reviewed and booked program containing
+only `Agentech.restore_stand_hand_guide()` can use the SDK's qualified fault recovery.
+The gateway binds it to the failed attempt's exact request ID and publisher PID;
+the SDK must freshly admit that retained owner before dispatch. The original failed
+receipt remains failed. Later sessions become eligible only after the new restore
+verifies both arms and the waist and fresh post-release native ownership.
+
+Master receipts retain complete SDK endpoint, warning, and timing evidence within
+a 16 MiB limit. Previously finalized receipts rejected by the generic 512 KiB
+limit are read and identity-checked once under the Master limit; no command is
+replayed and malformed or mismatched results still fail closed.
+
 Deploy the bridge together with `master-session-gateway.mjs`,
 `robot-stream-session-policy.mjs`, `robot-session-execution-result.mjs`,
 `compile-robot-plan.py`, `master-command-contract.json`, `master_gateway_spec.py`,

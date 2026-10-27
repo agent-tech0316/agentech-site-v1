@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
-import { masterLaunchBlocker, createMasterSessionDeployment, parseMasterExecutionResult, assertMasterExecutableSubmission } from './master-session-gateway.mjs';
+import { masterLaunchBlocker, masterRecoveryForPlan, masterRecoveryForStagedPlan, masterReceiptNeedsReload, createMasterSessionDeployment, parseMasterExecutionResult, assertMasterExecutableSubmission } from './master-session-gateway.mjs';
+import { createHash } from 'node:crypto';
 import { endSessionCleanupPolicy } from './robot-stream-session-policy.mjs';
 
 const start = '2026-10-23T01:00:00.000Z';
@@ -9,6 +10,30 @@ const end = '2026-10-23T01:05:00.000Z';
 const hash = 'a'.repeat(64);
 const session = { id: 42, scheduled_start: start, scheduled_end: end };
 const item = { executionSubmissionId: 7, executionSourceSha256: hash, executionPlanSha256: hash };
+
+test('only a restore-only plan can recover the exact failed owner without asserting a healthy handoff', () => {
+  const owner = {requestId:'fault-owner', publisherPid:123, ownerMode:'current-hold'};
+  const previous = {executionModel:'master', executionAttemptId:'failed-attempt', status:'finished', end:'2026-10-22T00:00:00Z',
+    masterHandoffReady:false, executionResult:{outcome:'failed', owner_binding:owner}};
+  const sessions = {41:previous};
+  const plan = {commands:[{name:'restore_stand_hand_guide',args:{}}]};
+  const recovery = masterRecoveryForPlan(plan, sessions, 42);
+  const bytes = Buffer.from(JSON.stringify(plan));
+  assert.deepEqual(masterRecoveryForStagedPlan(bytes,createHash('sha256').update(bytes).digest('hex'),sessions,42),recovery);
+  assert.throws(() => masterRecoveryForStagedPlan(bytes,'f'.repeat(64),sessions,42), /hash changed/);
+  assert.equal(recovery.previous_session_id,'41');
+  assert.equal(masterLaunchBlocker(sessions,42,{start,end,masterRecoveryOwner:recovery},Date.parse(start)),null);
+  assert.equal(previous.masterHandoffReady,false);
+  assert.match(masterLaunchBlocker(sessions,42,{start,end},Date.parse(start)),/handoff/);
+  assert.equal(masterRecoveryForPlan({commands:[...plan.commands,{name:'adjust_right_elbow',args:{degrees:45}}]},sessions,42),null);
+  assert.match(masterLaunchBlocker({41:{...previous,status:'running'}},42,{start,end,masterRecoveryOwner:recovery},Date.parse(start)),/running/);
+  assert.match(masterLaunchBlocker({41:{...previous,end}},42,{start,end,masterRecoveryOwner:recovery},Date.parse(start)),/window/);
+  assert.match(masterLaunchBlocker(sessions,42,{start,end,masterRecoveryOwner:{...recovery,publisherPid:999}},Date.parse(start)),/handoff/);
+  const recovered = {...previous, executionAttemptId:'restore-attempt', masterRecoveryOwner:recovery,masterHandoffReady:true,
+    executionResult:{outcome:'completed',restore_verified:true}};
+  assert.equal(masterLaunchBlocker({...sessions,42:recovered},43,{start,end},Date.parse(start)),null);
+  assert.match(masterLaunchBlocker({...sessions,42:{...recovered,executionResult:{outcome:'failed',restore_verified:true}}},43,{start,end},Date.parse(start)),/handoff/);
+});
 
 test('camera-only Master audits never authorize execution, even when both review fields pass', () => {
   assert.throws(() => assertMasterExecutableSubmission({ run_mode: 'Master live stream test (view only)', ai_security_model: 'view-only-test-bypass' }), /view-only/);
@@ -67,6 +92,24 @@ test('Master receipts preserve execution versus handoff and reject foreign attem
   }
 });
 
+test('Master preserves bounded detailed SDK evidence beyond the generic Aegis receipt size', () => {
+  const value = receipt();
+  value.commands[0].result.sdkEvidence = 'x'.repeat(600 * 1024);
+  assert.equal(parseMasterExecutionResult(JSON.stringify(value),expected).commands[0].result.sdkEvidence.length,600*1024);
+  value.commands[0].result.sdkEvidence = 'x'.repeat(16 * 1024 * 1024);
+  assert.throws(() => parseMasterExecutionResult(JSON.stringify(value),expected), /size/);
+});
+
+test('receipt size migration reads the existing Master artifact once and does not replay execution', () => {
+  const item = {executionModel:'master', executionResultCollectionAttempted:true, executionResult:null,
+    executionResultError:'MissingOrInvalidExecutionResult: execution result size exceeds the allowed bytes'};
+  assert.equal(masterReceiptNeedsReload(item),true);
+  for (const patch of [{masterReceiptSizeVersion:2},{executionModel:'aegis'},{executionResult:{}},
+    {executionResultError:'MissingOrInvalidExecutionResult: identity mismatch'}]) {
+    assert.equal(masterReceiptNeedsReload({...item,...patch}),false);
+  }
+});
+
 test('Master receipt cannot claim retained-hold handoff without verified owner continuity', () => {
   assert.throws(() => parseMasterExecutionResult(JSON.stringify({ ...receipt(), handoff_ready: true }), expected), /hold/);
   const owner = {requestId: 'owner-42', publisherPid: 4242, ownerMode: 'current-hold', aimdkMcMode: 'STAND_DEFAULT', nativeOwner: 'native-mc', sdk_fresh_ready_verified: true, guidedSides: ['left', 'right']};
@@ -111,6 +154,21 @@ test('native-standing handoff requires initial and final native evidence without
     }
   }
   assert.throws(() => parseMasterExecutionResult(JSON.stringify({ ...value, owner_hold_verified: false }), expected), /handoff/);
+});
+
+test('full restore handoff requires completed bilateral and waist evidence plus fresh released ownership', () => {
+  const owner = { ownerMode:'native-hold', nativeOwner:'native-mc', aimdkMcMode:'STAND_DEFAULT',
+    noActivePublisher:true, sdk_fresh_ready_verified:true };
+  const command = { ...receipt().commands[0], name:'restore_stand_hand_guide', args:{}, source_args:{},
+    result:{upperBodyPoseVerified:true, absoluteReturnVerified:true, ownerReleasedAfterBothReturnsVerified:true} };
+  const value = {...receipt(), commands:[command], restore_verified:true, owner_release_verified:true,
+    owner_hold_preserved:false, handoff_ready:true, handoff_mode:'native-hold', owner_binding:owner, final_owner_binding:owner};
+  assert.equal(parseMasterExecutionResult(JSON.stringify(value), expected).handoff_ready,true);
+  for (const patch of [{restore_verified:false}, {owner_release_verified:false}, {owner_hold_verified:false},
+    {commands:receipt().commands}, {commands:[{...command,result:{...command.result,upperBodyPoseVerified:false}}]},
+    {final_owner_binding:{...owner,requestId:'stale',publisherPid:42}}, {final_owner_binding:{...owner,noActivePublisher:false}}]) {
+    assert.throws(() => parseMasterExecutionResult(JSON.stringify({...value,...patch}),expected), /handoff/);
+  }
 });
 
 test('failed final Master hold verification is retained as execution failure', () => {

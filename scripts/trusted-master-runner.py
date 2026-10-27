@@ -102,6 +102,8 @@ def load_bound_plan(plan_path, config, session_end=None):
         if command.get('line') is not None and (type(command['line']) is not int or command['line'] < 1):
             raise ValueError('invalid Master command line')
     validate_master_plan(commands)
+    if config.get('recovery_owner_binding') is not None and (len(commands) != 1 or commands[0]['name'] != 'restore_stand_hand_guide'):
+        raise ValueError('failed-session recovery permits only an explicit full upper-body restore')
     return plan, start, end
 
 
@@ -284,6 +286,8 @@ class SDKAdapter:
                 'observed_at': _iso(time.time()), 'sdk_fresh_ready_verified': True}
 
     def preflight_mode(self, commands=None):
+        if self.config.get('recovery_owner_binding') is not None:
+            return {'mode_entry_required': False, 'owner': self.check_recovery_owner(), 'robot_commands_sent': False}
         if commands:
             first = commands[0]['name']
             backend = MASTER_COMMANDS[first]['backend']
@@ -309,6 +313,17 @@ class SDKAdapter:
         if callback is not None:
             callback()
 
+    def check_recovery_owner(self):
+        expected = self.config['recovery_owner_binding']
+        if (not isinstance(expected, dict) or not expected.get('previous_session_id') or not expected.get('previous_attempt_id')
+            or not expected.get('requestId') or type(expected.get('publisherPid')) is not int or expected['publisherPid'] <= 0
+            or expected.get('ownerMode') != 'current-hold'):
+            raise ValueError('recovery requires the exact previous failed owner identity')
+        owner = self._owner_factory().inspect_retained_fault(required_sides=('left', 'right'))
+        if any(owner.get(key) != expected.get(key) for key in ('requestId', 'publisherPid', 'ownerMode')):
+            raise RuntimeError('the failed Master owner changed; recovery was not sent')
+        return owner
+
     def prepare_mode(self):
         self._admit()
         if self.binding is not None:
@@ -330,6 +345,10 @@ class SDKAdapter:
 
     def execute(self, name, arguments):
         self._admit()
+        if self.config.get('recovery_owner_binding') is not None:
+            if name != 'restore_stand_hand_guide': raise ValueError('recovery permits only full upper-body restore')
+            self.check_recovery_owner()
+            self._admit()
         backend = MASTER_COMMANDS[name]['backend']
         if backend == 'movement_a':
             self.explicit_raw_entry = False
@@ -464,7 +483,9 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
             adapter.validate(plan['commands'])
             admitted()
             first_backend = MASTER_COMMANDS[plan['commands'][0]['name']]['backend']
-            if first_backend == 'mode_entry':
+            if config.get('recovery_owner_binding') is not None:
+                receipt['owner_binding'] = adapter.check_recovery_owner()
+            elif first_backend == 'mode_entry':
                 adapter.prepare_mode()
                 receipt['owner_binding'] = adapter.check_ready()
             elif first_backend == 'native_preset':
@@ -488,6 +509,8 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
                         saved_results[command['save_result_as']] = result
                     active.update(result=result, status='completed')
                     receipt['completed_count'] += 1
+                    if command['name'] == 'restore_stand_hand_guide':
+                        receipt['restore_verified'] = result.get('upperBodyPoseVerified') is True and result.get('absoluteReturnVerified') is True
                     if result.get('ownerReleased') is True or result.get('ownerReleasedAfterBothReturnsVerified') is True:
                         receipt['owner_hold_preserved'] = False
                         receipt['owner_release_verified'] = True
@@ -528,6 +551,12 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
                     and final.get('nativeOwner') == 'native-mc'
                     and final.get('sdk_fresh_ready_verified') is True):
                     receipt.update(handoff_ready=True, handoff_mode=('retained-hold' if final['ownerMode'] == 'current-hold' else 'retained-movement-a'), handoff_blocker=None)
+                elif (isinstance(initial, dict) and isinstance(final, dict)
+                    and receipt.get('restore_verified') is True and receipt.get('owner_release_verified') is True
+                    and all(binding.get('ownerMode') == 'native-hold' and binding.get('noActivePublisher') is True
+                        and binding.get('nativeOwner') == 'native-mc' and binding.get('aimdkMcMode') == 'STAND_DEFAULT'
+                        and binding.get('sdk_fresh_ready_verified') is True for binding in (initial, final))):
+                    receipt.update(handoff_ready=True, handoff_mode='native-hold', handoff_blocker=None)
                 elif (isinstance(initial, dict) and isinstance(final, dict)
                     and all(binding.get('ownerMode') == 'native-standing'
                         and binding.get('presetActionsReady') is True

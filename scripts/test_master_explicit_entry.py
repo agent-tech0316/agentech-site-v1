@@ -17,6 +17,19 @@ ADJUST = {'name': 'adjust_right_elbow', 'args': {'degrees': 45}}
 
 
 class ExplicitEntryTests(unittest.TestCase):
+    def test_recovery_refuses_changed_owner_before_sending_restore(self):
+        adapter = runner.SDKAdapter.__new__(runner.SDKAdapter)
+        expected = {'previous_session_id':'63','previous_attempt_id':'attempt', 'requestId':'held', 'publisherPid':42, 'ownerMode':'current-hold'}
+        adapter.config = {'recovery_owner_binding': expected}
+        adapter.robot = Mock()
+        adapter._owner_factory = Mock()
+        control = adapter._owner_factory.return_value
+        control.inspect_retained_fault.return_value = {**expected,'publisherPid':99}
+        with self.assertRaisesRegex(RuntimeError, 'owner changed'):
+            adapter.execute('restore_stand_hand_guide', {})
+        adapter.robot.restore_stand_hand_guide.assert_not_called()
+        control.inspect_retained_fault.assert_called_once_with(required_sides=('left','right'))
+
     def test_missing_or_late_entry_rejects_whole_plan(self):
         for commands in ([ADJUST], [ADJUST, ENTRY]):
             with self.subTest(commands=commands), self.assertRaisesRegex(ValueError, 'enter_stand_hand_guide'):
@@ -31,6 +44,7 @@ class ExplicitEntryTests(unittest.TestCase):
 
     def test_dispatch_does_not_bootstrap_for_implicit_adjustment(self):
         adapter = runner.SDKAdapter.__new__(runner.SDKAdapter)
+        adapter.config = {}
         adapter.robot = Mock()
         adapter.prepare_mode = Mock()
         adapter.check_ready = Mock(return_value={'ownerMode': 'current-hold'})
@@ -42,6 +56,7 @@ class ExplicitEntryTests(unittest.TestCase):
 
     def test_initial_readiness_uses_bilateral_contract(self):
         adapter = runner.SDKAdapter.__new__(runner.SDKAdapter)
+        adapter.config = {}
         adapter.binding = None
         class NotReady(RuntimeError):
             pass
@@ -62,6 +77,7 @@ class ExplicitEntryTests(unittest.TestCase):
 
     def test_unbound_movement_a_retains_its_right_arm_contract(self):
         adapter = runner.SDKAdapter.__new__(runner.SDKAdapter)
+        adapter.config = {}
         adapter.binding = None
         class NotReady(RuntimeError):
             pass
@@ -76,6 +92,7 @@ class ExplicitEntryTests(unittest.TestCase):
 
     def test_right_only_raw_owner_cannot_satisfy_bilateral_readiness(self):
         adapter = runner.SDKAdapter.__new__(runner.SDKAdapter)
+        adapter.config = {}
         adapter.binding = None
         class NotReady(RuntimeError):
             pass

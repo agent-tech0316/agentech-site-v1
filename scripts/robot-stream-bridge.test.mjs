@@ -237,7 +237,10 @@ test("gateway transfers only trusted runtime files and persists authoritative re
   assert.match(source, /"--check-home-ready"/);
   assert.match(source, /await stopObs\(\)/);
   assert.match(source, /await stopObsVirtualCamera\(\)/);
-  assert.doesNotMatch(source, /readFileSync\(item\.localPlan/);
+  // Navi cleanup is SDK-owned, independent of the customer's last command.
+  const cleanup = source.slice(source.indexOf('async function stopSession'), source.indexOf('function processRunning'));
+  assert.doesNotMatch(cleanup, /readFileSync\(item\.localPlan/);
+  assert.match(source, /masterRecoveryForStagedPlan\(readFileSync\(item\.localPlan\), item\.executionPlanSha256/);
   assert.match(source, /session robot model does not match its reviewed submission/);
   assert.match(source, /remoteResults/);
   assert.match(source, /collectDeviceResults/);

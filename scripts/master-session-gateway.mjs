@@ -1,6 +1,45 @@
 import { parseExecutionResult } from './robot-session-execution-result.mjs';
+import { createHash } from 'node:crypto';
 
 export const MASTER_GATEWAY_PROTOCOL = 'master-arm-session-v1';
+
+export function masterReceiptNeedsReload(item) {
+  return item.executionModel === 'master' && item.executionResultCollectionAttempted === true
+    && item.executionResult == null && item.masterReceiptSizeVersion !== 2
+    && item.executionResultError === 'MissingOrInvalidExecutionResult: execution result size exceeds the allowed bytes';
+}
+
+export function masterRecoveryForStagedPlan(bytes, expectedHash, sessions, id) {
+  if (createHash('sha256').update(bytes).digest('hex') !== expectedHash) throw new Error('Master staged plan hash changed');
+  return masterRecoveryForPlan(JSON.parse(bytes.toString('utf8')), sessions, id);
+}
+
+export function masterRecoveryForPlan(plan, sessions, id) {
+  if (plan?.commands?.length !== 1 || plan.commands[0].name !== 'restore_stand_hand_guide') return null;
+  const unresolved = Object.entries(sessions).filter(([otherId, other]) => String(otherId) !== String(id)
+    && other.executionModel === 'master' && other.executionAttemptId && !masterHandoffResolved(sessions, otherId, other));
+  if (unresolved.length !== 1) return null;
+  const [previousId, previous] = unresolved[0];
+  const owner = previous.executionResult?.owner_binding;
+  if (!['completed', 'finished'].includes(previous.status) || previous.executionResult?.outcome !== 'failed'
+    || owner?.ownerMode !== 'current-hold' || !owner.requestId || !Number.isInteger(owner.publisherPid) || owner.publisherPid <= 0) return null;
+  return { previous_session_id: String(previousId), previous_attempt_id: previous.executionAttemptId,
+    requestId: owner.requestId, publisherPid: owner.publisherPid, ownerMode: owner.ownerMode };
+}
+
+function recoveryMatches(recovery, id, previous) {
+  const owner = previous.executionResult?.owner_binding;
+  return recovery?.previous_session_id === String(id) && recovery.previous_attempt_id === previous.executionAttemptId
+    && recovery.requestId === owner?.requestId && recovery.publisherPid === owner?.publisherPid
+    && owner?.ownerMode === 'current-hold';
+}
+
+function masterHandoffResolved(sessions, id, previous) {
+  if (previous.masterHandoffReady === true) return true;
+  return Object.values(sessions).some(recovery => recoveryMatches(recovery.masterRecoveryOwner, id, previous)
+    && recovery.masterHandoffReady === true && recovery.executionResult?.outcome === 'completed'
+    && recovery.executionResult?.restore_verified === true);
+}
 
 export function assertMasterExecutableSubmission(submission) {
   if (submission.run_mode === 'Master live stream test (view only)' || submission.ai_security_model === 'view-only-test-bypass') {
@@ -20,7 +59,8 @@ export function createMasterSessionDeployment(config, session, item, attemptId) 
   return { ...config, schema_version: 1, protocol: MASTER_GATEWAY_PROTOCOL, robot_model: 'master',
     session_id: String(session.id), submission_id: item.executionSubmissionId,
     source_sha256: item.executionSourceSha256, plan_sha256: item.executionPlanSha256,
-    attempt_id: attemptId, scheduled_start: session.scheduled_start, scheduled_end: session.scheduled_end };
+    attempt_id: attemptId, scheduled_start: session.scheduled_start, scheduled_end: session.scheduled_end,
+    ...(item.masterRecoveryOwner ? { recovery_owner_binding: item.masterRecoveryOwner } : {}) };
 }
 
 export function masterLaunchBlocker(sessions, id, item, nowMs = Date.now()) {
@@ -30,13 +70,15 @@ export function masterLaunchBlocker(sessions, id, item, nowMs = Date.now()) {
     if (String(otherId) === String(id) || other.executionModel !== 'master' || !other.executionAttemptId) continue;
     if (['running', 'publishing'].includes(other.status)) return `Master session ${otherId} is still running`;
     if (Number.isFinite(Date.parse(other.end)) && nowMs < Date.parse(other.end)) return `Master session ${otherId} still owns its booked window`;
-    if (other.masterHandoffReady !== true) return `Master session ${otherId} requires a verified upper-body handoff`;
+    if (!masterHandoffResolved(sessions, otherId, other) && !recoveryMatches(item.masterRecoveryOwner, otherId, other)) return `Master session ${otherId} requires a verified upper-body handoff`;
   }
   return null;
 }
 
 export function parseMasterExecutionResult(text, expected) {
-  const result = parseExecutionResult(text, expected);
+  // Master retains measured SDK telemetry per command. Keep a bounded budget
+  // for up to 256 commands without dropping warnings or endpoint evidence.
+  const result = parseExecutionResult(text, expected, { maxBytes: 16 * 1024 * 1024 });
   const value = JSON.parse(text);
   if (value.robot_model !== 'master' || value.attempt_id !== expected.attemptId || value.booked_end !== expected.bookedEnd) {
     throw new Error('Master execution receipt identity does not match');
@@ -68,6 +110,17 @@ export function parseMasterExecutionResult(text, expected) {
         || last?.nativeOwner !== 'native-mc' || last?.sdk_fresh_ready_verified !== true
         || !Array.isArray(last?.guidedSides) || !last.guidedSides.includes('right')) {
         throw new Error('Master handoff requires a verified continuous Movement A owner');
+      }
+    } else if (value.handoff_mode === 'native-hold') {
+      const restored = value.commands.some(command => command.name === 'restore_stand_hand_guide'
+        && command.status === 'completed' && command.result?.upperBodyPoseVerified === true
+        && command.result?.absoluteReturnVerified === true && command.result?.ownerReleasedAfterBothReturnsVerified === true);
+      if (!restored || value.restore_verified !== true || value.owner_release_verified !== true
+        || value.owner_hold_preserved !== false || value.owner_hold_verified !== true
+        || ![first, last].every(binding => binding?.ownerMode === 'native-hold' && binding.nativeOwner === 'native-mc'
+          && binding.aimdkMcMode === 'STAND_DEFAULT' && binding.noActivePublisher === true && binding.sdk_fresh_ready_verified === true
+          && binding.requestId == null && binding.publisherPid == null)) {
+        throw new Error('Master native hold handoff requires verified full restoration and released ownership');
       }
     } else if (value.handoff_mode === 'native-standing') {
       const verifiedNativeStanding = (binding) => binding?.ownerMode === 'native-standing'

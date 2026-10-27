@@ -190,6 +190,28 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.assertNotIn('publisherPid', receipt['final_owner_binding'])
         self.adapter.prepare_mode.assert_not_called()
 
+    def test_recovery_manifest_rejects_adjustments_before_sdk_construction(self):
+        self.deployment['recovery_owner_binding'] = {'requestId':'fault-owner'}
+        self.deployment_path.write_text(json.dumps(self.deployment))
+        with self.assertRaisesRegex(ValueError, 'only an explicit full upper-body restore'):
+            self.run_plan()
+        self.adapter.execute.assert_not_called()
+
+    def test_full_restore_verifies_pose_and_separate_released_native_hold(self):
+        self.replace_commands([{'name':'restore_stand_hand_guide', 'args':{}}])
+        owner = {'ownerMode':'native-hold', 'nativeOwner':'native-mc', 'aimdkMcMode':'STAND_DEFAULT',
+                 'noActivePublisher':True, 'sdk_fresh_ready_verified':True}
+        self.adapter.check_ready.return_value = owner
+        self.adapter.execute.return_value = {'upperBodyPoseVerified':True, 'absoluteReturnVerified':True,
+            'ownerReleasedAfterBothReturnsVerified':True}
+        receipt = self.run_plan()
+        self.assertEqual(receipt['outcome'], 'completed')
+        self.assertEqual(receipt['handoff_mode'], 'native-hold')
+        self.assertTrue(receipt['restore_verified'])
+        self.assertTrue(receipt['owner_release_verified'])
+        self.assertFalse(receipt['owner_hold_preserved'])
+        self.assertTrue(receipt['owner_hold_verified'])
+
     def test_undo_receives_actual_successful_result_from_same_session(self):
         self.replace_commands([{'name': 'enter_stand_hand_guide', 'args': {'side': 'both'}},
             {'name': 'adjust_waist', 'args': {'yaw': 1}, 'save_result_as': 'move'},
@@ -248,6 +270,7 @@ class TrustedMasterRunnerTests(unittest.TestCase):
 
     def test_existing_sdk_entry_is_used_only_when_no_owner_is_present(self):
         adapter = self.runner.SDKAdapter.__new__(self.runner.SDKAdapter)
+        adapter.config = {}
         adapter.binding = None
         adapter.entry_in_progress = False
         adapter.robot = Mock()
@@ -267,6 +290,7 @@ class TrustedMasterRunnerTests(unittest.TestCase):
 
     def test_mode_entry_failure_is_never_followed_by_adjustment(self):
         adapter = self.runner.SDKAdapter.__new__(self.runner.SDKAdapter)
+        adapter.config = {}
         adapter.robot = Mock()
         adapter.prepare_mode = Mock(side_effect=RuntimeError('entry refused'))
         with self.assertRaisesRegex(RuntimeError, 'entry refused'):
@@ -275,6 +299,7 @@ class TrustedMasterRunnerTests(unittest.TestCase):
 
     def test_expiry_after_raw_entry_refuses_requested_adjustment(self):
         adapter = self.runner.SDKAdapter.__new__(self.runner.SDKAdapter)
+        adapter.config = {}
         adapter.robot = Mock()
         expired = [False]
         adapter.prepare_mode = Mock(side_effect=lambda: expired.__setitem__(0, True))

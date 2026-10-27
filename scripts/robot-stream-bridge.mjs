@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import OBSWebSocket from "obs-websocket-js";
-import { createMasterSessionDeployment, masterLaunchBlocker, parseMasterExecutionResult, assertMasterExecutableSubmission } from "./master-session-gateway.mjs";
+import { createMasterSessionDeployment, masterLaunchBlocker, masterRecoveryForStagedPlan, masterReceiptNeedsReload, parseMasterExecutionResult, assertMasterExecutableSubmission } from "./master-session-gateway.mjs";
 import {
   naviLaunchBlocker, parseNaviCleanupResult, loadGatewayState, saveGatewayState,
   selectNaviResetBaseline, reconcileNaviCleanupOutcome,
@@ -329,6 +329,7 @@ async function launch(session) {
   const item = state.sessions[session.id];
   if (!Number.isFinite(Date.parse(item.end)) || Date.now() >= Date.parse(item.end)) return;
   if (item.executionModel === "master") {
+    item.masterRecoveryOwner = masterRecoveryForStagedPlan(readFileSync(item.localPlan), item.executionPlanSha256, state.sessions, session.id);
     let blocker = masterLaunchBlocker(state.sessions, session.id, item);
     if (!blocker) {
       try {
@@ -659,6 +660,11 @@ function executionErrorMessage(result) {
 }
 
 function collectExecutionResult(id, item) {
+  if (masterReceiptNeedsReload(item)) {
+    item.masterReceiptSizeVersion = 2;
+    item.executionResultCollectionAttempted = false;
+    item.executionResultPersisted = false;
+  }
   if (
     item.executionResultRequired !== true
     || item.executionResultCollectionAttempted === true

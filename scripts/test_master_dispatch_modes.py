@@ -14,6 +14,7 @@ spec.loader.exec_module(runner)
 class DispatchModesTests(unittest.TestCase):
     def adapter(self):
         adapter = runner.SDKAdapter.__new__(runner.SDKAdapter)
+        adapter.config = {}
         adapter.robot = Mock()
         adapter.planner = Mock()
         adapter.prepare_mode = Mock()
