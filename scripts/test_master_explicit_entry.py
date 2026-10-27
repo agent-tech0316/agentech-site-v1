@@ -24,6 +24,8 @@ class ExplicitEntryTests(unittest.TestCase):
         adapter.robot = Mock()
         adapter._owner_factory = Mock()
         control = adapter._owner_factory.return_value
+        adapter._owner_not_ready = ValueError
+        control.inspect_active_ready.return_value = None
         control.inspect_retained_fault.return_value = {**expected,'publisherPid':99}
         with self.assertRaisesRegex(RuntimeError, 'owner changed'):
             adapter.execute('restore_stand_hand_guide', {})

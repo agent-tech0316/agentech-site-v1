@@ -319,7 +319,15 @@ class SDKAdapter:
             or not expected.get('requestId') or type(expected.get('publisherPid')) is not int or expected['publisherPid'] <= 0
             or expected.get('ownerMode') != 'current-hold'):
             raise ValueError('recovery requires the exact previous failed owner identity')
-        owner = self._owner_factory().inspect_retained_fault(required_sides=('left', 'right'))
+        control = self._owner_factory()
+        try:
+            # A measured endpoint warning can leave a healthy stationary hold.
+            # The original command remains failed; only full restore is admitted.
+            owner = control.inspect_active_ready(required_sides=('left', 'right'))
+        except self._owner_not_ready:
+            owner = None
+        if owner is None:
+            owner = control.inspect_retained_fault(required_sides=('left', 'right'))
         if any(owner.get(key) != expected.get(key) for key in ('requestId', 'publisherPid', 'ownerMode')):
             raise RuntimeError('the failed Master owner changed; recovery was not sent')
         return owner

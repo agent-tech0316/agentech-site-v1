@@ -12,6 +12,35 @@ spec.loader.exec_module(runner)
 
 
 class DispatchModesTests(unittest.TestCase):
+    def test_restore_after_incomplete_endpoint_accepts_exact_healthy_owner(self):
+        adapter = self.adapter()
+        adapter._owner_not_ready = ValueError
+        expected = dict(previous_session_id='75', previous_attempt_id='attempt',
+                        requestId='held-owner', publisherPid=123, ownerMode='current-hold')
+        adapter.config['recovery_owner_binding'] = expected
+        control = adapter._owner_factory.return_value
+        control.inspect_active_ready.return_value = expected
+        self.assertEqual(adapter.check_recovery_owner(), expected)
+        control.inspect_retained_fault.assert_not_called()
+        control.inspect_active_ready.return_value = {**expected, 'requestId': 'different-owner'}
+        with self.assertRaisesRegex(RuntimeError, 'owner changed'):
+            adapter.check_recovery_owner()
+
+    def test_restore_fault_path_still_requires_sdk_verified_retained_fault(self):
+        adapter = self.adapter()
+        adapter._owner_not_ready = ValueError
+        expected = dict(previous_session_id='75', previous_attempt_id='attempt',
+                        requestId='fault-owner', publisherPid=123, ownerMode='current-hold')
+        adapter.config['recovery_owner_binding'] = expected
+        control = adapter._owner_factory.return_value
+        control.inspect_active_ready.side_effect = ValueError('fault holding')
+        control.inspect_retained_fault.return_value = expected
+        self.assertEqual(adapter.check_recovery_owner(), expected)
+        control.inspect_retained_fault.assert_called_once_with(required_sides=('left', 'right'))
+        control.inspect_retained_fault.side_effect = RuntimeError('stale telemetry')
+        with self.assertRaisesRegex(RuntimeError, 'stale telemetry'):
+            adapter.check_recovery_owner()
+
     def adapter(self):
         adapter = runner.SDKAdapter.__new__(runner.SDKAdapter)
         adapter.config = {}
