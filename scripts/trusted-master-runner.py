@@ -32,7 +32,11 @@ HANDOFF_GAP = ('The current held owner has not been verified for the next sessio
 def _timestamp(value):
     if not isinstance(value, str):
         raise ValueError('session timestamp must be an ISO string')
-    parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    # Postgres omits trailing fractional zeroes; Python 3.10 accepts only
+    # three or six digits. Pad, without changing the instant or timezone.
+    normalized = re.sub(r'(?<=\d{2}:\d{2}:\d{2})\.(\d{1,6})(?=Z|[+-]|$)',
+        lambda match: '.' + match.group(1).ljust(6, '0'), value)
+    parsed = datetime.fromisoformat(normalized.replace('Z', '+00:00'))
     if parsed.tzinfo is None:
         raise ValueError('session timestamp must include timezone')
     return parsed.timestamp()

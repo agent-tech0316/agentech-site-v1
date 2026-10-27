@@ -48,6 +48,15 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         return self.runner.execute_plan(self.plan_path, self.deployment_path, self.result,
             adapter_factory=lambda config: self.adapter, now=lambda: 1792670400, **kwargs)
 
+    def test_booking_timestamps_accept_postgres_fractional_precision(self):
+        for fraction in ('7', '72', '722', '7228', '72287', '722870'):
+            with self.subTest(fraction=fraction):
+                actual = self.runner._timestamp('2026-10-27T03:50:51.' + fraction + '+00:00')
+                expected = self.runner._timestamp('2026-10-27T03:50:51.' + fraction.ljust(6, '0') + 'Z')
+                self.assertEqual(actual, expected)
+        with self.assertRaisesRegex(ValueError, 'timezone'):
+            self.runner._timestamp('2026-10-27T03:50:51.722870')
+
     def test_receipt_binds_identity_and_never_releases_persistent_hold(self):
         receipt = self.run_plan()
         self.assertEqual(receipt['schema_version'], 1)
