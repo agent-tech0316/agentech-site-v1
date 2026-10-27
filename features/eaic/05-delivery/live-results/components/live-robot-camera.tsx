@@ -9,6 +9,7 @@ import {
   type RemoteVideoTrack,
 } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { observeFirstVideoFrame } from "@/lib/live-video-first-frame";
 import {
   normalizeLiveRobotModel,
   normalizeMasterViewSelection,
@@ -80,6 +81,8 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
   const activeRoomRef = useRef<Room | null>(null);
   const masterSelectionRef = useRef<MasterViewSelection>({ mode: "wall" });
   const [isViewing, setIsViewing] = useState(false);
+  const [pageVisible, setPageVisible] = useState(true);
+  const [cameraVisible, setCameraVisible] = useState(false);
   const [status, setStatus] = useState(livekitUrl
     ? "Waiting for the scheduled session. Live view will start automatically."
     : "LiveKit URL is not configured.");
@@ -241,14 +244,14 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
       }
       return;
     }
-    if (isViewing || manuallyStoppedSessionIdRef.current === viewingKey) return;
+    if (!pageVisible || !cameraVisible || isViewing || manuallyStoppedSessionIdRef.current === viewingKey) return;
 
     const timer = window.setTimeout(() => {
       setStatus(teachingViewer ? "Teaching account viewer access enabled. Connecting..." : "Scheduled session is active. Connecting automatically...");
       setIsViewing(true);
-    }, 3000);
+    }, 200);
     return () => window.clearTimeout(timer);
-  }, [viewingKey, teachingViewer, hasActiveSession, isViewing]);
+  }, [viewingKey, teachingViewer, hasActiveSession, isViewing, pageVisible, cameraVisible]);
 
   useEffect(() => {
     if (!livekitUrl || !isViewing) {
@@ -261,23 +264,31 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
     let isMounted = true;
     let videoConnected = false;
     let noVideoTimer: ReturnType<typeof setTimeout> | null = null;
+    let stopFrameObservation: (() => void) | undefined;
+    let attachedVideoTrack: RemoteTrack | null = null;
+    const tokenRequest = new AbortController();
 
     function attachVideo(track: RemoteTrack) {
-      if (!videoElement || track.kind !== Track.Kind.Video) {
+      if (!isMounted || !videoElement || track.kind !== Track.Kind.Video || attachedVideoTrack === track) {
         return;
       }
 
-      videoConnected = true;
-      if (noVideoTimer) {
-        clearTimeout(noVideoTimer);
-        noVideoTimer = null;
-      }
+      attachedVideoTrack = track;
+      videoConnected = false;
+      stopFrameObservation?.();
       // Ask the browser to stay at the live edge instead of building a large
       // jitter buffer. The publisher/ingress still determines most end-to-end
       // latency, but this prevents avoidable client-side playout delay.
       track.setPlayoutDelay(0);
       track.attach(videoElement);
-      setStatus("Live robot camera connected.");
+      setStatus("Waiting for live video frames...");
+      stopFrameObservation = observeFirstVideoFrame(videoElement, () => {
+        if (!isMounted) return;
+        videoConnected = true;
+        if (noVideoTimer) clearTimeout(noVideoTimer);
+        noVideoTimer = null;
+        setStatus("Live robot camera connected.");
+      });
     }
 
     function attachMasterVideo(track: RemoteTrack, publication: RemoteTrackPublication) {
@@ -309,8 +320,9 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
       try {
         setStatus("Connecting to live robot camera...");
         const targetRoomName = isMasterCameraSession ? "master-live-1" : roomName;
-        const response = await fetch(`/api/livekit-token?room=${encodeURIComponent(targetRoomName)}`, { cache: "no-store" });
+        const response = await fetch(`/api/livekit-token?room=${encodeURIComponent(targetRoomName)}`, { cache: "no-store", signal: tokenRequest.signal });
         const payload = (await response.json()) as { token?: string; error?: string; robotModel?: string };
+        if (!isMounted) return;
 
         if (!response.ok || !payload.token) {
           throw new Error(payload.error || "Could not create LiveKit viewer token.");
@@ -338,6 +350,11 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
             detachMasterVideo(track, publication);
           } else {
             track.detach();
+            if (attachedVideoTrack === track) {
+              attachedVideoTrack = null;
+              videoConnected = false;
+              stopFrameObservation?.();
+            }
           }
           if (isMounted && !masterConnection) {
             setStatus("Robot camera stream paused.");
@@ -389,6 +406,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
         });
 
         await room.connect(livekitUrl, payload.token, { autoSubscribe: !masterConnection });
+        if (!isMounted) { void room.disconnect(); return; }
 
         if (masterConnection) {
           applyMasterSubscriptions(room, masterSelectionRef.current);
@@ -424,6 +442,8 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
 
     return () => {
       isMounted = false;
+      tokenRequest.abort();
+      stopFrameObservation?.();
       if (noVideoTimer) {
         clearTimeout(noVideoTimer);
       }
@@ -437,39 +457,33 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
   }, [roomName, isViewing, receiveCapture, activeRobotModel, isMasterCameraSession]);
 
   useEffect(() => {
-    if (!isViewing) {
-      return;
-    }
-
-    function stopHiddenView() {
-      if (document.hidden) {
-        setIsViewing(false);
-        setStatus("Live view paused because the tab is hidden.");
-      }
-    }
-
-    document.addEventListener("visibilitychange", stopHiddenView);
-    return () => document.removeEventListener("visibilitychange", stopHiddenView);
-  }, [isViewing]);
+    const readVisibility = () => setPageVisible(!document.hidden);
+    readVisibility();
+    document.addEventListener("visibilitychange", readVisibility);
+    return () => document.removeEventListener("visibilitychange", readVisibility);
+  }, []);
 
   useEffect(() => {
-    if (!isViewing || !containerRef.current) {
+    if (!containerRef.current) {
       return;
     }
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (!entry.isIntersecting) {
-          setIsViewing(false);
-          setStatus("Live view stopped because the camera is off screen.");
-        }
+        setCameraVisible(entry.isIntersecting && entry.intersectionRatio >= 0.2);
       },
       { threshold: 0.2 }
     );
 
     observer.observe(containerRef.current);
     return () => observer.disconnect();
-  }, [isViewing]);
+  }, []);
+
+  useEffect(() => {
+    if (!isViewing || (pageVisible && cameraVisible)) return;
+    setIsViewing(false);
+    setStatus(pageVisible ? "Live view paused because the camera is off screen." : "Live view paused because the tab is hidden.");
+  }, [isViewing, pageVisible, cameraVisible]);
 
   function startViewing() {
     if (!livekitUrl || !hasActiveSession) {

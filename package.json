@@ -40,7 +40,7 @@
     "test:website-launch": "node --experimental-strip-types --test lib/website-inquiry.test.ts scripts/agency-prospecting.test.mjs scripts/website-form-ssr.test.mjs scripts/website-faq.test.mjs scripts/ai-services.test.mjs",
     "test:talents-page": "node --test scripts/talents-page.test.mjs",
     "test:master-motor-map": "node --test scripts/master-motor-map.test.mjs",
-    "test:master-live-camera": "node --test scripts/master-live-camera.test.mjs scripts/master-live-camera-state.test.mjs scripts/master-live-camera-ui.test.mjs scripts/master-livekit-track-state.test.mjs scripts/master-camera-web-service.test.mjs",
+    "test:master-live-camera": "node --test scripts/live-video-first-frame.test.mjs scripts/master-live-camera.test.mjs scripts/master-live-camera-state.test.mjs scripts/master-live-camera-ui.test.mjs scripts/master-livekit-track-state.test.mjs scripts/master-camera-web-service.test.mjs",
     "test:master-live-camera-gateway": "node --test scripts/master-live-camera-gateway.test.mjs",
     "test:master-live-test": "node --test scripts/master-live-test-access.test.mjs scripts/master-live-test-route.test.mjs scripts/master-live-test-ui.test.mjs",
     "test:master-heartbeat": "node --experimental-strip-types --test lib/master-heartbeat.test.ts scripts/master-heartbeat-route.test.mjs scripts/master-heartbeat-store.test.mjs scripts/master-heartbeat-ui.test.mjs",
