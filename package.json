@@ -17,7 +17,7 @@
     "delete:news:source": "node scripts/delete-news-entry.mjs --mode source",
     "list:news": "node scripts/delete-news-entry.mjs --list",
     "robot:stream-bridge": "node scripts/robot-stream-bridge.mjs",
-    "test:robot-stream-bridge": "node --test scripts/robot-stream-bridge.test.mjs scripts/navi-session-handoff.test.mjs",
+    "test:robot-stream-bridge": "node --test scripts/robot-stream-bridge.test.mjs scripts/navi-session-handoff.test.mjs scripts/robot-cloud-request.test.mjs",
     "test:navi-cli-gateway": "python -m unittest scripts.test_trusted_navi_runner -q && node --test scripts/navi-cli-gateway.test.mjs",
     "test:return-to-home-access": "node --test scripts/return-to-home-access-policy.test.mjs",
     "test:sdk-reference": "node --test scripts/sdk-reference-consistency.test.mjs scripts/master-adjustment-profiles.test.mjs",

@@ -27,7 +27,13 @@ if (-not (Test-Path -LiteralPath $statePath)) {
   throw "Restart refused because the local Gateway state file is missing: $statePath"
 }
 
-$state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+# PowerShell 7.5+ otherwise converts ISO strings into DateTime objects; keep the
+# persisted JSON contract identical to Windows PowerShell for state validation.
+$stateJsonOptions = @{}
+if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) {
+  $stateJsonOptions['DateKind'] = 'String'
+}
+$state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json @stateJsonOptions
 $blockingSessions = @(Get-RobotStreamRestartBlockers -State $state)
 
 if ($blockingSessions.Count -gt 0) {
@@ -64,7 +70,7 @@ if ($bridges.Count -ne 1) {
 }
 
 # Refresh local state after process discovery, immediately before the stop.
-$state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+$state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json @stateJsonOptions
 $blockingSessions = @(Get-RobotStreamRestartBlockers -State $state)
 if ($blockingSessions.Count -gt 0) {
   throw "Restart refused: $($blockingSessions -join '; ')"

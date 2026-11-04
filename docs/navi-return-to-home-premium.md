@@ -51,6 +51,31 @@ clears available options instead of displaying an empty, apparently free cell.
 Conflict-read failure aborts reservation before credit spending. The current
 single cell remains shared across robot models; this is not multi-cell routing.
 
+Cloud schedule reads use a single eight-second deadline, including response-body
+consumption. A transient network/502/503/504 failure may retry once if time
+remains; a fully exhausted deadline is reported and the next normal polling
+cycle reads again. A healthy slow first response retains the full deadline.
+Writes, including booking claims, are never automatically replayed after an
+ambiguous response. Diagnostics identify UTC time, HTTP method/table, failure
+category/status, attempts, and elapsed time without account filters, credentials,
+or raw upstream response bodies. Local expiry/cleanup ownership is unchanged.
+The request helper must be installed together with the bridge; a source/test
+pass is not evidence that the running booking program has been updated.
+
+Maintenance restart checks preserve historical failures. A closed legacy record
+or exhausted cleanup failure can be treated as settled history only when a later
+booking for the same robot has a completed cleanup (Navi additionally requires
+its successful healthy damped receipt). A finished, unlaunched booking with no
+PID and no cleanup requirement is also settled. Active/future bookings, pending
+execution, cleanup owners and unsupported unresolved states still block restart.
+This classification neither changes old results nor grants robot readiness.
+
+The cloud-request and maintenance-history changes were installed on November 3,
+2026 after idle/ownership checks. One booking-bridge restart activated them; no
+robot command, booking mutation, OBS restart, or history rewrite was performed.
+Installed schedule reads succeeded and the post-restart error log was empty.
+These are no-motion software/deployment results, not physical qualification.
+
 On October 26, a signed-in website movement booking completed all four commands
 (stand, short forward/backward commands, stop) and automatic damped cleanup.
 A separate read-only booking displayed decoded OBS video in Chrome. Camo stayed

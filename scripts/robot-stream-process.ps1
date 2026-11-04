@@ -129,6 +129,39 @@ function Get-RobotStreamRestartBlockers {
   if ($State -isnot [pscustomobject] -or $State.sessions -isnot [pscustomobject]) {
     throw "Malformed Gateway state: expected an object containing a sessions object."
   }
+  # A later completed cleanup can settle restart ownership for old history,
+  # without changing that history's failed outcome or granting motion readiness.
+  # Match the bridge's legacy model default (AEGIS) and require a later booking's
+  # start, not just a late write to an old result, to prove ordering.
+  $verifiedCleanupStarts = @{}
+  foreach ($candidateProperty in $State.sessions.PSObject.Properties) {
+    $candidate = $candidateProperty.Value
+    if ($candidate -isnot [pscustomobject] -or $candidate.status -ne 'finished' -or
+        $null -ne $candidate.naviCleanupOwner -or $candidate.executionStatus -in @('pending', 'staged', 'running')) { continue }
+    $candidateRequired = if ($null -ne $candidate.endCleanupRequired) { $candidate.endCleanupRequired } else { $candidate.endLieDownRequired }
+    $candidateCleanup = if ($null -ne $candidate.endCleanupStatus) { $candidate.endCleanupStatus } else { $candidate.endLieDownStatus }
+    if ($candidateRequired -ne $true -or $candidateCleanup -ne 'completed') { continue }
+    $candidateModel = if ($null -eq $candidate.executionModel) { 'aegis' } else { $candidate.executionModel }
+    if ($candidateModel -notin @('aegis', 'navi')) { continue }
+    $candidateStart = [DateTimeOffset]::MinValue
+    $candidateEnd = [DateTimeOffset]::MinValue
+    if ($candidate.start -isnot [string] -or $candidate.end -isnot [string] -or
+        $candidate.start -notmatch 'T.*(?:Z|[+-]\d{2}:\d{2})$' -or
+        -not [DateTimeOffset]::TryParse($candidate.start, [ref]$candidateStart) -or
+        -not [DateTimeOffset]::TryParse($candidate.end, [ref]$candidateEnd) -or
+        $candidateEnd -lt $candidateStart -or $candidateEnd -gt $Now) { continue }
+    if ($candidateModel -eq 'navi') {
+      $receipt = $candidate.endCleanupResult
+      if ($receipt -isnot [pscustomobject] -or $receipt.succeeded -ne $true -or
+          $receipt.damping_completed -ne $true -or $receipt.terminal_state -ne 'lowered_damped' -or
+          $receipt.final_state.standing -ne $false -or $receipt.final_state.error -ne 0 -or
+          $receipt.final_state.warning -ne 0) { continue }
+    }
+    if (-not $verifiedCleanupStarts.ContainsKey($candidateModel) -or
+        $candidateStart -gt $verifiedCleanupStarts[$candidateModel]) {
+      $verifiedCleanupStarts[$candidateModel] = $candidateStart
+    }
+  }
   foreach ($property in $State.sessions.PSObject.Properties) {
     $session = $property.Value
     $label = "session $($property.Name)"
@@ -174,6 +207,16 @@ function Get-RobotStreamRestartBlockers {
       "$label has unresolved execution"
       continue
     }
+    # Failed admission/expired staging never created a physical cleanup owner.
+    if ($session.status -eq 'finished' -and $session.executionModel -in @('aegis', 'navi', 'master') -and
+        $cleanupRequired -eq $false -and $cleanupStatus -eq 'not_started' -and $null -eq $session.pid) { continue }
+    $model = if ($null -eq $session.executionModel) { 'aegis' } else { $session.executionModel }
+    $cleanupAttempts = if ($null -ne $session.endCleanupAttempts) { $session.endCleanupAttempts } else { $session.endLieDownAttempts }
+    $legacyHistory = $null -eq $cleanupRequired -and $null -eq $cleanupStatus -and $null -eq $executionStatus
+    $exhaustedHistory = $cleanupRequired -eq $true -and $cleanupStatus -eq 'failed' -and
+      ($cleanupAttempts -is [int] -or $cleanupAttempts -is [long]) -and $cleanupAttempts -ge 3
+    if (($legacyHistory -or $exhaustedHistory) -and $verifiedCleanupStarts.ContainsKey($model) -and
+        $verifiedCleanupStarts[$model] -ge $end) { continue }
     if ($cleanupStatus -notin @('completed', 'not_required') -or
         ($cleanupStatus -eq 'not_required' -and $cleanupRequired -ne $false)) {
       "$label has unresolved cleanup"

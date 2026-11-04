@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import OBSWebSocket from "obs-websocket-js";
+import { createGatewayCloudRequest } from "./robot-cloud-request.mjs";
 import { createMasterSessionDeployment, masterLaunchBlocker, masterRecoveryForStagedPlan, masterReceiptNeedsReload, parseMasterExecutionResult, assertMasterExecutableSubmission } from "./master-session-gateway.mjs";
 import {
   naviLaunchBlocker, parseNaviCleanupResult, loadGatewayState, saveGatewayState,
@@ -133,23 +134,11 @@ function masterEnvironment() {
 function sshArgs() { return [...(sshKey ? ["-i", sshKey] : []), "-o", "BatchMode=yes", "-o", "ConnectTimeout=8"]; }
 function run(program, args, options = {}) { return execFileSync(program, args, { encoding: "utf8", timeout: 20000, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], ...options }); }
 
-async function request(table, query, options = {}) {
-  const response = await fetch(`${supabaseUrl}/rest/v1/${table}?${query}`, {
-    signal: AbortSignal.timeout(8000),
-    method: options.method || "GET",
-    headers: {
-      apikey: supabaseKey,
-      Authorization: `Bearer ${supabaseKey}`,
-      "Content-Type": "application/json",
-      Prefer: options.prefer || "return=representation"
-    },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body)
-  });
-  if (!response.ok) throw new Error(await response.text());
-  if (response.status === 204) return null;
-  const text = await response.text();
-  return text ? JSON.parse(text) : null;
-}
+const request = createGatewayCloudRequest({
+  baseUrl: supabaseUrl,
+  apiKey: supabaseKey,
+  onDiagnostic: event => console.warn("[robot-stream] cloud request:", JSON.stringify(event)),
+});
 
 async function dueSessions() {
   const now = new Date();
