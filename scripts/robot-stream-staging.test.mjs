@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import ts from 'typescript';
+import { checkNaviBookedReadiness } from './navi-booking-admission.mjs';
 import { writeReviewedSource } from './robot-stream-staging.mjs';
 import { activeCameraStreamDeadline } from './robot-stream-session-policy.mjs';
 
@@ -55,7 +56,7 @@ function naviLaunchFixture(t) {
     localPlan: join(runtimeDir, 'session-101.plan.json'), executionPlanSha256: createHash('sha256').update(bytes).digest('hex') };
   const calls = [];
   const io = { bytes, claimRows: [{ id: session.id }], onPreflight() {} };
-  const bindings = { runtimeDir, state: { sessions: { [session.id]: item } }, join, createHash, localPython: 'python',
+  const bindings = { runtimeDir, checkNaviBookedReadiness, state: { sessions: { [session.id]: item } }, join, createHash, localPython: 'python',
     trustedNaviRunner: 'runner', claimableStatuses: ['approved'], normalized: x => x.toLowerCase(),
     robotModel: x => x.toLowerCase(), readFileSync: path => { assert.equal(path, item.localPlan); return io.bytes; },
     naviLaunchBlocker: () => null, naviEnvironment: () => ({}),
@@ -64,7 +65,7 @@ function naviLaunchFixture(t) {
     createNaviSessionOwner: () => ({ attempt_id: 'one', owner_file: 'owner', result_file: 'result' }),
     spawn: (_, args, opts) => { calls.push({ type: 'spawn', args, env: opts.env }); return { pid: 123, unref() {}, on() {} }; },
     saveState() {}, openSync() { return 1; }, closeSync() {}, console: { log() {}, error() {} } };
-  const declarations = ['assertNaviStagedBooking', 'claimSession', 'launch'].map(name =>
+  const declarations = ['claimSession', 'launch'].map(name =>
     ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name).getText(ast));
   const launch = new Function(...Object.keys(bindings), declarations.join('\n') + '; return launch;')(...Object.values(bindings));
   return { session, item, io, calls, launch: () => launch(session) };

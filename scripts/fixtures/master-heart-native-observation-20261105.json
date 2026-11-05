@@ -1,0 +1,76 @@
+{
+  "aimdkMcMode": "STAND_DEFAULT",
+  "standingState": "unknown",
+  "standingStateVerified": true,
+  "presetActionsReady": false,
+  "readinessReason": "Standing arm gains do not match a known native profile.",
+  "armGainProfile": "unknown",
+  "armGains": {
+    "left_shoulder_pitch_joint": {
+      "stiffness": 50,
+      "damping": 3
+    },
+    "left_shoulder_roll_joint": {
+      "stiffness": 50,
+      "damping": 3
+    },
+    "left_shoulder_yaw_joint": {
+      "stiffness": 50,
+      "damping": 3
+    },
+    "left_elbow_joint": {
+      "stiffness": 50,
+      "damping": 3
+    },
+    "left_wrist_yaw_joint": {
+      "stiffness": 20,
+      "damping": 2
+    },
+    "left_wrist_pitch_joint": {
+      "stiffness": 20,
+      "damping": 2
+    },
+    "left_wrist_roll_joint": {
+      "stiffness": 20,
+      "damping": 2
+    },
+    "right_shoulder_pitch_joint": {
+      "stiffness": 50,
+      "damping": 3
+    },
+    "right_shoulder_roll_joint": {
+      "stiffness": 50,
+      "damping": 3
+    },
+    "right_shoulder_yaw_joint": {
+      "stiffness": 50,
+      "damping": 3
+    },
+    "right_elbow_joint": {
+      "stiffness": 50,
+      "damping": 3
+    },
+    "right_wrist_yaw_joint": {
+      "stiffness": 20,
+      "damping": 2
+    },
+    "right_wrist_pitch_joint": {
+      "stiffness": 20,
+      "damping": 2
+    },
+    "right_wrist_roll_joint": {
+      "stiffness": 20,
+      "damping": 2
+    }
+  },
+  "nativeCommandOwnersVerified": true,
+  "nativeBalanceEvidenceVerified": true,
+  "manipulationPublishers": 0,
+  "completeArmStateFrameVerified": true,
+  "completeArmCommandFrameVerified": true,
+  "measuredPoseAtCanonical": true,
+  "armPoseSettled": true,
+  "fault": null,
+  "observed_at": "2026-11-05T20:09:21.825093+00:00",
+  "robot_commands_sent": 0
+}

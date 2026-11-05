@@ -30,6 +30,8 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.plan_path.write_text(json.dumps(self.plan), encoding='utf-8')
         self.deployment = {'schema_version': 1, 'robot_model': 'master', 'enabled': True,
             'host': '192.168.4.152', 'sdk_root': str(self.root), 'standing_deployment': '/reviewed/sdk',
+            'lease_file': str(self.root / 'master-test.lock'),
+            'lease_file':str(self.root/'master-test.lock'),
             'session_id': '42', 'submission_id': 'sub', 'source_sha256': 'a'*64,
             'plan_sha256': hashlib.sha256(self.plan_path.read_bytes()).hexdigest(),
             'attempt_id': 'attempt', 'scheduled_start': '2026-10-22T00:00:00Z', 'scheduled_end': '2026-10-23T00:00:00Z'}
@@ -37,6 +39,11 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.deployment_path.write_text(json.dumps(self.deployment), encoding='utf-8')
         self.result = self.root / 'result.json'
         self.adapter = Mock()
+        self.adapter.native_gesture_ready.return_value = {
+            'nativeGestureOwnerVerified':True, 'nativeMotionIdleVerified':True, 'heartStartPoseVerified':True,
+            'nativeIdleObservation':{'inputSource':'sdk-test','bootId':'test-boot','mcNode':'mc_ros2_node1',
+                                    'installedBuild':'test-build','waistReference':'zero-native-offset'},
+            'ownerMode':'native-hold','presetActionsReady':False,'nativeOwner':'native-mc'}
         self.adapter.check_ready.return_value = {'requestId': 'request', 'publisherPid': 42, 'ownerMode': 'current-hold',
             'aimdkMcMode': 'STAND_DEFAULT', 'nativeOwner': 'native-mc', 'sdk_fresh_ready_verified': True,
             'guidedSides': ['left', 'right']}
@@ -73,8 +80,10 @@ class TrustedMasterRunnerTests(unittest.TestCase):
                      presetActionsReady=True, noActivePublisher=True, sdk_fresh_ready_verified=True)
         self.adapter.native_ready.return_value = owner
         self.adapter.check_ready.return_value = owner
-        self.adapter.execute.side_effect = [dict(succeeded=True, task_id=4, task_state=1,
-            posture_before='STAND_DEFAULT', posture_after='STAND_DEFAULT'), completed_head()]
+        plan = dict(operation='heart',hand='both',motion_id=1007,control_area=3,dry_run=True)
+        self.adapter.validate.return_value = {1:plan}
+        self.adapter.execute.side_effect = [{**plan, **dict(dry_run=False,required_posture='STAND_DEFAULT',succeeded=True, task_id=4, task_state=1,
+            posture_before='STAND_DEFAULT', posture_after='STAND_DEFAULT')}, {**completed_head(),'angle_degrees':20}]
         self.runner.preflight(self.plan_path, self.deployment_path, adapter_factory=lambda _: self.adapter)
         self.assertEqual([c[0] for c in self.adapter.method_calls], ['validate','verify_head_contract','preflight_mode'])
         self.adapter.reset_mock()
@@ -82,7 +91,7 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.assertEqual(receipt['outcome'], 'completed')
         self.assertEqual(receipt['completed_count'], 2)
         self.assertEqual([c[0] for c in self.adapter.method_calls][:4],
-                         ['validate','verify_head_contract','native_ready','execute'])
+                         ['validate','verify_head_contract','native_gesture_ready','execute'])
 
     def test_native_head_plan_keeps_booking_receipts_without_raw_entry(self):
         from test_master_head_execution import completed_head
@@ -93,12 +102,15 @@ class TrustedMasterRunnerTests(unittest.TestCase):
                      presetActionsReady=True, noActivePublisher=True, sdk_fresh_ready_verified=True)
         self.adapter.native_ready.return_value = owner
         self.adapter.check_ready.return_value = owner
-        self.adapter.execute.side_effect = lambda name, args: {**completed_head(name), 'exact_center_return': True}
+        self.adapter.execute.side_effect = lambda name, args: {**completed_head(name), 'exact_center_return': True,
+            **{k:v for k,v in self.runner.sdk_arguments(name,args).items() if k in ('angle_degrees','cycles')}}
         result = self.run_plan()
         self.assertEqual(result['outcome'], 'completed')
         self.assertEqual(result['completed_count'], 3)
-        self.assertEqual(result['handoff_mode'], 'native-standing')
-        self.adapter.native_ready.assert_called_once_with(require_presets=False)
+        self.assertEqual(result['handoff_mode'], 'native-heart-head')
+        self.adapter.native_ready.assert_not_called()
+        self.assertEqual([c.kwargs for c in self.adapter.native_gesture_ready.call_args_list],
+                         [{'include_heart':False},{'include_heart':False}])
         self.adapter.prepare_mode.assert_not_called()
         self.assertEqual(self.adapter.execute.call_args_list[0].args, ('turn_head', {}))
 
@@ -115,6 +127,84 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.adapter.execute.assert_called_once()
         self.adapter.stop.assert_not_called()
         self.adapter.restore.assert_not_called()
+
+    def test_scoped_handoff_refuses_replaced_owner_and_does_not_claim_restoration(self):
+        from test_master_head_execution import completed_head
+        self.replace_commands([{'name':'turn_head', 'args':{}}])
+        self.adapter.execute.return_value = {**completed_head(), 'angle_degrees':5.}
+        owner = self.adapter.native_gesture_ready.return_value
+        self.adapter.native_gesture_ready.side_effect = [
+            owner, {**owner,'nativeIdleObservation':{**owner['nativeIdleObservation'],'inputSource':'different'}}]
+        receipt = self.run_plan()
+        self.assertEqual(receipt['completed_count'],1)
+        self.assertEqual(receipt['outcome'],'failed')
+        self.assertFalse(receipt['handoff_ready'])
+        self.assertFalse(receipt['owner_hold_preserved'])
+        self.assertFalse(receipt.get('owner_release_verified',False))
+        self.assertFalse(receipt.get('restore_verified',False))
+        self.assertEqual(receipt['error']['command'],'verify_master_hold')
+
+    def test_heart_in_mixed_non_head_plan_keeps_original_preset_gate(self):
+        self.replace_commands([{'name':'heart','args':{'hand':'both'}},{'name':'wave','args':{'hand':'left'}}])
+        self.adapter.native_ready.side_effect = RuntimeError('named native gains required')
+        receipt = self.run_plan()
+        self.assertEqual(receipt['outcome'],'failed')
+        self.assertEqual(receipt['completed_count'],0)
+        self.adapter.native_gesture_ready.assert_not_called()
+        self.adapter.execute.assert_not_called()
+
+    def test_last_head_call_that_finishes_after_expiry_can_observe_the_final_owner(self):
+        from test_master_head_execution import completed_head
+        self.replace_commands([{'name':'turn_head','args':{}}])
+        end=self.runner._timestamp(self.deployment['scheduled_end'])
+        clock=[end-1.]
+        def finish(name,args):
+            clock[0]=end+1.
+            return {**completed_head(),'angle_degrees':5.}
+        self.adapter.execute.side_effect=finish
+        receipt=self.runner.execute_plan(self.plan_path,self.deployment_path,self.result,
+            adapter_factory=lambda _:self.adapter,now=lambda:clock[0])
+        self.assertEqual(receipt['outcome'],'completed')
+        self.assertEqual(receipt['overrun_seconds'],1.)
+        self.assertTrue(receipt['handoff_ready'])
+        self.adapter.execute.assert_called_once_with('turn_head',{})
+
+    @unittest.skipUnless(shutil.which('node'),'Node is required to check the real gateway parser')
+    def test_python_heart_and_head_receipt_round_trips_through_eaic(self):
+        from test_master_native_gesture_readiness import observation
+        from test_master_head_execution import completed_head
+        self.replace_commands([{'name':'heart','args':{'hand':'both'},'line':1},
+                               {'name':'turn_head','args':{'angle_degrees':5},'line':2}])
+        plan = dict(operation='heart',hand='both',motion_id=1007,control_area=3,
+                    required_posture='STAND_DEFAULT',dry_run=True)
+        self.adapter.validate.return_value = {1:plan}
+        self.adapter.execute.side_effect = [{**plan,'dry_run':False,'succeeded':True,'task_id':88,'task_state':1,
+            'posture_before':'STAND_DEFAULT','posture_after':'STAND_DEFAULT'},{**completed_head(),'angle_degrees':5}]
+        ticks = iter(1792670400+i*.03 for i in range(100))
+        now = lambda: next(ticks)
+        def owner(*,include_heart):
+            data = observation()
+            self.runner.native_gesture.verify_arm_observation(data,include_heart)
+            return {**data,'ownerMode':'native-hold','observed_at':self.runner._iso(now()),
+                'nativeGestureOwnerVerified':True,'nativeMotionIdleVerified':True,'heartStartPoseVerified':include_heart,
+                'nativeIdleObservation':{'samples':8,'firstSequence':45,'lastSequence':52,'playerState':0,'dwellMs':500.,
+                                     'inputSource':'native','bootId':'test-boot','mcNode':'mc_ros2_node1',
+                                     'installedBuild':'test-build','waistReference':'zero-native-offset'}}
+        self.adapter.native_gesture_ready.side_effect = owner
+        receipt = self.runner.execute_plan(self.plan_path,self.deployment_path,self.result,
+                                            adapter_factory=lambda _:self.adapter,now=now)
+        self.assertTrue(receipt['handoff_ready'],receipt.get('error'))
+        parser=(SCRIPTS/'master-session-gateway.mjs').as_uri()
+        program = ("import {parseMasterExecutionResult} from "+json.dumps(parser)+";"
+                   "import {readFileSync} from 'node:fs';const {v,d}=JSON.parse(readFileSync(0,'utf8'));"
+                   "const result=parseMasterExecutionResult(JSON.stringify(v),{sessionId:d.session_id,submissionId:d.submission_id,"
+                   "attemptId:d.attempt_id,sourceSha256:d.source_sha256,planSha256:d.plan_sha256,bookedEnd:d.scheduled_end});"
+                   "if(!result.handoff_ready||result.handoff_mode!=='native-heart-head'"
+                   "||result.owner_binding.presetActionsReady!==false)process.exit(2)")
+        checked=subprocess.run([shutil.which('node'),'--input-type=module','-e',program],
+                               input=json.dumps({'v':receipt,'d':json.loads(self.deployment_path.read_text())}),
+                               text=True,capture_output=True,timeout=10)
+        self.assertEqual(checked.returncode,0,checked.stderr)
 
     def test_booking_timestamps_accept_postgres_fractional_precision(self):
         for fraction in ('7', '72', '722', '7228', '72287', '722870'):
@@ -309,7 +399,8 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.adapter.native_ready.return_value = self.adapter.check_ready.return_value = {
             'ownerMode': 'native-standing', 'nativeOwner': 'native-mc', 'aimdkMcMode': 'STAND_DEFAULT',
             'sdk_fresh_ready_verified': True, 'presetActionsReady': True, 'noActivePublisher': True}
-        plan = {'operation': 'heart', 'hand': 'both', 'motion_id': 1007, 'control_area': 3, 'dry_run': True}
+        plan = {'operation': 'heart', 'hand': 'both', 'motion_id': 1007, 'control_area': 3, 'dry_run': True,
+                'required_posture':'STAND_DEFAULT'}
         observation = {'player_states': [1, 2, 0], 'input_source': {'name': 'app_proxy'},
                        'last_sequence': 784, 'last_stamp_ns': 123456789}
         result = {**plan, 'dry_run': False, 'succeeded': True, 'task_id': 0, 'task_state': 1,

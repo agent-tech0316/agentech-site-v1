@@ -2,13 +2,15 @@ import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import { MasterReadinessChecks } from "./master-readiness-check.mjs";
 import { createHash, createHmac, randomUUID } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import OBSWebSocket from "obs-websocket-js";
+import { checkNaviBookedReadiness } from "./navi-booking-admission.mjs";
 import { createGatewayCloudRequest } from "./robot-cloud-request.mjs";
-import { createMasterSessionDeployment, masterLaunchBlocker, masterRecoveryForStagedPlan, masterReceiptNeedsReload, parseMasterExecutionResult, assertMasterExecutableSubmission } from "./master-session-gateway.mjs";
+import { masterReceiptNeedsReload, parseMasterExecutionResult, assertMasterExecutableSubmission } from "./master-session-gateway.mjs";
+import { masterBookingAdmission } from "./master-booking-admission.mjs";
 import {
   naviLaunchBlocker, parseNaviCleanupResult, loadGatewayState, saveGatewayState,
   selectNaviResetBaseline, reconcileNaviCleanupOutcome, parseNaviProgramResult,
@@ -131,11 +133,16 @@ function robotModel(value) {
   throw new Error(`unsupported robot model: ${value}`);
 }
 function naviEnvironment() {
-  return { ...process.env, AGENTECH_NAVI_HOST: naviHost, AGENTECH_NAVI_PORT: naviPort, AGENTECH_SDK_ROOT: agentechSdkRoot,
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("AGENTECH_MASTER_") || key === "SUPABASE_SERVICE_ROLE_KEY") delete env[key];
+  }
+  return { ...env, AGENTECH_NAVI_HOST: naviHost, AGENTECH_NAVI_PORT: naviPort, AGENTECH_SDK_ROOT: agentechSdkRoot,
     AGENTECH_NAVI_OWNER_LOCK:join(runtimeDir,"navi-owner.lock") };
 }
 function masterEnvironment() {
   const env = { ...process.env };
+  delete env.AGENTECH_MASTER_HANDOFF_EVIDENCE_KEY;
   delete env.SUPABASE_SERVICE_ROLE_KEY;
   delete env.OBS_WEBSOCKET_PASSWORD;
   return env;
@@ -314,34 +321,11 @@ async function ensureSessionStream(id, item, nowMs) {
   }
 }
 
-function assertNaviStagedBooking(session, item) {
-  if (!claimableStatuses.includes(normalized(session.session_status)) || item.executionAttemptId ||
-      session.approved_run_type !== "custom_code" || robotModel(session.robot_model) !== "navi" ||
-      session.email !== item.accountEmail || session.code_submission_id !== item.executionSubmissionId ||
-      Date.parse(session.scheduled_start) !== Date.parse(item.start) ||
-      Date.parse(session.scheduled_end) !== Date.parse(item.end)) {
-    throw new Error("Navi booking changed since staging");
-  }
-  if (item.localPlan !== join(runtimeDir, `session-${session.id}.plan.json`)) {
-    throw new Error("Navi staged plan path does not belong to this booking");
-  }
-  const bytes = readFileSync(item.localPlan);
-  if (createHash("sha256").update(bytes).digest("hex") !== item.executionPlanSha256) {
-    throw new Error("Navi staged plan hash changed");
-  }
-  const plan = JSON.parse(bytes.toString("utf8"));
-  if (plan.version !== 2 || plan.robot_model !== "navi" || plan.submission_id !== item.executionSubmissionId ||
-      plan.source_sha256 !== item.executionSourceSha256) {
-    throw new Error("Navi staged plan does not match the reviewed submission");
-  }
-}
-
 async function claimSession(session) {
   const statuses = claimableStatuses.join(",");
   const model = state.sessions[session.id]?.executionModel;
   const binding = ["navi", "master"].includes(model)
-    ? ["scheduled_start", "scheduled_end", "code_submission_id", "robot_model", "approved_run_type"]
-      .concat(model === "navi" ? ["email"] : [])
+    ? ["scheduled_start", "scheduled_end", "code_submission_id", "robot_model", "approved_run_type", "email"]
       .map(key => `&${key}=eq.${encodeURIComponent(session[key])}`).join("")
     : "";
   const claimed = await request(
@@ -357,58 +341,21 @@ async function launch(session) {
   let masterReadyUntil = null;
   if (!Number.isFinite(Date.parse(item.end)) || Date.now() >= Date.parse(item.end)) return;
   if (item.executionModel === "master") {
-    item.masterRecoveryOwner = masterRecoveryForStagedPlan(readFileSync(item.localPlan), item.executionPlanSha256, state.sessions, session.id);
-    let blocker = masterLaunchBlocker(state.sessions, session.id, item);
-    if (blocker) masterChecks.discard(String(session.id));
-    if (!blocker) {
-      try {
-        if (!claimableStatuses.includes(normalized(session.session_status)) ||
-            item.executionAttemptId || String(session.code_submission_id) !== String(item.executionSubmissionId) ||
-            Date.parse(session.scheduled_start) !== Date.parse(item.start) ||
-            Date.parse(session.scheduled_end) !== Date.parse(item.end)) {
-          throw new Error("Master booking changed since staging");
-        }
-        if (!masterDeploymentFile) throw new Error("AGENTECH_MASTER_DEPLOYMENT_FILE is not configured");
-        const config = JSON.parse(readFileSync(masterDeploymentFile, "utf8"));
-        const attemptId = item.masterPreparedAttemptId ?? randomUUID();
-        const deployment = createMasterSessionDeployment(config, session, item, attemptId);
-        item.masterPreparedAttemptId = attemptId;
-        item.masterSessionDeployment = join(runtimeDir, `session-${session.id}.${attemptId}.master.json`);
-        item.masterCancelFile = join(runtimeDir, `session-${session.id}.${attemptId}.cancel`);
-        if (existsSync(item.masterCancelFile)) throw new Error("Master session cancelled");
-        const manifest = JSON.stringify(deployment);
-        const identity = createHash("sha256").update(manifest).digest("hex");
-        const checked = masterChecks.poll({
-          id: String(session.id), identity, planHash: item.executionPlanSha256, endMs: Date.parse(item.end),
-        }, async ({ timeoutMs, signal }) => {
-          writeFileSync(item.masterSessionDeployment, manifest);
-          const { stdout } = await runAsync(localPython, [
-            trustedMasterRunner, "--check-ready", "--plan", item.localPlan, "--deployment", item.masterSessionDeployment,
-          ], { env: masterEnvironment(), timeout: timeoutMs, signal, windowsHide: true, maxBuffer: 1024 * 1024 });
-          return JSON.parse(stdout);
-        });
-        if (checked.status === "failed") {
-          blocker = `Master readiness check failed: ${checked.error}`;
-        } else {
-          if (checked.status !== "ready") return;
-          if (createHash("sha256").update(readFileSync(item.masterSessionDeployment)).digest("hex") !== identity) {
-            throw new Error("Master deployment changed after readiness");
-          }
-          masterReadyUntil = checked.expiresAt;
-        }
-      } catch (error) {
-        masterChecks.discard(String(session.id));
-        blocker = `Master readiness check failed: ${error.message}`;
+    const admission = masterBookingAdmission(session,item,{
+      sessions:state.sessions, runtimeDir, deploymentFile:masterDeploymentFile, claimableStatuses, masterChecks,
+      runCheck:async ({planPath,deploymentPath,timeoutMs,signal}) => {
+        const {stdout} = await runAsync(localPython,[trustedMasterRunner,"--check-ready","--plan",planPath,
+          "--deployment",deploymentPath],{env:masterEnvironment(),timeout:timeoutMs,signal,windowsHide:true,maxBuffer:1024*1024});
+        return JSON.parse(stdout);
       }
+    });
+    if (admission.status === "blocked" && item.launchBlockedReason !== admission.reason) {
+      item.launchBlockedReason = admission.reason;
+      saveState();
+      console.error(`[robot-stream] session ${session.id} waiting: ${admission.reason}`);
     }
-    if (blocker) {
-      if (item.launchBlockedReason !== blocker) {
-        item.launchBlockedReason = blocker;
-        saveState();
-        console.error(`[robot-stream] session ${session.id} waiting: ${blocker}`);
-      }
-      return;
-    }
+    if (admission.status !== "ready") return;
+    masterReadyUntil = admission.expiresAt;
     delete item.launchBlockedReason;
   }
   if (item.executionModel === "navi") {
@@ -418,10 +365,10 @@ async function launch(session) {
     } catch (error) { blocker = error.message; }
     if (!blocker) {
       try {
-        assertNaviStagedBooking(session, item);
-        run(localPython, [trustedNaviRunner, "--check-home-ready", item.localPlan, item.executionPlanSha256], {
-          env:naviEnvironment(), timeout:20000 });
-        assertNaviStagedBooking(session, item);
+        checkNaviBookedReadiness({
+          session, item, runtimeDir, claimableStatuses, readPlan: readFileSync,
+          checkRunner: args => run(localPython, [trustedNaviRunner, ...args], { env: naviEnvironment(), timeout: 20000 }),
+        });
       } catch (error) { blocker = `Navi live readiness check failed: ${error.message}`; }
     }
     if (blocker) {
@@ -531,9 +478,8 @@ async function launch(session) {
 async function stopSession(id) {
   const item = state.sessions[id];
   if (item?.executionModel === "master") {
-    // Cancel admission only; never terminate the persistent robot owner or
-    // replace its held target. The runner independently checks booked expiry.
-    if (item.masterCancelFile) writeFileSync(item.masterCancelFile, "booked session ended\n");
+    // The runner enforces its own deadline before each SDK dispatch. At natural
+    // expiry it may still be observing the final endpoint and native owner.
     item.status = "finished";
     saveState();
     return;

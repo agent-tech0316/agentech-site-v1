@@ -188,6 +188,109 @@ test('full restore handoff requires completed bilateral and waist evidence plus 
   }
 });
 
+function scopedReceipt(names) {
+  const owner = {ownerMode:'native-hold', nativeOwner:'native-mc', aimdkMcMode:'STAND_DEFAULT',
+    presetActionsReady:false, manipulationPublishers:0, noActivePublisher:true,
+    rawGuidanceActive:false, sdk_fresh_ready_verified:true, standingStateVerified:true,
+    nativeStandingControlActive:true, nativeCommandOwnersVerified:true, nativeBalanceEvidenceVerified:true,
+    completeArmCommandFrameVerified:true, completeArmStateFrameVerified:true,
+    nativeGestureOwnerVerified:true, nativeMotionIdleVerified:true,
+    heartStartPoseVerified:names.includes('heart'),
+    nativeIdleObservation:{samples:4,firstSequence:10,lastSequence:13,playerState:0,dwellMs:300,
+      inputSource:'app_proxy', ...(names.includes('heart') ? {bootId:'test-boot', mcNode:'test-mc',
+        installedBuild:'test-build', waistReference:'zero-native-offset'} : {})}};
+  const commands = names.map((name, i) => {
+    const heart = name === 'heart';
+    const args = heart ? {hand:'both'} : {angle_degrees:5};
+    const result = heart ? {operation:name, dry_run:false, succeeded:true, task_id:0, task_state:1,
+      hand:'both', motion_id:1007, control_area:3, required_posture:'STAND_DEFAULT', posture_before:'STAND_DEFAULT', posture_after:'STAND_DEFAULT',
+      completion_basis:'native-motion-observation', task_identity_verified:false, observed_motion_id:1007,
+      native_observation:{player_states:[1,2,0],input_source:{name:'app_proxy'},last_sequence:91,last_stamp_ns:1000}}
+      : {operation:name,dry_run:false,phase:'head-sequence-complete',posture:'stand',angle_degrees:5,cycles:1,live_enabled:true,
+        measured_endpoint_verified:true,native_ownership_verified_before_and_after:true,native_balance_retained:true,
+        other_joint_targets_unchanged:true,other_joint_gains_unchanged:true,mode_changes:false,direct_hal_commands:false,
+        head_mapping_qualification_required:false,exact_center_return:name === 'shake_head'};
+    return {...receipt().commands[0], command_index:i+1, started_at:'2026-10-23T01:01:00.000Z',
+      name,args,source_args:args,result};
+  });
+  return {...receipt(), owner_hold_preserved:false, owner_hold_verified:false, handoff_ready:true, handoff_mode:'native-heart-head',
+    owner_binding:{...owner,observed_at:start},final_owner_binding:{...structuredClone(owner),observed_at:'2026-10-23T01:02:00Z'},
+    command_count:commands.length,completed_count:commands.length,commands};
+}
+
+test('scoped native handoff accepts Heart and head-only evidence without claiming arm-gain restoration', () => {
+  for (const names of [['heart'], ['turn_head'], ['shake_head'], ['turn_head','heart','shake_head']]) {
+    const value = scopedReceipt(names);
+    const parsed = parseMasterExecutionResult(JSON.stringify(value),expected);
+    assert.equal(parsed.handoff_mode,'native-heart-head');
+    assert.equal(parsed.owner_binding.presetActionsReady,false);
+    assert.equal(parsed.restore_verified,null);
+    assert.equal(parsed.owner_release_verified,false);
+  }
+  const keyed = scopedReceipt(['heart']);
+  Object.assign(keyed.commands[0].result,{task_id:7,native_observation:null,completion_basis:null});
+  assert.equal(parseMasterExecutionResult(JSON.stringify(keyed),expected).handoff_ready,true);
+  keyed.commands[0].args.hand = 'stand';
+  assert.equal(parseMasterExecutionResult(JSON.stringify(keyed),expected).handoff_ready,true);
+});
+
+test('scoped handoff refuses stale, incomplete, cross-mode, and uncorrelated motion evidence', () => {
+  const invalid = [
+    v => v.final_owner_binding.manipulationPublishers = false,
+    v => v.owner_binding.nativeStandingControlActive = false,
+    v => v.final_owner_binding.rawGuidanceActive = true,
+    v => v.final_owner_binding.presetActionsReady = true,
+    v => v.final_owner_binding.heartStartPoseVerified = false,
+    v => v.final_owner_binding.nativeIdleObservation.waistReference = 'recorded-heart-offset',
+    v => v.owner_binding.nativeMotionIdleVerified = false,
+    v => v.owner_binding.nativeIdleObservation.dwellMs = 249,
+    v => v.final_owner_binding.nativeIdleObservation.lastSequence = 10,
+    v => v.owner_binding.nativeIdleObservation.inputSource = ' ',
+    v => v.final_owner_binding.nativeIdleObservation.inputSource = 'other-input',
+    v => { delete v.owner_binding.nativeIdleObservation.bootId; },
+    v => v.final_owner_binding.nativeIdleObservation.bootId = 'other-boot',
+    v => v.final_owner_binding.nativeIdleObservation.mcNode = 'other-mc',
+    v => v.owner_hold_verified = true,
+    v => v.owner_binding.requestId = 'other',
+    v => v.final_owner_binding.observed_at = start,
+    v => v.final_owner_binding.observed_at = '2026-10-23T01:05:01Z',
+    v => v.restore_verified = true,
+    v => v.owner_release_verified = true,
+    v => v.commands[0].result.observed_motion_id = 1002,
+    v => v.commands[0].result.control_area = 1,
+    v => v.commands[0].result.native_observation.player_states = [1,0],
+    v => v.commands[0].result.native_observation.last_stamp_ns = 0,
+    v => v.commands[1].result.other_joint_gains_unchanged = false,
+    v => v.commands[1].result.exact_center_return = false,
+    v => v.commands[1].result.angle_degrees = 20,
+    v => v.commands[1].result.cycles = 3,
+    v => v.commands[1].name = 'adjust_waist',
+    v => v.commands[1].name = 'stay',
+  ];
+  for (const change of invalid) {
+    const value = scopedReceipt(['heart','shake_head']);
+    change(value);
+    assert.throws(() => parseMasterExecutionResult(JSON.stringify(value),expected), /scoped native handoff/);
+  }
+});
+
+test('only a scoped receipt for the same booking and attempt resolves its pointer; an earlier failure stays blocked', () => {
+  const result = parseMasterExecutionResult(JSON.stringify(scopedReceipt(['heart'])),expected);
+  const previous = {...item, start, end, executionModel:'master', executionAttemptId:expected.attemptId,
+    status:'finished', masterHandoffReady:true, executionResult:result};
+  const next = {start:end,end:'2026-10-23T01:10:00Z'};
+  const block = (sessions) => masterLaunchBlocker(sessions,43,next,Date.parse(end));
+  assert.equal(block({42:previous}), null);
+  for (const patch of [{executionAttemptId:'other'}, {executionSourceSha256:'e'.repeat(64)},
+    {executionSubmissionId:8}, {executionResult:{...result,handoff_ready:false}}]) {
+    assert.match(block({42:{...previous,...patch}}),/handoff/);
+  }
+  const old = {executionModel:'master',executionAttemptId:'old',status:'finished',masterHandoffReady:false,
+    executionResult:{outcome:'failed'}};
+  assert.match(block({41:old,42:previous}),/session 41 requires/);
+  assert.equal(old.masterHandoffReady,false);
+});
+
 test('failed final Master hold verification is retained as execution failure', () => {
   const failure = { type: 'RuntimeError', message: 'owner faulted', command: 'verify_master_hold' };
   const value = { ...receipt(), outcome: 'failed', owner_hold_verified: false, error: failure, hold_observation_error: failure };
@@ -197,12 +300,12 @@ test('failed final Master hold verification is retained as execution failure', (
   assert.equal(result.hold_observation_error.message, 'owner faulted');
 });
 
-test('bridge routes Master locally with cancellation and never enters generic process termination', () => {
+test('Master expiry preserves final observation and never enters generic process termination', () => {
   const source = readFileSync(new URL('./robot-stream-bridge.mjs', import.meta.url), 'utf8');
   assert.match(source, /trusted-master-runner\.py/);
   assert.match(source, /parseMasterExecutionResult/);
   const stop = source.slice(source.indexOf('async function stopSession'), source.indexOf('function processRunning'));
   assert.ok(stop.indexOf('executionModel === "master"') >= 0);
   assert.ok(stop.indexOf('executionModel === "master"') < stop.indexOf('process.kill'));
-  assert.match(stop, /masterCancelFile/);
+  assert.doesNotMatch(stop.slice(0, stop.indexOf('if (item?.executionModel === "navi"')), /writeFileSync|process\.kill/);
 });

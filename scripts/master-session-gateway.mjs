@@ -40,10 +40,92 @@ function recoveryMatches(recovery, id, previous) {
 }
 
 function masterHandoffResolved(sessions, id, previous) {
+  if (previous.executionResult?.handoff_mode === 'native-heart-head') {
+    const result = previous.executionResult;
+    return previous.masterHandoffReady === true && result.session_id === String(id)
+      && result.robot_model === 'master' && result.attempt_id === previous.executionAttemptId
+      && result.source_sha256 === previous.executionSourceSha256 && result.plan_sha256 === previous.executionPlanSha256
+      && result.submission_id === previous.executionSubmissionId && result.booked_end === previous.end
+      && scopedNativeHandoffVerified(result);
+  }
   if (previous.masterHandoffReady === true) return true;
   return Object.values(sessions).some(recovery => recoveryMatches(recovery.masterRecoveryOwner, id, previous)
     && recovery.masterHandoffReady === true && recovery.executionResult?.outcome === 'completed'
     && recovery.executionResult?.restore_verified === true);
+}
+
+export function scopedNativeOwner(binding, needsHeart) {
+  const idle = binding?.nativeIdleObservation;
+  return typeof binding?.presetActionsReady === 'boolean'
+    && binding.ownerMode === (binding.presetActionsReady ? 'native-standing' : 'native-hold')
+    && binding.nativeOwner === 'native-mc' && binding.aimdkMcMode === 'STAND_DEFAULT'
+    && binding.manipulationPublishers === 0 && binding.rawGuidanceActive === false && !binding.fault
+    && binding.requestId == null && binding.publisherPid == null
+    && Number.isInteger(idle?.samples) && idle.samples >= 3 && Number.isInteger(idle.firstSequence)
+    && idle.firstSequence >= 0 && Number.isInteger(idle.lastSequence) && idle.lastSequence > idle.firstSequence
+    && idle.playerState === 0 && Number.isFinite(idle.dwellMs) && idle.dwellMs >= 250
+    && ['standingStateVerified', 'nativeStandingControlActive', 'nativeCommandOwnersVerified',
+      'nativeBalanceEvidenceVerified', 'completeArmCommandFrameVerified', 'completeArmStateFrameVerified',
+      'noActivePublisher', 'sdk_fresh_ready_verified', 'nativeGestureOwnerVerified', 'nativeMotionIdleVerified',
+    ].every(key => binding[key] === true)
+    && (!needsHeart || (binding.heartStartPoseVerified === true
+      && ['zero-native-offset', 'recorded-heart-offset', 'qualified-waist-reference'].includes(idle.waistReference)));
+}
+
+function scopedNativeCommandVerified(command) {
+  if (!command || typeof command !== 'object') return false;
+  const r = command.result;
+  if (command.status !== 'completed' || command.error != null || !r || r.dry_run !== false
+    || r.operation !== command.name || r.fault || r.accepted === false) return false;
+  if (command.name === 'heart') {
+    const hand = command.args?.hand === 'stand' ? 'both' : command.args?.hand ?? 'both';
+    if (r.succeeded !== true || r.task_state !== 1 || !Number.isInteger(r.task_id) || r.task_id < 0
+      || r.required_posture !== 'STAND_DEFAULT' || r.posture_before !== 'STAND_DEFAULT' || r.posture_after !== 'STAND_DEFAULT'
+      || !['left', 'right', 'both'].includes(hand) || r.hand !== hand || r.motion_id !== 1007
+      || r.control_area !== ({left: 1, right: 2, both: 3})[hand]) return false;
+    if (r.task_id > 0) return true;
+    const observation = r.native_observation;
+    const states = observation?.player_states;
+    return r.completion_basis === 'native-motion-observation' && r.task_identity_verified === false
+      && r.observed_motion_id === r.motion_id && Array.isArray(states) && states.at(-1) === 0
+      && states.includes(2) && states.slice(0, -1).every(state => state === 1 || state === 2)
+      && typeof observation.input_source?.name === 'string' && observation.input_source.name.trim() !== ''
+      && Number.isInteger(observation.last_sequence) && observation.last_sequence > 0
+      && Number.isInteger(observation.last_stamp_ns) && observation.last_stamp_ns > 0;
+  }
+  return ['turn_head', 'shake_head'].includes(command.name) && r.phase === 'head-sequence-complete'
+    && r.angle_degrees === (command.args?.angle_degrees ?? 5) && r.posture === 'stand'
+    && ['live_enabled', 'measured_endpoint_verified',
+      'native_ownership_verified_before_and_after', 'native_balance_retained',
+      'other_joint_targets_unchanged', 'other_joint_gains_unchanged'].every(key => r[key] === true)
+    && ['mode_changes', 'direct_hal_commands', 'head_mapping_qualification_required'].every(key => r[key] === false)
+    && (command.name !== 'shake_head' || (r.exact_center_return === true && r.cycles === (command.args?.cycles ?? 1)));
+}
+
+function scopedNativeHandoffVerified(value) {
+  if (value.handoff_ready !== true || value.outcome !== 'completed' || value.error != null
+    || value.owner_hold_preserved !== false || value.owner_hold_verified !== false
+    || (value.owner_release_verified != null && value.owner_release_verified !== false)
+    || (value.restore_verified != null && value.restore_verified !== false) || value.hold_observation_error != null
+    || !Array.isArray(value.commands) || value.commands.length === 0 || value.command_count !== value.commands.length
+    || value.completed_count !== value.command_count || !value.commands.every(scopedNativeCommandVerified)) return false;
+  const needsHeart = value.commands.some(command => command.name === 'heart');
+  const first = value.owner_binding;
+  const last = value.final_owner_binding;
+  if (!scopedNativeOwner(first, needsHeart) || !scopedNativeOwner(last, needsHeart)) return false;
+  const identityFields = needsHeart ? ['inputSource', 'bootId', 'mcNode', 'installedBuild', 'waistReference'] : ['inputSource'];
+  if (!identityFields.every(key => {
+    const identity = first.nativeIdleObservation[key];
+    return typeof identity === 'string' && identity.trim() !== '' && identity === last.nativeIdleObservation[key];
+  })) return false;
+  const start = Date.parse(value.started_at), finish = Date.parse(value.finished_at);
+  const before = Date.parse(first.observed_at), after = Date.parse(last.observed_at);
+  const bookedEnd = Date.parse(value.booked_end);
+  return start <= before && before < after && after <= finish
+    && value.commands.every(command => {
+      const dispatched = Date.parse(command.started_at);
+      return before <= dispatched && dispatched < bookedEnd && dispatched <= after;
+    });
 }
 
 export function assertMasterExecutableSubmission(submission) {
@@ -126,6 +208,10 @@ export function parseMasterExecutionResult(text, expected) {
           && binding.aimdkMcMode === 'STAND_DEFAULT' && binding.noActivePublisher === true && binding.sdk_fresh_ready_verified === true
           && binding.requestId == null && binding.publisherPid == null)) {
         throw new Error('Master native hold handoff requires verified full restoration and released ownership');
+      }
+    } else if (value.handoff_mode === 'native-heart-head') {
+      if (!scopedNativeHandoffVerified(value)) {
+        throw new Error('Master scoped native handoff lacks verified Heart/head completion and native ownership');
       }
     } else if (value.handoff_mode === 'native-standing') {
       const verifiedNativeStanding = (binding) => binding?.ownerMode === 'native-standing'

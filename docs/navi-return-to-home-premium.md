@@ -50,6 +50,16 @@ the lying-start check on Navi and declined the full plan before dispatch because
 the SDK could not resolve its home heading. No EAIC flip or home return was
 physically qualified by those checks.
 
+That approved file was scheduled through the website as #101 for 1:00–1:05
+p.m. Pacific. OBS published and the signed-in Chrome viewer played Navi's
+1280×720 feed. The running bridge had been replaced by an independent Master
+deployment and called the legacy Navi readiness check without the plan or
+digest. It refused the lying start before dispatch. The operator canceled #101;
+it issued zero commands. No physical flip or home return occurred in that
+booking. The Navi booking adapter now supplies the reviewed plan and digest;
+the shared release check exercises the actual route for each robot before
+installation.
+
 The installed gateway now launches a detached trusted supervisor with the absolute
 booked deadline. It retains ownership until that deadline even when the inert
 program finishes early. At expiry it terminates and verifies the program child
