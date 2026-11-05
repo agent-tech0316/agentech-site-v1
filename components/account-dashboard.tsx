@@ -2655,7 +2655,7 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
                           Download
                         </button>
                         <Link
-                          href={`${getEaicHubTaskPath("physical-hardware-check")}?submissionId=${encodeURIComponent(submission.id)}`}
+                          href={`${getEaicHubTaskPath("software-check")}?submissionId=${encodeURIComponent(submission.id)}`}
                           className="border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-[#2f70c8] hover:text-[#2f70c8]"
                         >
                           View Submission

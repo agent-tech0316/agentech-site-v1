@@ -19,6 +19,7 @@ type PageProps = {
   params: Promise<{
     task: string;
   }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 export function generateStaticParams() {
@@ -45,12 +46,18 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default async function EaicHubTaskPage({ params }: PageProps) {
+export default async function EaicHubTaskPage({ params, searchParams }: PageProps) {
   const { task: taskSlug } = await params;
   const redirectSlug = legacyTaskRedirects[taskSlug];
 
   if (redirectSlug) {
-    redirect(getEaicHubTaskPath(redirectSlug));
+    const query = new URLSearchParams();
+    for (const [name, value] of Object.entries(await searchParams)) {
+      if (typeof value === "string") query.set(name, value);
+      else for (const item of value ?? []) query.append(name, item);
+    }
+    const path = getEaicHubTaskPath(redirectSlug);
+    redirect(query.size ? `${path}?${query}` : path);
   }
 
   const task = getAgentechLibraryTask(taskSlug);
@@ -59,5 +66,7 @@ export default async function EaicHubTaskPage({ params }: PageProps) {
     notFound();
   }
 
-  return <AgentechLibraryWorkbench task={task.slug as AgentechLibraryTaskSlug} />;
+  const requested = taskSlug === "software-check" ? (await searchParams).submissionId : undefined;
+  const submissionId = (Array.isArray(requested) ? requested[0] : requested)?.trim() ?? "";
+  return <AgentechLibraryWorkbench key={submissionId} task={task.slug as AgentechLibraryTaskSlug} submissionId={submissionId} />;
 }

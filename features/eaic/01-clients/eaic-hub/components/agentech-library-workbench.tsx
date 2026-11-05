@@ -64,6 +64,7 @@ type Category = (typeof categories)[number];
 type SimFrame = { x: number; y: number; z: number; yaw: number; pitch?: number };
 type AgentechLibraryWorkbenchProps = {
   task?: AgentechLibraryTaskSlug;
+  submissionId?: string;
 };
 type HardwareChecklistItem = {
   name: string;
@@ -2481,7 +2482,7 @@ function HardwareResultPanel({ result }: { result: HardwareResult }) {
   );
 }
 
-export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps = {}) {
+export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLibraryWorkbenchProps = {}) {
   const [code, setCode] = useState(() => (task ? "from agentech import Agentech\n\n" : aegisStarterCode));
   const [activeCategory, setActiveCategory] = useState<Category>("All");
   const [activeName, setActiveName] = useState("stand");
@@ -2506,7 +2507,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
   const [masterLiveTestExpiresAt, setMasterLiveTestExpiresAt] = useState("");
   const [canScheduleRobotSlot, setCanScheduleRobotSlot] = useState(false);
   const [softwareReviewStatus, setSoftwareReviewStatus] = useState<"locked" | "pending" | "passed" | "failed" | "error">("locked");
-  const [submissionQuery, setSubmissionQuery] = useState({ ready: false, id: "" });
+  const [submissionQuery, setSubmissionQuery] = useState({ ready: true, id: submissionId });
   const [reviewResetKey, setReviewResetKey] = useState(0);
   const [hardwareResult, setHardwareResult] = useState<HardwareResult | null>(null);
   const initialPreview = previewAssetForCode(aegisStarterCode, "stand");
@@ -2586,11 +2587,6 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
   const showFocusedLiveRun = selectedTask?.slug === "watch-live-run";
   const showDocs = !selectedTask;
   const useLightTaskPage = Boolean(selectedTask);
-
-  useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("submissionId")?.trim() ?? "";
-    setSubmissionQuery({ ready: true, id });
-  }, []);
 
   useEffect(() => {
     if (!showFocusedReview) {
@@ -2725,8 +2721,11 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
         }
 
         let latestSubmission = payload.latestSubmission ?? null;
-        if (!latestSubmission && payload.localPreview) {
+        if (!latestSubmission && payload.localPreview && (!submissionQuery.id || cachedSubmission?.id === submissionQuery.id)) {
           latestSubmission = cachedSubmission;
+        }
+        if (submissionQuery.id && latestSubmission?.id !== submissionQuery.id) {
+          throw new Error("The selected code submission could not be loaded.");
         }
 
         if (!latestSubmission || latestSubmission.physicalSafetyStatus !== "passed") {
