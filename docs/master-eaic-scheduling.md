@@ -157,6 +157,15 @@ the SDK's default motion speed and force. Adaptive trajectories and settling can
 outlast the SDK client's short default wait. A timeout still fails the session;
 relative adjustments are never replayed automatically.
 
+Firmware may acknowledge an accepted native preset with task ID zero. Deploy
+the SDK's schema-checked compatibility path and the matching trusted runner
+together. Zero is accepted only with correlated native playback of the requested
+motion, observed playback-to-idle transition, successful terminal state, and
+retained standing posture. A zero acknowledgment alone is never completion.
+Older gateways can physically start a preset and then report failure when they
+reject that acknowledgment; preserve that failed attempt and require a fresh
+verified handoff before another booking. Never replay it as an installation test.
+
 After a failed Master session, a separately reviewed and booked program containing
 only `Agentech.restore_stand_hand_guide()` can use the SDK's qualified fault recovery.
 The gateway binds it to the failed attempt's exact request ID and publisher PID;

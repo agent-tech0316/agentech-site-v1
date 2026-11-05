@@ -12,6 +12,25 @@ spec.loader.exec_module(runner)
 
 
 class DispatchModesTests(unittest.TestCase):
+    def test_zero_id_preset_requires_correlated_native_playback_evidence(self):
+        plan = dict(dry_run=True, operation='heart', motion_id=1007, control_area=3)
+        valid = dict(succeeded=True, dry_run=False, operation='heart', control_area=3, task_id=0, task_state=1,
+            posture_before='STAND_DEFAULT', posture_after='STAND_DEFAULT', motion_id=1007,
+            completion_basis='native-motion-observation', task_identity_verified=False,
+            observed_motion_id=1007, native_observation=dict(player_states=[1,2,0],
+                input_source={'name':'app_proxy'}, last_sequence=3, last_stamp_ns=100000000001))
+        runner.require_completed('heart', valid, plan)
+        for changes in ({'native_observation':None}, {'completion_basis':'task-state'},
+                        {'task_identity_verified':True}, {'observed_motion_id':1008}):
+            with self.subTest(changes=changes), self.assertRaises(RuntimeError):
+                runner.require_completed('heart', {**valid, **changes}, plan)
+        for changes in ({'player_states':[1,0]}, {'player_states':[2,1]},
+                        {'player_states':[True,0]}, {'player_states':[2,False]}, {'last_sequence':True},
+                        {'last_stamp_ns':0}, {'input_source':{}}):
+            with self.subTest(changes=changes), self.assertRaises(RuntimeError):
+                runner.require_completed('heart', {**valid,
+                    'native_observation':{**valid['native_observation'], **changes}}, plan)
+
     def test_restore_after_incomplete_endpoint_accepts_exact_healthy_owner(self):
         adapter = self.adapter()
         adapter._owner_not_ready = ValueError
