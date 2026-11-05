@@ -5,21 +5,28 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { UniversalAuthForm } from "@/components/universal-auth-form";
 import { resolveLoginBypassDestination } from "@/lib/local-auth-bypass";
+import { reviewReauthReturn } from "@/lib/eaic-review-reauth";
+import { getServerAccountEmail } from "@/lib/server-account-session";
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string | string[] }>;
+  searchParams: Promise<{ next?: string | string[]; reauth?: string | string[] }>;
 }) {
   const requestHeaders = await headers();
   const params = await searchParams;
+  const reviewReturn = reviewReauthReturn(typeof params.reauth === "string" ? params.reauth : null,
+    typeof params.next === "string" ? params.next : null);
+  if (reviewReturn && await getServerAccountEmail(undefined, { requireSignedSession: true })) {
+    redirect(reviewReturn);
+  }
   const bypassDestination = resolveLoginBypassDestination(
     requestHeaders,
     params.next,
     process.env.NEXT_PUBLIC_HIDE_SIGN_IN === "1",
   );
 
-  if (bypassDestination) {
+  if (bypassDestination && (!reviewReturn || process.env.NEXT_PUBLIC_HIDE_SIGN_IN === "1")) {
     redirect(bypassDestination);
   }
 

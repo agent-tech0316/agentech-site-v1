@@ -431,7 +431,9 @@ test("renders valid Python for every profile map and every copyable Master examp
   const examples = [...html.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/g)].map(([, markup]) => plainSdk(markup));
   assert.equal([...jointHtml.matchAll(/data-sdk-profile-syntax="true"/g)].length, 223);
   assert.ok(profiles.length >= 239, "validate custom movement profiles as well as existing profiles");
-  assert.equal(examples.length, 46);
+  assert.equal(examples.length, 47);
+  assert.ok(examples.some(code => code.startsWith('from agentech import Agentech\nAgentech.use("master")') &&
+    code.endsWith('Agentech.movement_a()')), "include the copyable scheduled Movement A example");
   const python = spawnSync(process.env.PYTHON_BINARY ?? "python", ["-c", "import ast,json,sys\nfor source in json.load(sys.stdin): ast.parse(source)"], { input: JSON.stringify([...profiles, ...examples]), encoding: "utf8" });
   assert.ifError(python.error);
   assert.equal(python.status, 0, python.stderr);
@@ -441,7 +443,8 @@ test("renders valid Python for every profile map and every copyable Master examp
 
 test("preserves existing duration pricing while distinguishing torque, speed, timeouts and proposed stiffness", () => {
   const elbow = plainSdk(sdkCard("adjust_left_elbow"));
-  assert.match(elbow, /default timing/);
+  assert.match(elbow, /default planned peak is 20 degrees\/second; short elbow moves retain derivative limits/i);
+  assert.match(plainSdk(sdkCard("adjust_left_wrist")), /default planned peak remains 10 degrees\/second/i);
   assert.match(elbow, /Custom duration may require an extra fee or a higher-tier plan/);
   const waist = plainSdk(sdkCard("adjust_waist"));
   assert.match(waist, /Custom maximum duration/);
@@ -1204,7 +1207,7 @@ test("optically aligns both EAIC brand marks with the hero copy", async () => {
 });
 
 test("renders the login hero as a concise two-line editorial headline", async () => {
-  const response = await fetch(`${baseUrl}/login`);
+  const response = await fetch(`${baseUrl}/login`, { headers: { "x-forwarded-host": "www.agent-tech.ai" } });
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(
@@ -1214,8 +1217,18 @@ test("renders the login hero as a concise two-line editorial headline", async ()
 });
 
 test("renders the login canvas with the shared warm off-white background", async () => {
-  const response = await fetch(`${baseUrl}/login`);
+  const response = await fetch(`${baseUrl}/login`, { headers: { "x-forwarded-host": "www.agent-tech.ai" } });
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /data-login-canvas="warm-off-white"[^>]*bg-\[\#f5f4f1\]/);
+});
+
+test("an expired EAIC review session opens the real sign-in form with its editor return link", async () => {
+  const next = "/agentech-products/eaic-hub/software-check?draft=003ae6af-513d-4dcc-a438-e18a4e50cd14";
+  const params = new URLSearchParams({ mode: "signin", reauth: "eaic", next });
+  const response = await fetch(`${baseUrl}/login?${params}`, { redirect: "manual" });
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /data-login-card/);
+  assert.match(html, /type="password"/);
 });

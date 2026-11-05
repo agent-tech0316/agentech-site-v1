@@ -3,7 +3,8 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { accountSessionEvent, clearAccountSession, getAccountSession, setAccountSession } from "@/lib/account-session";
-import { initialAuthMode } from "@/lib/auth-entry-mode";
+import { initialAuthMode, loginDisplayEmail } from "@/lib/auth-entry-mode";
+import { reviewReauthReturn } from "@/lib/eaic-review-reauth";
 
 type AuthMode = "signin" | "signup" | "forgot";
 type SignupStep = "email" | "verify";
@@ -20,8 +21,10 @@ type ApiResult = {
 export function UniversalAuthForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const explicitNext = searchParams.get("next");
-  const [mode, setMode] = useState<AuthMode>(() => initialAuthMode(searchParams.get('mode')));
+  const reauth = searchParams.get("reauth") === "eaic";
+  const signedOut = searchParams.get("signedOut");
+  const explicitNext = reauth ? reviewReauthReturn("eaic", searchParams.get("next")) : searchParams.get("next");
+  const [mode, setMode] = useState<AuthMode>(() => initialAuthMode(searchParams.get("mode") ?? (reauth || signedOut === "1" ? "signin" : null)));
   const [signupStep, setSignupStep] = useState<SignupStep>("email");
   const [resetStep, setResetStep] = useState<ResetStep>("email");
   const [email, setEmail] = useState("");
@@ -60,7 +63,7 @@ export function UniversalAuthForm() {
   useEffect(() => {
     function refreshSession() {
       const session = getAccountSession();
-      setSignedInEmail(session?.email ?? "");
+      setSignedInEmail(loginDisplayEmail(session?.email, reauth, signedOut));
       if (session?.email) {
         setEmail(session.email);
       }
@@ -74,7 +77,7 @@ export function UniversalAuthForm() {
       window.removeEventListener(accountSessionEvent, refreshSession);
       window.removeEventListener("storage", refreshSession);
     };
-  }, []);
+  }, [reauth, signedOut]);
 
   function getPostAuthDestination(isNewAccount: boolean) {
     if (explicitNext && !isNewAccount) {
@@ -95,6 +98,7 @@ export function UniversalAuthForm() {
 
   function signOut() {
     clearAccountSession();
+    setMode("signin");
     setSignedInEmail("");
     setPassword("");
     setShowPassword(false);

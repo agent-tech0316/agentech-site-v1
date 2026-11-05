@@ -23,6 +23,7 @@ import { getNaviSimulationMedia } from "@/features/eaic/01-clients/eaic-hub/cont
 import { stripNaviExplorerParams } from "@/features/eaic/01-clients/eaic-hub/contracts/navi-sdk-explorer-state";
 import { agentechLibraryTasks, getAgentechLibraryTask, type AgentechLibraryTaskSlug } from "@/features/eaic/01-clients/eaic-hub/contracts/agentech-library-tasks";
 import { eaicHubPath, getEaicHubTaskPath } from "@/features/eaic/01-clients/eaic-hub/contracts/eaic-hub";
+import { clearReviewDraft, readReviewDraft, saveReviewDraft } from "@/lib/eaic-review-reauth";
 import {
   masterWebsiteFunctions,
   masterDocumentationStarterCode,
@@ -2486,6 +2487,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
   const [activeName, setActiveName] = useState("stand");
   const [requestStatus, setRequestStatus] = useState("Ready for Code Certification. Run Hardware Safety first; Software Security unlocks after it passes.");
   const [reviewInputError, setReviewInputError] = useState("");
+  const [reviewNeedsSignIn, setReviewNeedsSignIn] = useState(false);
   const [isDraggingCodeFile, setIsDraggingCodeFile] = useState(false);
   const developerName = "Agentech developer";
   const [robotModel, setRobotModel] = useState<AgentechRobotModel>("Aegies");
@@ -2602,6 +2604,17 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
 
     const controller = new AbortController();
     let active = true;
+    const draftId = new URLSearchParams(window.location.search).get("draft");
+    const draft = draftId ? readReviewDraft(window.sessionStorage, draftId) : null;
+    const draftModel = normalizeAgentechRobotModel(draft?.robotModel);
+    function restoreEditorDraft() {
+      if (!draft || !draftModel) return;
+      setRobotModel(draftModel);
+      setCode(draft.code);
+      setUploadedFileName(draft.uploadedFileName);
+      setUploadedOriginalCode(draft.uploadedOriginalCode);
+    }
+    restoreEditorDraft();
 
     async function loadLatestReviewGate() {
       setIsLoadingReviewGate(selectedTask?.slug === "software-check" || Boolean(submissionQuery.id));
@@ -2639,7 +2652,17 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
         setIsSoftwareReviewExempt(payload.softwareReviewExempt === true);
         setMasterLiveTestAccess(payload.masterLiveTestAccess === true);
         if (!response.ok) {
+          if (response.status === 401) setReviewNeedsSignIn(true);
           throw new Error(payload.error ?? "Unable to load the latest Physical Hardware Check.");
+        }
+        setReviewNeedsSignIn(false);
+        if (draft && draftModel && draftId) {
+          clearReviewDraft(window.sessionStorage, draftId);
+          if (!submissionQuery.id || payload.latestSubmission?.id !== submissionQuery.id ||
+              payload.latestSubmission.code !== draft.code || normalizeAgentechRobotModel(payload.latestSubmission.robotModel) !== draftModel) {
+            setRequestStatus("Your editor draft is restored. Run Hardware Safety when you’re ready.");
+            return;
+          }
         }
 
         if (payload.masterLiveTestAccess === true && !submissionQuery.id && !payload.latestSubmission) {
@@ -2884,6 +2907,16 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
     setApprovedCodeFile(null);
     window.sessionStorage.removeItem("agentech-latest-physical-review");
     resetPreview(normalizedCode, preferredCommand, selectedModel);
+  }
+
+  function returnToReviewAfterSignIn() {
+    try {
+      const href = saveReviewDraft(window.sessionStorage, { code, robotModel, uploadedFileName, uploadedOriginalCode },
+        physicalSafetyPassed ? physicalSubmissionId : "");
+      window.location.assign(href);
+    } catch {
+      setReviewInputError("This browser could not save the draft. Copy your code before leaving this page.");
+    }
   }
 
   function updateMasterLiveTestText(nextText: string) {
@@ -3200,6 +3233,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
         const message = payload.error ?? "Physical Hardware Check failed.";
         const requestErrorCodes = new Set(["AUTH_REQUIRED", "CODE_REQUIRED", "ACCOUNT_NOT_FOUND", "REVIEW_SERVICE_ERROR"]);
         if (requestErrorCodes.has(payload.errorCode) || response.status >= 500) {
+          setReviewNeedsSignIn(payload.errorCode === "AUTH_REQUIRED");
           setHardwareResult(null);
           setReviewInputError(message);
           setRequestStatus(message);
@@ -3233,6 +3267,7 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
         editedOnWebsite: uploadedFileName ? reviewCode !== uploadedOriginalCode : true
       };
       setPhysicalSubmissionId(payload.id);
+      setReviewNeedsSignIn(false);
       setPhysicalSafetyPassed(true);
       setSoftwareReviewStatus("locked");
       setIsInternalCompanyAccount(payload.internalAccount === true);
@@ -3329,7 +3364,13 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
       });
       const payload = await response.json();
       if (!response.ok) {
-        setSoftwareReviewStatus(payload.aiSecurityStatus === "locked" ? "locked" : payload.aiSecurityStatus || "error");
+        if (payload.errorCode === "AUTH_REQUIRED") {
+          setReviewNeedsSignIn(true);
+          setReviewInputError(payload.error ?? "Your session expired. Return to sign-in to continue this review.");
+          setSoftwareReviewStatus("locked");
+        } else {
+          setSoftwareReviewStatus(payload.aiSecurityStatus === "locked" ? "locked" : payload.aiSecurityStatus || "error");
+        }
         const findings = Array.isArray(payload.findings) && payload.findings.length
           ? ` Findings: ${payload.findings.slice(0, 3).join(" ")}`
           : "";
@@ -3518,9 +3559,14 @@ export function AgentechLibraryWorkbench({ task }: AgentechLibraryWorkbenchProps
                 spellCheck={false}
                 className="min-h-[520px] w-full flex-1 resize-none border-0 bg-[#fdfcf9] p-5 font-mono text-sm leading-7 text-[#303134] outline-none selection:bg-[#d8e8fd] disabled:cursor-not-allowed disabled:bg-[#efede8] disabled:text-[#5f6368] lg:min-h-[760px]"
               />
-              {reviewInputError ? (
+              {reviewInputError || reviewNeedsSignIn ? (
                 <div id="code-editor-error" data-code-review-alert="true" role="alert" className="border-t border-[#c93434] bg-[#fff1f1] px-5 py-3 text-xs leading-5 text-[#a51f1f]">
                   {reviewInputError}
+                  {reviewNeedsSignIn ? (
+                    <button type="button" onClick={returnToReviewAfterSignIn} className="ml-2 font-semibold underline">
+                      Continue to sign-in with this draft
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </div>
