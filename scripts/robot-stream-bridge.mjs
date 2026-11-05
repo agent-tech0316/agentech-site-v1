@@ -1,4 +1,6 @@
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
+import { promisify } from "node:util";
+import { MasterReadinessChecks } from "./master-readiness-check.mjs";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -66,6 +68,8 @@ const obsUrl = process.env.OBS_WEBSOCKET_URL || "ws://127.0.0.1:4455";
 const obsPassword = process.env.OBS_WEBSOCKET_PASSWORD || undefined;
 const activeStatuses = new Set(["requested", "confirmed", "approved", "scheduled", "pending", "running"]);
 const claimableStatuses = ["requested", "confirmed", "approved", "scheduled", "pending"];
+const runAsync = promisify(execFile);
+const masterChecks = new MasterReadinessChecks({ onReady: wakeForMasterReadiness });
 
 mkdirSync(runtimeDir, { recursive: true });
 let state = loadGatewayState(stateFile);
@@ -306,9 +310,13 @@ async function ensureSessionStream(id, item, nowMs) {
 
 async function claimSession(session) {
   const statuses = claimableStatuses.join(",");
+  const binding = state.sessions[session.id]?.executionModel === "master"
+    ? ["scheduled_start", "scheduled_end", "code_submission_id", "robot_model", "approved_run_type"]
+      .map(key => `&${key}=eq.${encodeURIComponent(session[key])}`).join("")
+    : "";
   const claimed = await request(
     "agentech_robot_sessions",
-    `id=eq.${encodeURIComponent(session.id)}&session_status=in.(${statuses})&scheduled_end=gt.${encodeURIComponent(new Date().toISOString())}&select=id`,
+    `id=eq.${encodeURIComponent(session.id)}&session_status=in.(${statuses})&scheduled_end=gt.${encodeURIComponent(new Date().toISOString())}${binding}&select=id`,
     { method: "PATCH", body: { session_status: "running" } }
   );
   return claimed?.length === 1;
@@ -316,12 +324,20 @@ async function claimSession(session) {
 
 async function launch(session) {
   const item = state.sessions[session.id];
+  let masterReadyUntil = null;
   if (!Number.isFinite(Date.parse(item.end)) || Date.now() >= Date.parse(item.end)) return;
   if (item.executionModel === "master") {
     item.masterRecoveryOwner = masterRecoveryForStagedPlan(readFileSync(item.localPlan), item.executionPlanSha256, state.sessions, session.id);
     let blocker = masterLaunchBlocker(state.sessions, session.id, item);
+    if (blocker) masterChecks.discard(String(session.id));
     if (!blocker) {
       try {
+        if (!claimableStatuses.includes(normalized(session.session_status)) ||
+            item.executionAttemptId || String(session.code_submission_id) !== String(item.executionSubmissionId) ||
+            Date.parse(session.scheduled_start) !== Date.parse(item.start) ||
+            Date.parse(session.scheduled_end) !== Date.parse(item.end)) {
+          throw new Error("Master booking changed since staging");
+        }
         if (!masterDeploymentFile) throw new Error("AGENTECH_MASTER_DEPLOYMENT_FILE is not configured");
         const config = JSON.parse(readFileSync(masterDeploymentFile, "utf8"));
         const attemptId = item.masterPreparedAttemptId ?? randomUUID();
@@ -329,10 +345,31 @@ async function launch(session) {
         item.masterPreparedAttemptId = attemptId;
         item.masterSessionDeployment = join(runtimeDir, `session-${session.id}.${attemptId}.master.json`);
         item.masterCancelFile = join(runtimeDir, `session-${session.id}.${attemptId}.cancel`);
-        writeFileSync(item.masterSessionDeployment, JSON.stringify(deployment));
-        run(localPython, [trustedMasterRunner, "--check-ready", "--plan", item.localPlan,
-          "--deployment", item.masterSessionDeployment], { env: masterEnvironment(), timeout: 20000 });
-      } catch (error) { blocker = `Master readiness check failed: ${error.message}`; }
+        if (existsSync(item.masterCancelFile)) throw new Error("Master session cancelled");
+        const manifest = JSON.stringify(deployment);
+        const identity = createHash("sha256").update(manifest).digest("hex");
+        const checked = masterChecks.poll({
+          id: String(session.id), identity, planHash: item.executionPlanSha256, endMs: Date.parse(item.end),
+        }, async ({ timeoutMs, signal }) => {
+          writeFileSync(item.masterSessionDeployment, manifest);
+          const { stdout } = await runAsync(localPython, [
+            trustedMasterRunner, "--check-ready", "--plan", item.localPlan, "--deployment", item.masterSessionDeployment,
+          ], { env: masterEnvironment(), timeout: timeoutMs, signal, windowsHide: true, maxBuffer: 1024 * 1024 });
+          return JSON.parse(stdout);
+        });
+        if (checked.status === "failed") {
+          blocker = `Master readiness check failed: ${checked.error}`;
+        } else {
+          if (checked.status !== "ready") return;
+          if (createHash("sha256").update(readFileSync(item.masterSessionDeployment)).digest("hex") !== identity) {
+            throw new Error("Master deployment changed after readiness");
+          }
+          masterReadyUntil = checked.expiresAt;
+        }
+      } catch (error) {
+        masterChecks.discard(String(session.id));
+        blocker = `Master readiness check failed: ${error.message}`;
+      }
     }
     if (blocker) {
       if (item.launchBlockedReason !== blocker) {
@@ -372,7 +409,13 @@ async function launch(session) {
     console.log(`[robot-stream] session ${session.id} was claimed by another gateway; skipping.`);
     return;
   }
-  if (Date.now() >= Date.parse(item.end)) {
+  const masterReadinessLost = masterReadyUntil !== null &&
+    (Date.now() >= masterReadyUntil || existsSync(item.masterCancelFile));
+  if (Date.now() >= Date.parse(item.end) || masterReadinessLost) {
+    if (masterReadinessLost) {
+      item.executionStatus = "failed";
+      item.launchBlockedReason = "Master readiness expired or booking cancelled before runner launch";
+    }
     item.status = "finished";
     item.endCleanupRequired = false;
     item.endCleanupStatus = "not_started";
@@ -855,6 +898,9 @@ async function tick() {
     if (item.status === "finished") await syncFinalSessionStatus(id, item);
   }
   const sessions = await dueSessions();
+  masterChecks.retain(new Set(sessions.filter(session =>
+    claimableStatuses.includes(normalized(session.session_status)) &&
+    state.sessions[session.id]?.status === "staged").map(session => String(session.id))));
   for (const session of sessions) {
     try {
       if (!state.sessions[session.id]) {
@@ -878,11 +924,19 @@ async function tick() {
 
 console.log(`[robot-stream] Standalone trusted command gateway running for Aegies ${robot} and Navi ${naviHost}:${naviPort}; customer source is never sent to the robot. Navi receives only exact SDK calls from an inert plan.`);
 let tickInProgress = false;
+let masterReadinessWake = false;
+function wakeForMasterReadiness() {
+  masterReadinessWake = true;
+  if (!tickInProgress) void guardedTick();
+}
 async function guardedTick() {
   if (tickInProgress) return;
   tickInProgress = true;
   try {
-    await tick();
+    do {
+      masterReadinessWake = false;
+      await tick();
+    } while (masterReadinessWake);
   } catch (error) {
     console.error("[robot-stream] tick failed:", error.message);
   } finally {
