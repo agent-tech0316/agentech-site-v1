@@ -476,7 +476,7 @@ def observed_preset_completed(name, result, plan):
             or result.get('task_identity_verified') is not False):
         return False
     for key in ('motion_id', 'control_area'):
-        if type(plan.get(key)) is not int or type(result.get(key)) is not int or result[key] != plan[key]:
+        if type(plan.get(key)) is not int or plan[key] <= 0 or type(result.get(key)) is not int or result[key] != plan[key]:
             return False
     if type(result.get('observed_motion_id')) is not int or result['observed_motion_id'] != plan['motion_id']:
         return False
@@ -488,7 +488,7 @@ def observed_preset_completed(name, result, plan):
             and all(type(state) is int for state in states)
             and all(state in (1, 2) for state in states[:-1]) and 2 in states[:-1]
             and isinstance(source, dict) and isinstance(source.get('name'), str) and bool(source['name'])
-            and type(observation.get('last_sequence')) is int and observation['last_sequence'] >= 0
+            and type(observation.get('last_sequence')) is int and observation['last_sequence'] > 0
             and type(observation.get('last_stamp_ns')) is int and observation['last_stamp_ns'] > 0)
 
 

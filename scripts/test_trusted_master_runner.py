@@ -323,6 +323,7 @@ class TrustedMasterRunnerTests(unittest.TestCase):
                         {'observed_motion_id': 1002}, {'motion_id': 1002, 'observed_motion_id': 1002},
                         {'control_area': 1}, {'task_identity_verified': True}, {'task_state': True},
                         {'posture_after': 'DAMPING'}, {'native_observation': {**observation, 'input_source': {}}},
+                        {'native_observation': {**observation, 'last_sequence': 0}},
                         {'native_observation': {**observation, 'player_states': [1, 0]}},
                         {'native_observation': {**observation, 'player_states': [2, 3, 0]}}]:
             with self.subTest(changes=changes), self.assertRaises(RuntimeError):
