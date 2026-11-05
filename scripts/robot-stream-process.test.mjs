@@ -29,7 +29,7 @@ $results = @(foreach ($fixture in $payload.fixtures) {
     if ($payload.kind -eq 'identity') {
       $value = Test-CommandLineArgumentPath -CommandLine $fixture.command -ExpectedPath $fixture.expectedPath
     } else {
-      $blockers = @(Get-RobotStreamRestartBlockers -State $fixture.state -Now ([DateTimeOffset]::Parse($payload.now)))
+      $blockers = @(Get-RobotStreamRestartBlockers -State $fixture.state -Now ([DateTimeOffset]::Parse($payload.now)) -NoActiveRobotRunnersVerified:([bool]$fixture.noActiveRobotRunnersVerified))
       $value = $blockers.Count -eq 0
     }
     [pscustomobject]@{ name = $fixture.name; value = [bool]$value; error = $null }
@@ -158,5 +158,27 @@ test("rejects malformed persisted state instead of treating it as idle", () => {
   for (const result of inspectFixtures("state", states.map((state, index) => ({ name: `malformed ${index}`, state })))) {
     assert.match(result.error ?? "", /Malformed Gateway state/, result.name);
     assert.equal(result.value, false, result.name);
+  }
+});
+
+test("dispatcher restart permits exhausted Navi history only after live runner absence is verified", () => {
+  const old = finishedSession({ executionModel: 'navi', executionStatus: 'failed',
+    endCleanupStatus: 'failed', endCleanupAttempts: 3,
+    endCleanupError: 'Battery is charging; autonomous reset/readiness refused', pid: '57384' });
+  const fixtures = [
+    { name: 'history still blocks without process verification', session: old, verified: false, allowed: false },
+    { name: 'exhausted history is not a live owner', session: old, verified: true, allowed: true },
+    ...[
+      { status: 'running' }, { end: future }, { executionStatus: 'running' },
+      { executionStatus: 'pending' }, { endCleanupAttempts: 2 }, { endCleanupAttempts: '3' },
+      { endCleanupStatus: 'running' }, { endCleanupStatus: 'unknown' },
+      { naviCleanupOwner: {} }, { executionModel: 'master' }, { executionModel: 'aegis' },
+    ].map((change, index) => ({ name: `active or ambiguous ${index}`, session: { ...old, ...change }, verified: true, allowed: false })),
+  ];
+  const results = inspectFixtures('state', fixtures.map(f => ({ name: f.name,
+    state: { sessions: { '93': f.session } }, noActiveRobotRunnersVerified: f.verified })));
+  for (let i = 0; i < results.length; i++) {
+    assert.equal(results[i].error, null, fixtures[i].name);
+    assert.equal(results[i].value, fixtures[i].allowed, fixtures[i].name);
   }
 });

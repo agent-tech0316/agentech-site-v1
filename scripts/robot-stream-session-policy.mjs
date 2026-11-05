@@ -42,6 +42,17 @@ export function keepsStreamActive(item, nowMs) {
   return item.status === "completed" && nowMs < Date.parse(item.end);
 }
 
+/** Camera entitlement is independent of whether reviewed motion code compiles. */
+export function activeCameraStreamDeadline(sessions, nowMs) {
+  const statuses = new Set(['requested', 'confirmed', 'approved', 'scheduled', 'pending', 'running']);
+  return sessions.reduce((deadline, session) => {
+    const start = Date.parse(session.scheduled_start), end = Date.parse(session.scheduled_end);
+    return session.approved_run_type === 'custom_code' && statuses.has(String(session.session_status).toLowerCase())
+      && Number.isFinite(start) && Number.isFinite(end) && start <= nowMs && nowMs < end
+      ? Math.max(deadline, end) : deadline;
+  }, 0);
+}
+
 export function finalSessionDatabaseStatus(item) {
   if (item?.status !== "finished") return null;
   if (item.executionResultRequired === true) {

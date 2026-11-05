@@ -123,7 +123,8 @@ function Get-RobotStreamRestartBlockers {
   [CmdletBinding()]
   param(
     [AllowNull()]$State,
-    [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow
+    [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow,
+    [switch]$NoActiveRobotRunnersVerified
   )
 
   if ($State -isnot [pscustomobject] -or $State.sessions -isnot [pscustomobject]) {
@@ -215,6 +216,12 @@ function Get-RobotStreamRestartBlockers {
     $legacyHistory = $null -eq $cleanupRequired -and $null -eq $cleanupStatus -and $null -eq $executionStatus
     $exhaustedHistory = $cleanupRequired -eq $true -and $cleanupStatus -eq 'failed' -and
       ($cleanupAttempts -is [int] -or $cleanupAttempts -is [long]) -and $cleanupAttempts -ge 3
+    # The dispatcher cannot retry an exhausted Navi cleanup. Once the restart
+    # caller separately verifies no live robot runner, an expired failed record
+    # with no cleanup owner is history, not process ownership. Preserve its
+    # failure; this grants neither cleanup success nor motion readiness.
+    if ($NoActiveRobotRunnersVerified -and $model -eq 'navi' -and $exhaustedHistory -and
+        $session.status -eq 'finished' -and $executionStatus -in @('completed', 'failed')) { continue }
     if (($legacyHistory -or $exhaustedHistory) -and $verifiedCleanupStarts.ContainsKey($model) -and
         $verifiedCleanupStarts[$model] -ge $end) { continue }
     if ($cleanupStatus -notin @('completed', 'not_required') -or

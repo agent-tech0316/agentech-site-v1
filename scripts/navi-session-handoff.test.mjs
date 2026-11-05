@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { createHash } from 'node:crypto';
-import { endSessionCleanupPolicy } from "./robot-stream-session-policy.mjs";
+import { endSessionCleanupPolicy, activeCameraStreamDeadline } from "./robot-stream-session-policy.mjs";
 import { naviLaunchBlocker, parseNaviCleanupResult } from "./navi-session-handoff.mjs";
 import * as handoff from "./navi-session-handoff.mjs";
 import { finalSessionDatabaseStatus } from "./robot-stream-session-policy.mjs";
@@ -82,7 +82,7 @@ test('newly staged Navi session requires authoritative execution persistence', (
   const plan={version:2,robot_model:'navi',source_sha256:createHash('sha256').update(code).digest('hex'),
     commands:[{name:'stand',args:{}}]};
   const deps={state,runtimeDir:'runtime',join:(...parts)=>parts.join('/'),robotModel:()=> 'navi',
-    writeFileSync:()=>{},run:()=>{},readFileSync:()=>JSON.stringify(plan),createHash,
+    writeFileSync:()=>{},writeReviewedSource:()=>{},run:()=>{},readFileSync:()=>JSON.stringify(plan),createHash,
     endSessionCleanupPolicy,deviceResultsStateForPlan:()=>({}),remoteDir:'unused',localPython:'python',compiler:'compiler',
     saveState:()=>{},console:{log(){}}};
   bridgeFunction('stage','async function ensureSessionStream',deps)(
@@ -144,7 +144,8 @@ async function tickFixture(failCloud = false, setup = () => {}) {
   const state = {sessions:{old:previous({status:"completed",end:"2000-01-01T00:00:00Z"}),
     next:previous({status:"staged",end:"2999-01-01T00:00:00Z"})}};
   const noop = () => {};
-  const deps = {state, pollNaviHomePreparation:noop,processRunning:()=>false,saveState:noop, collectExecutionResult:noop,
+  const deps = {state, cameraStreamDeadline:0,activeCameraStreamDeadline,startObs:noop,
+    pollNaviHomePreparation:noop,processRunning:()=>false,saveState:noop, collectExecutionResult:noop,
     publishCaptures:noop,collectDeviceResults:noop,syncDeviceResults:noop,syncExecutionResult:noop,
     syncFinalSessionStatus:noop,keepsStreamActive:()=>false,stopObs:noop,stopObsVirtualCamera:noop,
     stopSession:id=>{state.sessions[id].status="finished";},endCleanupCanRun:item=>item.endCleanupStatus!=="completed",

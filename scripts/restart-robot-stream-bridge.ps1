@@ -15,6 +15,7 @@ $processHelper = Join-Path $scriptDir "robot-stream-process.ps1"
 $watchdogLoop = Join-Path $scriptDir "robot-stream-watchdog-loop.ps1"
 $aegisRunner = Join-Path $scriptDir "trusted-robot-runner.py"
 $naviRunner = Join-Path $scriptDir "trusted-navi-runner.py"
+$masterRunner = Join-Path $scriptDir "trusted-master-runner.py"
 $statePath = Join-Path $repoRoot ".robot-stream-runtime\state.json"
 
 . $processHelper
@@ -34,23 +35,23 @@ if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) {
   $stateJsonOptions['DateKind'] = 'String'
 }
 $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json @stateJsonOptions
-$blockingSessions = @(Get-RobotStreamRestartBlockers -State $state)
-
-if ($blockingSessions.Count -gt 0) {
-  throw "Restart refused: $($blockingSessions -join '; ')"
-}
-
 $runnerProcesses = @(
   Get-CimInstance Win32_Process |
     Where-Object {
       $_.CommandLine -and (
         (Test-CommandLineArgumentPath -CommandLine $_.CommandLine -ExpectedPath $aegisRunner) -or
-        (Test-CommandLineArgumentPath -CommandLine $_.CommandLine -ExpectedPath $naviRunner)
+        (Test-CommandLineArgumentPath -CommandLine $_.CommandLine -ExpectedPath $naviRunner) -or
+        (Test-CommandLineArgumentPath -CommandLine $_.CommandLine -ExpectedPath $masterRunner)
       )
     }
 )
 if ($runnerProcesses.Count -gt 0) {
   throw "Restart refused because a trusted robot runner is still active."
+}
+
+$blockingSessions = @(Get-RobotStreamRestartBlockers -State $state -NoActiveRobotRunnersVerified)
+if ($blockingSessions.Count -gt 0) {
+  throw "Restart refused: $($blockingSessions -join '; ')"
 }
 
 $watchdogProcesses = @(
@@ -71,9 +72,24 @@ if ($bridges.Count -ne 1) {
 
 # Refresh local state after process discovery, immediately before the stop.
 $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json @stateJsonOptions
-$blockingSessions = @(Get-RobotStreamRestartBlockers -State $state)
+$blockingSessions = @(Get-RobotStreamRestartBlockers -State $state -NoActiveRobotRunnersVerified)
 if ($blockingSessions.Count -gt 0) {
   throw "Restart refused: $($blockingSessions -join '; ')"
+}
+
+# Refresh runner absence as well as state immediately before stopping the
+# dispatcher. Master and Navi/Aegis runner processes are never restart targets.
+$runnerProcesses = @(
+  Get-CimInstance Win32_Process | Where-Object {
+    $_.CommandLine -and (
+      (Test-CommandLineArgumentPath -CommandLine $_.CommandLine -ExpectedPath $aegisRunner) -or
+      (Test-CommandLineArgumentPath -CommandLine $_.CommandLine -ExpectedPath $naviRunner) -or
+      (Test-CommandLineArgumentPath -CommandLine $_.CommandLine -ExpectedPath $masterRunner)
+    )
+  }
+)
+if ($runnerProcesses.Count -gt 0) {
+  throw "Restart refused because a trusted robot runner became active."
 }
 
 $oldBridge = $bridges[0]

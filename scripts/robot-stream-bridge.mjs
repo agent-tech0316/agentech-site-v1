@@ -14,10 +14,12 @@ import {
   selectNaviResetBaseline, reconcileNaviCleanupOutcome, parseNaviProgramResult,
 } from "./navi-session-handoff.mjs";
 import { ensureStreamWithRecovery } from "./obs-stream-recovery.mjs";
+import { writeReviewedSource } from "./robot-stream-staging.mjs";
 import {
   endSessionCleanupPolicy,
   finalSessionDatabaseStatus,
   keepsStreamActive,
+  activeCameraStreamDeadline,
 } from "./robot-stream-session-policy.mjs";
 import {
   buildDeviceResultsPatch,
@@ -73,6 +75,7 @@ const masterChecks = new MasterReadinessChecks({ onReady: wakeForMasterReadiness
 
 mkdirSync(runtimeDir, { recursive: true });
 let state = loadGatewayState(stateFile);
+let cameraStreamDeadline = 0;
 let obs;
 const obsRecoveryState = { lastAttemptAt: 0 };
 const obsRecoveryCooldownMs = 5 * 60 * 1000;
@@ -221,7 +224,7 @@ function stage(session, submission) {
   const selectedModel = robotModel(session.robot_model);
   const sourcePath = join(runtimeDir, `${prefix}.reviewed.py`);
   const planPath = join(runtimeDir, `${prefix}.plan.json`);
-  writeFileSync(sourcePath, submission.code, { encoding: "utf8", flag: "wx" });
+  writeReviewedSource(sourcePath, submission.code);
   if (selectedModel === "navi" || selectedModel === "master") run(localPython, [compiler, sourcePath, submission.id, selectedModel, planPath]);
   else run(localPython, [compiler, sourcePath, submission.id, planPath]);
   const plan = JSON.parse(readFileSync(planPath, "utf8"));
@@ -865,7 +868,7 @@ async function tick() {
     finishSessionCleanup(id, item);
   }
   const active = Object.values(state.sessions).some((item) => keepsStreamActive(item, Date.now()));
-  if (!active) {
+  if (!active && Date.now() >= cameraStreamDeadline) {
     try { await stopObs(); }
     catch (error) { console.error("[robot-stream] stream stop failed:", error.message); }
   }
@@ -901,6 +904,9 @@ async function tick() {
   masterChecks.retain(new Set(sessions.filter(session =>
     claimableStatuses.includes(normalized(session.session_status)) &&
     state.sessions[session.id]?.status === "staged").map(session => String(session.id))));
+  // A valid booking may still watch while its code is refused by the compiler.
+  // Cache only the booked end, so cloud failure cannot extend video indefinitely.
+  cameraStreamDeadline = activeCameraStreamDeadline(sessions, Date.now());
   for (const session of sessions) {
     try {
       if (!state.sessions[session.id]) {
@@ -917,6 +923,10 @@ async function tick() {
       // A rejected booking must not starve another robot's valid booked slot.
       // Keep any persisted owner/failure state intact; never manufacture success.
       console.error(`[robot-stream] session ${session.id} scheduling failed:`, error.message);
+      if (activeCameraStreamDeadline([session], Date.now()) > Date.now()) {
+        try { await startObs(); }
+        catch (streamError) { console.error(`[robot-stream] session ${session.id} camera delivery failed:`, streamError.message); }
+      }
     }
   }
   if (!Object.values(state.sessions).some((item) => keepsStreamActive(item, Date.now()))) await stopObsVirtualCamera();
