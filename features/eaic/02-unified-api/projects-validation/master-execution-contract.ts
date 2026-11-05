@@ -25,7 +25,7 @@ class LiteralParser {
   index = 0;
   constructor(readonly text: string, readonly constants: Record<string, string> = {}, readonly results: Set<string> = new Set()) {}
   whitespace() { while (/\s/.test(this.text[this.index] ?? "") && this.index < this.text.length) this.index++; }
-  value(depth = 0): Literal {
+  value(depth = 0, handChoices?: readonly string[]): Literal {
     if (depth > 6) throw new Error("Literal nesting is too deep.");
     this.whitespace();
     const start = this.index;
@@ -78,9 +78,13 @@ class LiteralParser {
     }
     const identifier = this.text.slice(start).match(/^[A-Za-z_]\w*/)?.[0];
     if (identifier && Object.hasOwn(this.constants, identifier)) { this.index += identifier.length; return this.constants[identifier]; }
+    if (identifier && handChoices?.includes(identifier) && ["left", "right", "both"].includes(identifier)) {
+      this.index += identifier.length;
+      return identifier;
+    }
     throw new Error("Only literal numbers, strings, maps, lists, booleans and None are accepted.");
   }
-  arguments(positional: string[], resultParameters: string[] = []): Record<string, Literal> {
+  arguments(positional: string[], resultParameters: string[] = [], handChoices?: readonly string[]): Record<string, Literal> {
     const result: Record<string, Literal> = Object.create(null);
     let position = 0;
     let sawNamed = false;
@@ -100,7 +104,7 @@ class LiteralParser {
         if (!reference || !this.results.has(reference)) throw new Error("undo_waist requires an earlier named adjust_waist result from this program.");
         this.index += reference.length;
         result[key] = { $master_result: reference };
-      } else result[key] = this.value();
+      } else result[key] = this.value(0, key === "hand" ? handChoices : undefined);
       this.whitespace();
       if (this.index >= this.text.length) break;
       if (this.text[this.index++] !== ",") throw new Error("Expressions and nested calls are not accepted.");
@@ -231,7 +235,9 @@ export function checkMasterExecutionCode(source: string): SoftwareCheckReport {
         if (saveResultAs && (spec.result_type !== "waist_adjustment" || !validResultName(saveResultAs) || savedResults.has(saveResultAs))) throw new Error("Only adjust_waist results can be captured, using a unique ordinary name.");
         if (namespace && !spec.standing_namespace) throw new Error(`${name}() is not available through standing_actions.`);
         const resultParameters = Object.entries(spec.parameters).filter(([, parameter]) => parameter.type === "result_ref").map(([key]) => key);
-        const args = new LiteralParser(raw, importedConstants, savedResults).arguments(namespace && name === "heart" ? [] : spec.positional ?? [], resultParameters);
+        const args = new LiteralParser(raw, importedConstants, savedResults).arguments(
+          namespace && name === "heart" ? [] : spec.positional ?? [], resultParameters,
+          spec.backend === "native_preset" ? spec.parameters.hand?.values : undefined);
         if (namespace && name === "heart" && (Object.hasOwn(args, "hand") || Object.hasOwn(args, "posture"))) throw new Error("standing_actions.heart() accepts only operator_ready and feet_planted.");
         validateArguments(name, spec, args);
         if (spec.backend === "raw_upper_body" && !rawEntrySeen) throw new Error('Master adjustments require Agentech.enter_stand_hand_guide("both") before adjustment commands.');

@@ -268,6 +268,32 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.assertNotIn('publisherPid', receipt['final_owner_binding'])
         self.adapter.prepare_mode.assert_not_called()
 
+    def test_zero_task_id_requires_playback_matching_the_requested_sdk_preset(self):
+        self.replace_commands([{'name': 'heart', 'args': {'hand': 'both'}}])
+        self.adapter.native_ready.return_value = self.adapter.check_ready.return_value = {
+            'ownerMode': 'native-standing', 'nativeOwner': 'native-mc', 'aimdkMcMode': 'STAND_DEFAULT',
+            'sdk_fresh_ready_verified': True, 'presetActionsReady': True, 'noActivePublisher': True}
+        plan = {'operation': 'heart', 'hand': 'both', 'motion_id': 1007, 'control_area': 3, 'dry_run': True}
+        observation = {'player_states': [1, 2, 0], 'input_source': {'name': 'app_proxy'},
+                       'last_sequence': 784, 'last_stamp_ns': 123456789}
+        result = {**plan, 'dry_run': False, 'succeeded': True, 'task_id': 0, 'task_state': 1,
+                  'posture_before': 'STAND_DEFAULT', 'posture_after': 'STAND_DEFAULT',
+                  'completion_basis': 'native-motion-observation', 'task_identity_verified': False,
+                  'observed_motion_id': 1007, 'native_observation': observation}
+        self.adapter.validate.return_value = {1: plan}
+        self.adapter.execute.return_value = result
+        self.assertEqual(self.run_plan()['outcome'], 'completed')
+        for changes in [{'completion_basis': None}, {'native_observation': None}, {'operation': 'wave'},
+                        {'observed_motion_id': 1002}, {'motion_id': 1002, 'observed_motion_id': 1002},
+                        {'control_area': 1}, {'task_identity_verified': True}, {'task_state': True},
+                        {'posture_after': 'DAMPING'}, {'native_observation': {**observation, 'input_source': {}}},
+                        {'native_observation': {**observation, 'player_states': [1, 0]}},
+                        {'native_observation': {**observation, 'player_states': [2, 3, 0]}}]:
+            with self.subTest(changes=changes), self.assertRaises(RuntimeError):
+                self.runner.require_completed('heart', {**result, **changes}, plan)
+        with self.assertRaises(RuntimeError):
+            self.runner.require_completed('heart', result)
+
     def test_recovery_manifest_rejects_adjustments_before_sdk_construction(self):
         self.deployment['recovery_owner_binding'] = {'requestId':'fault-owner'}
         self.deployment_path.write_text(json.dumps(self.deployment))

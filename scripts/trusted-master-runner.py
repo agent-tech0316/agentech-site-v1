@@ -233,7 +233,8 @@ class SDKAdapter:
         self.robot._standing_current_hold_control = lambda **kwargs: ExistingOwnerControl(self._owner_factory(**kwargs), self)
 
     def validate(self, commands):
-        for command in commands:
+        preset_plans = {}
+        for index, command in enumerate(commands, 1):
             name = command['name']
             if name == 'movement_a':
                 self.movement_a_adapter()
@@ -245,8 +246,11 @@ class SDKAdapter:
             if name in {'status', 'get_status', 'get_motion_readiness', 'action_catalog', 'undo_waist'}:
                 continue
             plan = method(**sdk_arguments(name, command['args']))
+            if MASTER_COMMANDS[name]['backend'] == 'native_preset':
+                preset_plans[index] = plan
             if isinstance(plan, dict) and plan.get('qualificationState') == 'simultaneous-public-call-pending':
                 raise RuntimeError('selected SDK supports this upper-body combination as a plan only; live path requires waist plus both_elbows or admitted arm torque')
+        return preset_plans
 
     def plan_connection_session(self):
         # Optional optimization from the pinned SDK. Older selected SDKs retain
@@ -436,7 +440,32 @@ class SDKAdapter:
         return result
 
 
-def require_completed(name, result):
+def observed_preset_completed(name, result, plan):
+    """Zero is not a task identity. Require the SDK's correlated playback receipt."""
+    if not isinstance(plan, dict) or plan.get('dry_run') is not True or plan.get('operation') != name:
+        return False
+    if (result.get('dry_run') is not False or result.get('operation') != name
+            or result.get('completion_basis') != 'native-motion-observation'
+            or result.get('task_identity_verified') is not False):
+        return False
+    for key in ('motion_id', 'control_area'):
+        if type(plan.get(key)) is not int or type(result.get(key)) is not int or result[key] != plan[key]:
+            return False
+    if type(result.get('observed_motion_id')) is not int or result['observed_motion_id'] != plan['motion_id']:
+        return False
+    observation = result.get('native_observation')
+    if not isinstance(observation, dict):
+        return False
+    states, source = observation.get('player_states'), observation.get('input_source')
+    return (isinstance(states, list) and len(states) >= 2 and states[-1] == 0
+            and all(type(state) is int for state in states)
+            and all(state in (1, 2) for state in states[:-1]) and 2 in states[:-1]
+            and isinstance(source, dict) and isinstance(source.get('name'), str) and bool(source['name'])
+            and type(observation.get('last_sequence')) is int and observation['last_sequence'] >= 0
+            and type(observation.get('last_stamp_ns')) is int and observation['last_stamp_ns'] > 0)
+
+
+def require_completed(name, result, preset_plan=None):
     if not isinstance(result, dict) or result.get('dry_run') is True or result.get('fault') or result.get('accepted') is False:
         raise RuntimeError('Master result is failed, dry-run, or lacks authoritative evidence')
     if result.get('status') in {'candidate', 'not-qualified'}:
@@ -444,7 +473,8 @@ def require_completed(name, result):
     backend = MASTER_COMMANDS[name]['backend']
     if backend == 'native_preset':
         complete = (result.get('succeeded') is True and type(result.get('task_id')) is int
-            and result['task_id'] > 0 and result.get('task_state') == 1
+            and type(result.get('task_state')) is int and result['task_state'] == 1
+            and (result['task_id'] > 0 or (result['task_id'] == 0 and observed_preset_completed(name, result, preset_plan)))
             and result.get('posture_before') == 'STAND_DEFAULT' and result.get('posture_after') == 'STAND_DEFAULT')
     elif backend == 'native_head':
         complete = (result.get('dry_run') is False and result.get('operation') == name
@@ -534,7 +564,7 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
         with master_lease(lease), ExitStack() as connections:
             adapter = adapter_factory(config)
             adapter.admission_check = admitted
-            adapter.validate(plan['commands'])
+            preset_plans = adapter.validate(plan['commands'])
             admitted()
             session_factory = getattr(type(adapter), 'plan_connection_session', None)
             if callable(session_factory):
@@ -564,7 +594,7 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
                         arguments['movement'] = saved_results[arguments['movement']['$master_result']]
                     result = adapter.execute(command['name'], arguments)
                     active['result'] = result
-                    require_completed(command['name'], result)
+                    require_completed(command['name'], result, preset_plans.get(index) if isinstance(preset_plans, dict) else None)
                     if command.get('save_result_as'):
                         saved_results[command['save_result_as']] = result
                     active.update(result=result, status='completed')

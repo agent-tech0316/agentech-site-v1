@@ -36,7 +36,7 @@ export const masterScheduledMethodGroups: readonly MasterScheduledMethodGroup[] 
     id: "native-presets",
     title: "Native standing gestures",
     description: "Native presets require a freshly verified native-ready standing state. The session does not automatically return from raw guidance or add a restore call before a preset. Unsupported state transitions are refused.",
-    methods: ["wave", "blow_kiss", "raise_hand", "salute", "handshake", "high_five", "chest_wave", "clap", "cross_arms", "hug", "cheer", "wave_goodbye", "raise_hands", "scratch_head", "heart"],
+    methods: ["wave", "blow_kiss", "raise_hand", "salute", "handshake", "high_five", "chest_wave", "clap", "cross_arms", "hug", "cheer", "wave_goodbye", "raise_hands", "bow", "scratch_head", "heart"],
   },
   {
     id: "golf-stiffness",

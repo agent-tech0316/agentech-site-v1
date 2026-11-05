@@ -697,6 +697,14 @@
       "backend": "native_preset",
       "standing_namespace": true
     },
+    "bow": {
+      "parameters": {},
+      "required": [],
+      "positional": [],
+      "validator": "none",
+      "backend": "native_preset",
+      "standing_namespace": true
+    },
     "scratch_head": {
       "parameters": {},
       "required": [],

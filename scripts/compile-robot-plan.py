@@ -104,6 +104,10 @@ def compile_plan(source: str, submission_id: str, robot_model: str = "aegis") ->
         if save_result_as and command_spec.get('result_type') != 'waist_adjustment':
             raise ValueError('Only adjust_waist results can be captured')
         def argument_literal(node, key):
+            if (key == 'hand' and command_spec.get('backend') == 'native_preset'
+                    and isinstance(node, ast.Name) and node.id in {'left', 'right', 'both'}
+                    and node.id in command_spec['parameters'].get('hand', {}).get('values', [])):
+                return node.id
             if command_spec.get('parameters', {}).get(key, {}).get('type') == 'result_ref':
                 if not isinstance(node, ast.Name) or node.id not in saved_results:
                     raise ValueError('undo_waist requires an earlier named adjust_waist result')

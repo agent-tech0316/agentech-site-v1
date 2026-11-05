@@ -65,10 +65,27 @@ class MasterContractTests(unittest.TestCase):
         imports = 'from agentech import Agentech, right, left, both, stand, master\n'
         result = compiler.compile_plan(imports + 'Agentech.use(master)\nAgentech.standing_actions.wave(right)\nAgentech.heart(both, posture=stand)', 'sub', 'master')
         self.assertEqual([(c['name'], c['args']) for c in result['commands']], [('wave', {'hand': 'right'}), ('heart', {'hand': 'both', 'posture': 'stand'})])
-        for source in ['Agentech.wave(right)', 'from agentech import right as chosen\nAgentech.wave(chosen)',
+        for source in ['Agentech.wave(both)', 'Agentech.heart(two)', 'Agentech.heart(both())',
+                       'Agentech.heart(hand=both.__class__)', 'Agentech.heart(posture=both)',
+                       'Agentech.enter_stand_hand_guide(both)', 'Agentech.adjust_waist(yaw=left)',
+                       'from agentech import right as chosen\nAgentech.wave(chosen)',
                        imports+'Agentech.seated_actions.heart()', imports+'Agentech.standing_actions.adjust_waist(yaw=1)',
                        imports+'Agentech.standing_actions.heart(posture=stand)', imports+'Agentech.wave(right.__class__)']:
             with self.subTest(source=source), self.assertRaises(ValueError): compiler.compile_plan(source, 'sub', 'master')
+
+    def test_standing_preset_selectors_compile_to_identical_inert_commands(self):
+        import json
+        spec = importlib.util.spec_from_file_location('preset_compiler', SCRIPTS / 'compile-robot-plan.py')
+        compiler = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(compiler)
+        matrix = json.loads((SCRIPTS / 'fixtures/master-standing-preset-selectors.json').read_text())
+        for method, hands in matrix.items():
+            for hand in hands:
+                for args in ([''] if hand is None else [json.dumps(hand), f"hand='{hand}'", hand, 'hand='+hand]):
+                    with self.subTest(method=method, args=args):
+                        source = f'from agentech import Agentech\nAgentech.use("master")\nAgentech.{method}({args})'
+                        plan = compiler.compile_plan(source, 'preset-check', 'master')
+                        self.assertEqual(plan['commands'], [{'name': method, 'args': {} if hand is None else {'hand': hand}, 'line': 3}])
 
     def test_compiler_waist_undo_uses_only_prior_typed_result_bindings(self):
         spec = importlib.util.spec_from_file_location('master_result_compiler', SCRIPTS / 'compile-robot-plan.py')

@@ -86,7 +86,24 @@ test("Master schedules connected standing presets, arm and waist sequences, and 
   ]) assert.equal(checkMasterExecutionCode(code).status, 'FAIL', code);
 });
 
-test("Master normalizes only canonical imported constants and supported standing namespace calls", () => {
+test("Master certification accepts every standing preset with quoted and bare hand selectors", () => {
+  const { checkAgentechSoftware } = loadTypeScriptModule(`${root}projects-validation/agentech-validation.ts`);
+  const { evaluateAgentechMovementSafety } = loadTypeScriptModule("lib/agentech-motion-safety.ts");
+  const matrix = JSON.parse(readFileSync(new URL("./fixtures/master-standing-preset-selectors.json", import.meta.url)));
+  for (const [method, hands] of Object.entries(matrix)) {
+    for (const hand of hands) {
+      for (const args of hand === null ? [""] : [JSON.stringify(hand), `hand='${hand}'`, hand, `hand=${hand}`]) {
+        const source = `from agentech import Agentech\nAgentech.use("master")\nAgentech.${method}(${args})`;
+        const report = checkAgentechSoftware(source, "Master");
+        assert.equal(evaluateAgentechMovementSafety(source, "Master").submitReady, true, source);
+        assert.equal(report.status, "PASS", source + JSON.stringify(report.findings));
+        assert.deepEqual(report.commands, [method]);
+      }
+    }
+  }
+});
+
+test("Master normalizes canonical constants and supported standing namespace calls", () => {
   const { checkMasterExecutionCode } = loadTypeScriptModule(`${root}projects-validation/master-execution-contract.ts`);
   const imports = 'from agentech import Agentech, left, right, both, stand, master';
   for (const source of [
@@ -94,7 +111,9 @@ test("Master normalizes only canonical imported constants and supported standing
     `${imports}\nAgentech.standing_actions.heart()\nAgentech.standing_actions.golf()\nAgentech.standing_actions.stiff("soft")`,
   ]) assert.equal(checkMasterExecutionCode(source).status, 'PASS', source);
   for (const source of [
-    'Agentech.wave(right)',
+    'Agentech.wave(both)', 'Agentech.heart(two)', 'Agentech.heart(both())',
+    'Agentech.heart(hand=both.__class__)', 'Agentech.heart(posture=both)',
+    'Agentech.enter_stand_hand_guide(both)', 'Agentech.adjust_waist(yaw=left)',
     'from agentech import right as picked\nAgentech.wave(picked)',
     `${imports}\nAgentech.seated_actions.heart()`,
     `${imports}\nAgentech.standing_actions.adjust_waist(yaw=1)`,

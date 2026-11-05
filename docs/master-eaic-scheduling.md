@@ -2,14 +2,14 @@
 
 The EAIC Hub Code Certification page now accepts Master programs through the
 normal reviewed-submission and robot-slot flow. Camera-only Master Live Test
-remains separate and cannot authorize execution. Walking, bow and
+remains separate and cannot authorize execution. Walking and
 seated actions are excluded from scheduled execution.
 The Master SDK and robot controller are unchanged.
 
 ## Existing SDK and raw-mode behavior
 
 `scripts/master-command-contract.json` is the shared web/compiler allowlist.
-It covers 52 reviewed methods, grouped in the Master editor and View SDK:
+It covers 53 reviewed methods, grouped in the Master editor and View SDK:
 
 | Group | Accepted method names |
 | --- | --- |
@@ -17,10 +17,15 @@ It covers 52 reviewed methods, grouped in the Master editor and View SDK:
 | Guidance, arms and waist | `enter_stand_hand_guide`, `adjust_right_shoulder`, `adjust_left_shoulder`, `adjust_right_elbow`, `adjust_left_elbow`, `adjust_both_elbows`, `adjust_elbow`, `adjust_right_wrist`, `adjust_left_wrist`, `adjust_wrist`, `adjust_upper_body`, `adjust_waist`, `return_waist_to_neutral`, `undo_waist` |
 | Arm poses and upper-body sequences | `move_arms_to`, `move_elbows_to`, `move_mirrored_arms_to`, `mirror_arm_pose`, `movement_b`, `showcase`, `close_door` |
 | Retained right-arm preset | `movement_a` |
-| Native standing gestures | `wave`, `blow_kiss`, `raise_hand`, `salute`, `handshake`, `high_five`, `chest_wave`, `clap`, `cross_arms`, `hug`, `cheer`, `wave_goodbye`, `raise_hands`, `scratch_head`, `heart` |
+| Native standing gestures | `wave`, `blow_kiss`, `raise_hand`, `salute`, `handshake`, `high_five`, `chest_wave`, `clap`, `cross_arms`, `hug`, `cheer`, `wave_goodbye`, `raise_hands`, `bow`, `scratch_head`, `heart` |
 | Golf and SDK stiffness controls | `golf`, `golf_put`, `stiff` |
 | Restore and owner controls | `restore_stand_hand_guide`, `restore_stand_default`, `accept_current_hold`, `release_returned_hold`, `release_return_hold` |
 | Status and pause | `stay`, `status`, `get_status`, `get_motion_readiness`, `action_catalog` |
+
+Use `Agentech.heart("both")` in either EAIC or Python. In EAIC, a hand selector
+such as `both` can also be entered without quotes in a standing preset's hand
+argument. In a standalone Python script, import the selector from `agentech`
+before using it unquoted. Fixed presets such as `Agentech.bow()` take no hand.
 
 Existing SDK parameter, torque, timing, operator acknowledgement and mechanical
 support requirements remain enforced. `undo_waist` accepts only a result captured

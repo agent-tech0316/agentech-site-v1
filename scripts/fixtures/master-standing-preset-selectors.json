@@ -1,0 +1,18 @@
+{
+  "wave": ["left", "right"],
+  "blow_kiss": ["left", "right"],
+  "raise_hand": ["left", "right"],
+  "salute": ["left", "right"],
+  "heart": ["left", "right", "both"],
+  "handshake": ["left", "right"],
+  "high_five": ["left", "right"],
+  "chest_wave": ["left", "right"],
+  "clap": [null],
+  "cross_arms": [null],
+  "hug": [null],
+  "cheer": [null],
+  "wave_goodbye": [null],
+  "raise_hands": [null],
+  "bow": [null],
+  "scratch_head": [null]
+}
