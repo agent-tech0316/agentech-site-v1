@@ -218,6 +218,28 @@ function scopedReceipt(names) {
     command_count:commands.length,completed_count:commands.length,commands};
 }
 
+test('session 102 native shake endpoints identify two completed cycles in the gateway parser', () => {
+  const result = JSON.parse(readFileSync(new URL('./fixtures/master-shake-session-102.json', import.meta.url), 'utf8'));
+  const receipt = scopedReceipt(['heart','shake_head']);
+  const shake = receipt.commands[1];
+  shake.result = result;
+  shake.args.cycles = 2;
+  assert.equal(parseMasterExecutionResult(JSON.stringify(receipt), expected).handoff_ready, true);
+  for (const change of [
+    command => command.result.endpoints.pop(),
+    command => command.result.endpoints[0].settled_seconds = .5,
+    command => command.result.endpoints[0].measured_degrees = false,
+    command => command.result.measured_final_degrees = 4,
+    command => command.result.angle_degrees = -5,
+    command => command.args.cycles = 1,
+    command => command.name = 'turn_head',
+  ]) {
+    const changed = structuredClone(receipt);
+    change(changed.commands[1]);
+    assert.throws(() => parseMasterExecutionResult(JSON.stringify(changed), expected));
+  }
+});
+
 test('scoped native handoff accepts Heart and head-only evidence without claiming arm-gain restoration', () => {
   for (const names of [['heart'], ['turn_head'], ['shake_head'], ['turn_head','heart','shake_head']]) {
     const value = scopedReceipt(names);

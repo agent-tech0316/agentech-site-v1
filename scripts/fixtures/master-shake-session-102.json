@@ -1,0 +1,96 @@
+{
+  "operation": "head_motion_sequence",
+  "dry_run": false,
+  "posture": "stand",
+  "posture_controller": "native-mc-body-pose-head",
+  "transport": "McBodyPose.turn_head",
+  "angle_degrees": 5.0,
+  "cycles": 2,
+  "exact_center_return": true,
+  "phase": "head-sequence-complete",
+  "live_enabled": true,
+  "measured_endpoint_verified": true,
+  "native_ownership_verified_before_and_after": true,
+  "native_balance_retained": true,
+  "other_joint_targets_unchanged": true,
+  "other_joint_gains_unchanged": true,
+  "mode_changes": false,
+  "direct_hal_commands": false,
+  "head_mapping_qualification_required": false,
+  "automatic_retry_sent": false,
+  "measured_final_degrees": -0.008237208139035378,
+  "steps": [
+    {
+      "kind": "head_yaw",
+      "target_degrees": 5.0
+    },
+    {
+      "kind": "head_yaw",
+      "target_degrees": -5.0
+    },
+    {
+      "kind": "head_yaw",
+      "target_degrees": 0.0
+    },
+    {
+      "kind": "balance_checkpoint",
+      "target_degrees": 0.0
+    },
+    {
+      "kind": "head_yaw",
+      "target_degrees": 5.0
+    },
+    {
+      "kind": "head_yaw",
+      "target_degrees": -5.0
+    },
+    {
+      "kind": "head_yaw",
+      "target_degrees": 0.0
+    }
+  ],
+  "endpoints": [
+    {
+      "target_degrees": 5.0,
+      "measured_degrees": 4.573125838025358,
+      "settled_seconds": 1.0150000000139698,
+      "required_settling_seconds": 1.0
+    },
+    {
+      "target_degrees": -5.0,
+      "measured_degrees": -4.589600254303428,
+      "settled_seconds": 1.0309999999590218,
+      "required_settling_seconds": 1.0
+    },
+    {
+      "target_degrees": 0.0,
+      "measured_degrees": -0.008237208139035378,
+      "settled_seconds": 1.0,
+      "required_settling_seconds": 1.0
+    },
+    {
+      "target_degrees": 0.0,
+      "measured_degrees": -0.002745736046345126,
+      "settled_seconds": 1.0310000000754371,
+      "required_settling_seconds": 1.0
+    },
+    {
+      "target_degrees": 5.0,
+      "measured_degrees": 4.573125838025358,
+      "settled_seconds": 1.0309999999590218,
+      "required_settling_seconds": 1.0
+    },
+    {
+      "target_degrees": -5.0,
+      "measured_degrees": -4.589600254303428,
+      "settled_seconds": 1.0310000000754371,
+      "required_settling_seconds": 1.0
+    },
+    {
+      "target_degrees": 0.0,
+      "measured_degrees": -0.008237208139035378,
+      "settled_seconds": 1.0160000000614673,
+      "required_settling_seconds": 1.0
+    }
+  ]
+}

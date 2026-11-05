@@ -57,3 +57,23 @@ test("stale evidence is reread and a mismatched attestation is refused", async (
   await setImmediate();
   assert.equal(checks.poll(base, run).status, "failed");
 });
+
+test("an early read-only success waits for a fresh replacement close to opening", async () => {
+  const { checks, runs, run, tick } = fixture();
+  const prep = { ...base, startMs: 20000, prepareOnly: true };
+  checks.poll(prep, run);
+  tick(2000);
+  runs[0].resolve(reply);
+  await setImmediate();
+  assert.equal(checks.poll(prep, run).status, 'prepared');
+  tick(12000);
+  assert.equal(checks.poll(prep, run).status, 'waiting');
+  tick(15000);
+  assert.equal(checks.poll(prep, run).status, 'checking');
+  tick(18000);
+  runs[1].resolve(reply);
+  await setImmediate();
+  tick(20000);
+  assert.equal(checks.poll({ ...prep, prepareOnly: false }, run).status, 'ready');
+  assert.equal(runs.length, 2);
+});

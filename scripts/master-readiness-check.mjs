@@ -23,7 +23,7 @@ export class MasterReadinessChecks {
     }
   }
 
-  poll({ id, identity, planHash, endMs }, run) {
+  poll({ id, identity, planHash, startMs, endMs, prepareOnly=false }, run) {
     const now = this.now();
     const remaining = endMs - now;
     if (!Number.isFinite(remaining) || remaining <= 0) {
@@ -35,15 +35,22 @@ export class MasterReadinessChecks {
       if (previous.status === "checking") return { status: "checking" };
       const age = now - previous.completedAt;
       if (previous.status === "ready" && age >= 0 && age < FRESH_MS) {
+        if (prepareOnly) return { status: "prepared" };
         this.entries.delete(id);
         return { status: "ready", expiresAt: Math.min(endMs, previous.completedAt + FRESH_MS) };
+      }
+      if (prepareOnly && previous.status === "ready" && age >= FRESH_MS &&
+          now < startMs - Math.max(FRESH_MS, previous.completedAt - previous.startedAt)) {
+        // The first observation finished too early. Start its replacement
+        // near opening using the duration observed for this exact check.
+        return { status: "waiting" };
       }
       if (previous.status === "failed" && age >= 0 && age < RETRY_MS) {
         return { status: "failed", error: previous.error };
       }
     }
     this.discard(id);
-    const entry = { identity, status: "checking", controller: new AbortController() };
+    const entry = { identity, status: "checking", startedAt: now, controller: new AbortController() };
     this.entries.set(id, entry);
     const finish = async () => {
       try {

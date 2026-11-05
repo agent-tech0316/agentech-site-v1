@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import ts from 'typescript';
 import { checkNaviBookedReadiness } from './navi-booking-admission.mjs';
+import { masterFirstCommandNotBefore } from './master-booking-admission.mjs';
 import { writeReviewedSource } from './robot-stream-staging.mjs';
 import { activeCameraStreamDeadline } from './robot-stream-session-policy.mjs';
 
@@ -42,6 +43,40 @@ test('camera-only delivery is bounded by a current approved booking even when co
 const source = readFileSync(new URL('./robot-stream-bridge.mjs', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('bridge.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 const tick = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'tick').getText(ast);
+
+test('Master launches its runner inside the slot with the viewing deadline, independent of its first command', async ()=>{
+  const decl=name=>ast.statements.find(node=>ts.isFunctionDeclaration(node) && node.name?.text===name).getText(ast);
+  let time=now-10000;
+  class Clock extends Date { constructor(value){super(value ?? time);} static now(){return time;} }
+  let obsStarted=false;
+  const session={id:102,scheduled_start:new Date(now).toISOString(),scheduled_end:new Date(now+60000).toISOString()};
+  const item={start:session.scheduled_start,end:session.scheduled_end,status:'staged',executionModel:'master',
+    masterPreparedAttemptId:'pinned-attempt',masterCancelFile:'cancel',localPlan:'plan',masterSessionDeployment:'deployment'};
+  const calls=[];
+  const bindings={state:{sessions:{102:item}},Date:Clock,masterFirstCommandNotBefore:(value)=>masterFirstCommandNotBefore(value,time),
+    startObs:async()=>({startedNow:obsStarted,reconnecting:false}),saveState(){},console:{error(){},log(){}},
+    checkMasterBooking:()=>({status:'ready',expiresAt:time+5000}),claimSession:async()=>{calls.push('claim');return true;},
+    existsSync:()=>false,join,runtimeDir:'runtime',localPython:'python',trustedMasterRunner:'runner',masterEnvironment:()=>({}),
+    openSync:()=>1,closeSync(){},spawn:(_python,args)=>{calls.push(args);return {pid:123,on(){},unref(){}};}};
+  const bound=new Function(...Object.keys(bindings),decl('ensureSessionStream')+'\n'+decl('launch')+'\nreturn {ensureSessionStream,launch};')(...Object.values(bindings));
+  await bound.ensureSessionStream(session.id,item,time);
+  await bound.launch(session);
+  assert.deepEqual(calls,[]);
+  const warmStream=item.masterViewerStreamStartedAt;
+  time=now+1000;
+  await bound.ensureSessionStream(session.id,item,time);
+  assert.equal(item.masterViewerStreamStartedAt,warmStream);
+  await bound.launch(session);
+  assert.equal(calls[0],'claim');
+  const args=calls[1];
+  assert.equal(args[args.indexOf('--first-command-not-before')+1],new Date(now+20000).toISOString());
+  assert.equal(item.masterFirstCommandNotBefore,new Date(now+20000).toISOString());
+  // If publication is newly established after opening, count from that confirmation.
+  obsStarted=true;
+  time=now+15000;
+  await bound.ensureSessionStream(session.id,item,time);
+  assert.equal(masterFirstCommandNotBefore(item,time),new Date(now+35000).toISOString());
+});
 
 function naviLaunchFixture(t) {
   const runtimeDir = mkdtempSync(join(tmpdir(), 'eaic-navi-admission-'));

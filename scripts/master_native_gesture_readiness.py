@@ -1,9 +1,12 @@
-"""Read-only admission for EAIC's native standing Heart and head commands."""
+"""Read-only admission and selector identity for EAIC's native standing gestures."""
 import math
 import time
+from master_gateway_spec import MASTER_CONTRACT
 
 
-COMMANDS = frozenset({'heart', 'shake_head', 'turn_head'})
+PRESETS = MASTER_CONTRACT['native_presets']
+ARM_PROFILES = MASTER_CONTRACT['native_preset_arm_gains']
+COMMANDS = frozenset(PRESETS) | {'shake_head', 'turn_head'}
 ARM_SUFFIXES = ('shoulder_pitch_joint', 'shoulder_roll_joint', 'shoulder_yaw_joint',
                 'elbow_joint', 'wrist_yaw_joint', 'wrist_pitch_joint', 'wrist_roll_joint')
 ARM_JOINTS = {side + '_' + suffix for side in ('left', 'right') for suffix in ARM_SUFFIXES}
@@ -22,6 +25,70 @@ def require(condition, message):
 
 def finite(value):
     return type(value) in (int, float) and math.isfinite(value)
+
+
+def bilateral_heart(command):
+    return command['name'] == 'heart' and command['args'].get('hand', 'both') in ('both', 'stand')
+
+
+def needs_preset_profile(command):
+    return command['name'] in PRESETS and not bilateral_heart(command)
+
+
+def preset_identity(name, arguments):
+    spec = PRESETS[name]
+    expected = {'operation': name, 'required_posture': 'STAND_DEFAULT', 'motion_id': spec['motion_id']}
+    if 'fixed_area' in spec:
+        require('hand' not in arguments, name + ' has a fixed control area')
+        return {**expected, 'control_area': spec['fixed_area']}
+    hand = arguments.get('hand')
+    if name == 'heart' and hand in (None, 'stand'):
+        hand = 'both'
+    require(hand in ('left', 'right') or (name == 'heart' and hand == 'both'), name + ' selector is unsupported')
+    return {**expected, 'hand': hand, 'control_area': {'left':1, 'right':2, 'both':3}[hand]}
+
+
+def verify_preset_identity(name, arguments, result, *, dry_run):
+    expected = preset_identity(name, arguments)
+    require(isinstance(result, dict) and result.get('dry_run') is dry_run and
+            type(result.get('motion_id')) is int and type(result.get('control_area')) is int and
+            all(result.get(k) == v for k,v in expected.items()) and result.get('hand') == expected.get('hand'),
+            name + ' does not match its SDK selector, posture, motion ID or control area')
+
+
+def arm_gains_match(gains, profile):
+    if not isinstance(gains, dict) or set(gains) != ARM_JOINTS:
+        return False
+    for joint, gain in gains.items():
+        axis = joint.split('_',1)[1].removesuffix('_joint')
+        if not isinstance(gain,dict) or any(not finite(gain.get(k)) or abs(gain[k]-v) > .05
+                for k,v in zip(('stiffness','damping'), ARM_PROFILES[profile][axis])):
+            return False
+    return True
+
+
+def regular_preset_profile(binding, robot):
+    require(all(binding.get(flag) is True for flag in ('commandPoseReady', 'standDefaultPoseVerified',
+            'armPoseSettled', 'measuredPoseAtCanonical')) and type(binding.get('settleSampleCount')) is int
+            and binding['settleSampleCount'] >= 3, 'preset arms have not settled at native standing')
+    profile = binding.get('armGainProfile')
+    gains = binding.get('armGains')
+    if binding.get('presetActionsReady') is True and profile in ARM_PROFILES:
+        require(arm_gains_match(gains, profile), 'measured preset gains disagree with the reported native profile')
+        return {'nativePresetStartProfile': profile}
+    # The robot-matched v1.0.10 classic/animation_player.yaml and all 25
+    # supervised November 4 variants specify this exact bilateral start frame.
+    require(arm_gains_match(gains, 'native-startup'),
+            'preset needs a recognized SDK standing profile or the recorded v1.0.10 animation gains')
+    control = robot._standing_waist_adjustment_control()
+    actual = control.startup_compatibility_reader()
+    require(actual.read_only_probe_complete is True and actual.robot_serial == control.calibration.robot_serial
+            and actual.installed_build == HEART_FIRMWARE_1_0_10 and actual.arm_owner == 'native-mc'
+            and all(isinstance(x,str) and x.strip() for x in (actual.boot_id,actual.native_mc_node))
+            and not actual.active_diagnostic_faults and type(actual.manipulation_publishers) is int
+            and actual.manipulation_publishers == 0, 'native preset firmware or owner identity differs')
+    return {'nativePresetStartProfile':'v1.0.10-animation', 'nativePresetFirmware':actual.installed_build,
+            'nativePresetBootId':actual.boot_id, 'nativePresetMcNode':actual.native_mc_node}
 
 
 def verify_arm_observation(evidence, include_heart):

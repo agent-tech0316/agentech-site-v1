@@ -2,26 +2,49 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { masterUnresolvedSessions } from './master-native-handoff.mjs';
-import { masterLaunchBlocker, masterRecoveryForStagedPlan, createMasterSessionDeployment } from './master-session-gateway.mjs';
+import { masterLaunchBlocker, masterPreviousSessionBlocker, masterRecoveryForStagedPlan, createMasterSessionDeployment } from './master-session-gateway.mjs';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
+const PREP_LEAD_MS = 20000;
+const VIEWER_LEAD_MS = 20000;
+
+export function masterFirstCommandNotBefore(item, nowMs = Date.now()) {
+  const start = Date.parse(item.start), end = Date.parse(item.end);
+  const published = Date.parse(item.masterViewerStreamStartedAt);
+  if (item.streamStatus !== 'publishing' || !Number.isFinite(published) || published > nowMs ||
+      !Number.isFinite(start) || !Number.isFinite(end) || nowMs < start || nowMs >= end) {
+    throw new Error('Master viewer countdown requires a publishing stream and an open booking');
+  }
+  const notBefore = Math.max(start, published) + VIEWER_LEAD_MS;
+  if (notBefore >= end) throw new Error('The booking ends before the 20-second Master viewing period is complete');
+  return new Date(notBefore).toISOString();
+}
 
 // An archived handoff only discharges its previous attempt. Every new booking
 // gets a separate bounded read-only SDK preflight for its own plan and deadline.
 export function masterBookingAdmission(session, item, { sessions, runtimeDir, deploymentFile,
-  claimableStatuses, masterChecks, runCheck }) {
+  claimableStatuses, masterChecks, runCheck, prepareOnly=false, now=Date.now }) {
   const id = String(session.id);
+  const nowMs = now(), startMs = Date.parse(item.start), endMs = Date.parse(item.end);
   function blocked(reason) {
     masterChecks.discard(id);
     return { status:'blocked', reason };
   }
   let config;
   try {
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs || nowMs >= endMs) {
+      return blocked('Master booked session has expired or is invalid');
+    }
+    if (prepareOnly && nowMs < startMs-PREP_LEAD_MS) {
+      masterChecks.discard(id);
+      return {status:'waiting'};
+    }
     if (!deploymentFile) throw new Error('AGENTECH_MASTER_DEPLOYMENT_FILE is not configured');
     config = JSON.parse(readFileSync(deploymentFile,'utf8'));
     const outstanding = masterUnresolvedSessions(sessions,runtimeDir,config);
     item.masterRecoveryOwner = masterRecoveryForStagedPlan(readFileSync(item.localPlan),item.executionPlanSha256,outstanding,id);
-    const blocker = masterLaunchBlocker(outstanding,id,item);
+    const blocker = prepareOnly ? masterPreviousSessionBlocker(outstanding,id,item,nowMs)
+      : masterLaunchBlocker(outstanding,id,item,nowMs);
     if (blocker) return blocked(blocker);
   } catch (error) { return blocked('Master handoff check failed: '+error.message); }
   try {
@@ -38,7 +61,7 @@ export function masterBookingAdmission(session, item, { sessions, runtimeDir, de
     item.masterSessionDeployment = join(runtimeDir,`session-${id}.${attempt}.master.json`);
     item.masterCancelFile = join(runtimeDir,`session-${id}.${attempt}.cancel`);
     if (existsSync(item.masterCancelFile)) throw new Error('Master session cancelled');
-    const checked = masterChecks.poll({ id, identity, planHash:item.executionPlanSha256, endMs:Date.parse(item.end) },
+    const checked = masterChecks.poll({ id, identity, planHash:item.executionPlanSha256, startMs, endMs, prepareOnly },
       async ({ timeoutMs,signal }) => {
         writeFileSync(item.masterSessionDeployment,manifest);
         return runCheck({planPath:item.localPlan,deploymentPath:item.masterSessionDeployment,timeoutMs,signal});
