@@ -204,7 +204,7 @@ export async function activateGatewayRelease(manifest, options, hooks) {
   });
 }
 
-export async function windowsQuiescent({gateway}) {
+export async function windowsQuiescent({gateway, powershellPath = process.env.AGENTECH_GATEWAY_POWERSHELL || 'powershell.exe'}) {
   check(process.platform === 'win32','Use the host installer to supply a quiescence check on this platform');
   assertIdleState(gateway);
   const query=String.raw`
@@ -226,7 +226,7 @@ if(@(Get-RobotStreamRestartBlockers -State $state -NoActiveRobotRunnersVerified)
 $lease=Join-Path $env:AGENTECH_RELEASE_GATEWAY_ROOT '.robot-stream-runtime\navi-owner.lock'
 if(Test-Path -LiteralPath $lease){$h=[IO.File]::Open($lease,'Open','ReadWrite','ReadWrite');try{$h.Lock(0,1);$h.Unlock(0,1)}finally{$h.Dispose()}}
 `;
-  execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(query,'utf16le').toString('base64')],
+  execFileSync(powershellPath,['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(query,'utf16le').toString('base64')],
     {windowsHide:true,stdio:'pipe',env:{...process.env,AGENTECH_RELEASE_GATEWAY_ROOT:gateway}});
   const {SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY:key} = process.env;
   check(SUPABASE_URL && key,'Live cloud booking check requires gateway environment');
