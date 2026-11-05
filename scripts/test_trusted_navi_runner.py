@@ -453,7 +453,7 @@ class TrustedNaviRunnerTests(unittest.TestCase):
              patch.object(runner, 'check_home_ready', side_effect=RuntimeError('charging now')), \
              patch.object(runner, 'execute') as execute:
             with self.assertRaisesRegex(RuntimeError, 'charging now'):
-                runner.execute_until('plan', '1970-01-01T00:16:41Z')
+                runner.execute_until(write_plan(['stand']), '1970-01-01T00:16:41Z')
         execute.assert_not_called()
 
     def test_lowered_action_zero_requires_real_damping_terminal_flag(self):
@@ -516,8 +516,7 @@ class TrustedNaviRunnerTests(unittest.TestCase):
                 runner.run_cleanup_attempt(plan,result_path,attempt_id)
                 metadata['phase']='finished'
                 runner._atomic_json(owner_path,metadata)
-            with patch.object(runner,'load_plan',return_value=[{'name':'get_battery_status','args':{}}]), \
-                 patch.object(runner,'_hidden_child',side_effect=start), \
+            with patch.object(runner,'_hidden_child',side_effect=start), \
                  patch.object(runner,'_run_cleanup_child',side_effect=cleanup), \
                  patch.object(runner,'configure_navi',return_value=agentech), \
                  patch.object(runner,'verify_home_binding',return_value='test-calibrated-boot'), \
@@ -568,13 +567,12 @@ class TrustedNaviRunnerTests(unittest.TestCase):
         supervise=getattr(runner,'supervise_booked_session',None)
         self.assertTrue(callable(supervise),'missing deadline supervisor')
         child=SimpleNamespace(pid=123,wait=lambda timeout:(_ for _ in ()).throw(runner.subprocess.TimeoutExpired('plan',timeout)),poll=lambda:None)
-        with patch.object(runner,'load_plan',return_value=[{'name':'forward','args':{}}]), \
-             patch.object(runner.subprocess,'Popen',return_value=child), \
+        with patch.object(runner.subprocess,'Popen',return_value=child), \
              patch.object(runner,'_atomic_json'), patch.object(runner,'_terminate_plan_child'), \
              patch.object(runner.time,'time',return_value=1000), \
              patch.object(runner,'_run_cleanup_child') as cleanup:
             with self.assertRaisesRegex(RuntimeError,'did not exit'):
-                supervise('plan','1970-01-01T00:16:41Z','outcome','owner','attempt')
+                supervise(write_plan(['stand']),'1970-01-01T00:16:41Z','outcome','owner','attempt')
         cleanup.assert_not_called()
 
     def test_booked_supervisor_terminates_then_verifies_plan_child_before_cleanup(self):
@@ -591,8 +589,7 @@ class TrustedNaviRunnerTests(unittest.TestCase):
                 return 1
             def poll(self): return None
         child=Child()
-        with patch.object(runner,'load_plan',return_value=[{'name':'forward','args':{}}]), \
-             patch.object(runner.subprocess,'Popen',return_value=child), \
+        with patch.object(runner.subprocess,'Popen',return_value=child), \
              patch.object(runner,'_terminate_plan_child',side_effect=lambda proc:events.append('terminate')), \
              patch.object(runner,'_atomic_json',side_effect=lambda *_args:None), \
              patch.object(runner,'_run_cleanup_child',side_effect=lambda *_args:events.append('cleanup')), \
@@ -605,8 +602,7 @@ class TrustedNaviRunnerTests(unittest.TestCase):
         self.assertTrue(callable(supervise), 'missing independent booked-deadline supervisor')
         events=[]
         child=SimpleNamespace(pid=123,returncode=0,wait=lambda timeout:events.append(('plan',timeout)),poll=lambda:0)
-        with patch.object(runner,'load_plan',return_value=[{'name':'forward','args':{}}]), \
-             patch.object(runner.subprocess,'Popen',return_value=child), \
+        with patch.object(runner.subprocess,'Popen',return_value=child), \
              patch.object(runner,'_atomic_json',side_effect=lambda *_args:None), \
              patch.object(runner,'_run_cleanup_child',side_effect=lambda *_args:events.append('cleanup')), \
              patch.object(runner.time,'time',side_effect=[1000,1000,1001]), \
@@ -666,9 +662,11 @@ class TrustedNaviRunnerTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        with patch.object(runner, "configure_navi", return_value=agentech):
+        with patch.object(runner, "configure_navi", return_value=agentech), \
+             patch.object(runner, "verify_home_binding",return_value='test-boot') as verify:
             runner.execute(str(path))
 
+        verify.assert_called_once_with(agentech)
         self.assertEqual(agentech.calls, ["return_to_home", "stop"])
 
     def test_end_session_uses_original_return_receipt_without_duplicate_damp_or_stop(self) -> None:
@@ -938,6 +936,102 @@ class TrustedNaviRunnerTests(unittest.TestCase):
         reason = str(refusal.exception)
         self.assertIn('standing=False, action=3, estop=0, height=0.120 m, still=True', reason)
         self.assertIn('lowered/damped or verified relaxed', reason)
+        self.assertEqual(motions(robot), [])
+
+    @staticmethod
+    def lying_robot():
+        robot = FakeCleanupAgentech()
+        robot.state.update(action=2, standing=False, estop=0)
+        robot.body['z'] = .065
+        return robot
+
+    def test_reviewed_stand_first_cli_admits_three_lying_samples_without_motion(self):
+        path = write_plan(['stand','frontflip'])
+        robot = self.lying_robot()
+        digest = runner._result_schema.plan_sha256(Path(path).read_bytes())
+        output = io.StringIO()
+        with patch.object(runner, 'configure_navi', return_value=robot), \
+             patch.object(runner, 'verify_home_binding') as home, \
+             patch.object(runner, 'navi_owner',return_value=nullcontext()), \
+             patch.object(runner.time, 'sleep'), redirect_stdout(output), \
+             patch.object(sys, 'argv', ['runner','--check-home-ready',path,digest]):
+            runner.main()
+        self.assertIn('"posture":"lying"', output.getvalue())
+        self.assertEqual(robot.calls.count('status'), 3)
+        self.assertEqual(motions(robot), [])
+        home.assert_not_called()
+        with patch.object(runner, 'configure_navi') as configure, \
+             patch.object(runner, 'navi_owner',return_value=nullcontext()), \
+             patch.object(sys, 'argv', ['runner','--check-home-ready',path,'0'*64]), \
+             self.assertRaisesRegex(ValueError,'SHA-256'):
+            runner.main()
+        configure.assert_not_called()
+
+    def test_only_pinned_stand_first_plan_can_start_lying(self):
+        for names, reviewed in [(['frontflip','stand'],True), (['stand'],False)]:
+            robot = self.lying_robot()
+            with patch.object(runner, 'configure_navi', return_value=robot), self.assertRaises(RuntimeError):
+                runner.check_home_ready(runner._read_plan(write_plan(names)), reviewed=reviewed)
+            self.assertEqual(motions(robot), [])
+        robot = self.lying_robot()
+        for change in ({'action':0,'estop':1},{'estop':1},{'warning':1},{'standing':True}):
+            with patch.object(runner, 'configure_navi', return_value=robot), \
+                 patch.object(robot,'status',side_effect=[robot.state, {**robot.state,**change}]), \
+                 patch.object(runner.time,'sleep'), self.assertRaises(RuntimeError):
+                runner.check_home_ready(runner._read_plan(write_plan(['stand'])), reviewed=True)
+        self.assertEqual(motions(robot), [])
+
+    def test_booked_dispatch_uses_same_reviewed_bytes_after_admission(self):
+        path = Path(write_plan(['stand','frontflip']))
+        digest = runner._result_schema.plan_sha256(path.read_bytes())
+        robot = self.lying_robot()
+        check = runner.check_home_ready
+        def swap_file_after_admission(plan, *, reviewed):
+            result = check(plan, reviewed=reviewed)
+            path.write_bytes(Path(write_plan(['stand','kick'])).read_bytes())
+            return result
+        result_path = path.with_suffix('.result.json')
+        with patch.dict('os.environ',{'AGENTECH_NAVI_PLAN_SHA256':digest}), \
+             patch.object(runner,'navi_owner',return_value=nullcontext()), \
+             patch.object(runner,'check_home_ready',side_effect=swap_file_after_admission), \
+             patch.object(runner,'configure_navi',return_value=robot), patch.object(runner.time,'sleep'):
+            runner.execute_until(path,(datetime.now(timezone.utc)+timedelta(minutes=1)).isoformat(),
+                                 result_path,'attempt')
+        self.assertEqual(motions(robot), ['stand','frontflip','stop'])
+        receipt = json.loads(result_path.read_bytes())
+        self.assertEqual(receipt['plan_sha256'], digest)
+        self.assertEqual(receipt['outcome'], 'completed')
+
+    def test_changed_plan_or_failed_stand_confirmation_never_runs_second_command(self):
+        path = Path(write_plan(['stand','frontflip']))
+        digest = runner._result_schema.plan_sha256(path.read_bytes())
+        end = (datetime.now(timezone.utc)+timedelta(minutes=1)).isoformat()
+        robot = self.lying_robot()
+        with patch.dict('os.environ',{'AGENTECH_NAVI_PLAN_SHA256':'0'*64}), \
+             patch.object(runner,'navi_owner',return_value=nullcontext()), \
+             patch.object(runner,'configure_navi') as configure, self.assertRaisesRegex(ValueError,'SHA-256'):
+            runner.execute_until(path,end)
+        configure.assert_not_called()
+        with patch.dict('os.environ',{'AGENTECH_NAVI_PLAN_SHA256':digest}), \
+             patch.object(runner,'navi_owner',return_value=nullcontext()), \
+             patch.object(runner,'configure_navi',return_value=robot), patch.object(runner.time,'sleep'), \
+             patch.object(robot,'stand',side_effect=lambda: robot.calls.append('stand')), \
+             self.assertRaisesRegex(RuntimeError,'First stand'):
+            runner.execute_until(path,end,path.with_suffix('.result.json'),'attempt')
+        self.assertEqual(motions(robot), ['stand','stop'])
+        receipt = json.loads(path.with_suffix('.result.json').read_bytes())
+        self.assertEqual([(c['name'],c['status']) for c in receipt['commands']], [('stand','failed')])
+
+    def test_explicit_home_boot_mismatch_rejects_booked_plan_before_first_motion(self):
+        robot = self.lying_robot()
+        path = Path(write_plan(['stand','frontflip','return_to_home']))
+        digest = runner._result_schema.plan_sha256(path.read_bytes())
+        with patch.dict('os.environ',{'AGENTECH_NAVI_PLAN_SHA256':digest}), \
+             patch.object(runner,'navi_owner',return_value=nullcontext()), \
+             patch.object(runner,'configure_navi',return_value=robot), patch.object(runner.time,'sleep'), \
+             patch.object(runner,'verify_home_binding',side_effect=RuntimeError('boot mismatch')), \
+             self.assertRaisesRegex(RuntimeError,'boot mismatch'):
+            runner.execute_until(path,(datetime.now(timezone.utc)+timedelta(minutes=1)).isoformat())
         self.assertEqual(motions(robot), [])
 
     def test_check_home_ready_is_read_only_and_requires_damped_posture(self):

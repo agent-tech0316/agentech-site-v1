@@ -13,6 +13,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import NamedTuple
 
 from navi_gateway_spec import validate_navi_command  # noqa: E402
 
@@ -26,10 +27,18 @@ _result_schema = importlib.util.module_from_spec(_result_spec)
 _result_spec.loader.exec_module(_result_schema)
 
 
-def _program_base(plan_path, attempt_id):
-    raw = Path(plan_path).read_bytes()
-    plan = json.loads(raw)
-    return {**_result_schema.build_final_result(plan=plan, plan_path=Path(plan_path), plan_bytes=raw,
+class NaviPlan(NamedTuple):
+    raw: bytes
+    data: dict
+
+    @property
+    def commands(self):
+        return self.data['commands']
+
+
+def _program_base(plan_path, attempt_id, snapshot=None):
+    plan = snapshot if snapshot is not None else _read_plan(plan_path)
+    return {**_result_schema.build_final_result(plan=plan.data, plan_path=Path(plan_path), plan_bytes=plan.raw,
         commands=[], started_at=_result_schema.utc_timestamp(), finished_at=_result_schema.utc_timestamp(),
         error={'type':'ProgramIncomplete', 'message':'No completed program outcome', 'command':'stop'},
         diary_path=Path(plan_path).with_suffix('.navi.log')), 'attempt_id':attempt_id}
@@ -77,8 +86,8 @@ def _assert_sdk_result(name, value):
     return value
 
 
-def _finalize_program(plan_path, program_path, child_path, attempt_id, child, deadline, booked_end, expired):
-    result = _program_base(plan_path, attempt_id)
+def _finalize_program(plan_path, program_path, child_path, attempt_id, child, deadline, booked_end, expired, snapshot=None):
+    result = _program_base(plan_path, attempt_id, snapshot)
     # A pre-deadline JSON timestamp is not proof the child actually exited on time.
     expired = expired or datetime.now(timezone.utc).timestamp() >= deadline
     try:
@@ -135,15 +144,15 @@ def _guardian_metadata(owner_path, metadata):
         _guardian_fault(metadata, 'owner_persistence_error', error)
 
 
-def _guardian_finalize(plan_path, program_path, child_path, attempt_id, child, deadline, booked_end, expired, metadata):
+def _guardian_finalize(plan_path, program_path, child_path, attempt_id, child, deadline, booked_end, expired, metadata, snapshot=None):
     try:
-        _finalize_program(plan_path, program_path, child_path, attempt_id, child, deadline, booked_end, expired)
+        _finalize_program(plan_path, program_path, child_path, attempt_id, child, deadline, booked_end, expired, snapshot)
     except Exception as error:
         _guardian_fault(metadata, 'program_outcome_error', error)
         # A transient failed promotion must never leave a completed program receipt.
         # Retry a failed receipt, preserving an SDK error if it was already known.
         try:
-            failed = getattr(error, 'program_result', None) or _program_base(plan_path, attempt_id)
+            failed = getattr(error, 'program_result', None) or _program_base(plan_path, attempt_id, snapshot)
             if failed['outcome'] != 'failed' or failed['error']['type'] == 'ProgramIncomplete':
                 failed['error'] = _program_error(error)
             failed.update(outcome='failed', persistence_error=_program_error(error))
@@ -253,7 +262,7 @@ def _run_cleanup_child(plan_path, result_path, owner_path, attempt_id, metadata)
 
 def supervise_booked_session(plan_path, booked_end, result_path, owner_path, attempt_id):
     """Deadline and cleanup survive a blocked/restarted bridge; no SDK IO here."""
-    load_plan(plan_path)
+    plan = _read_plan(plan_path, os.environ.get('AGENTECH_NAVI_PLAN_SHA256'))
     deadline = _deadline_seconds(booked_end)
     metadata = {'version':1, 'attempt_id':attempt_id, 'guardian_pid':os.getpid(),
                 'program_pid':None, 'cleanup_pid':None, 'phase':'starting'}
@@ -278,7 +287,7 @@ def supervise_booked_session(plan_path, booked_end, result_path, owner_path, att
                     raise RuntimeError('Navi plan child did not exit; reset blocked') from error
             if type(child.returncode) is not int:
                 raise RuntimeError('Navi plan child exit is unknown; reset blocked')
-            _guardian_finalize(plan_path, program_path, child_path, attempt_id, child, deadline, booked_end, expired, metadata)
+            _guardian_finalize(plan_path, program_path, child_path, attempt_id, child, deadline, booked_end, expired, metadata, plan)
             metadata.update(phase='waiting_for_booked_end', program_return_code=child.returncode)
             _guardian_metadata(owner_path, metadata)
             # Completing a program early does not end its booked ownership.
@@ -287,7 +296,7 @@ def supervise_booked_session(plan_path, booked_end, result_path, owner_path, att
                 time.sleep(remaining)
                 remaining = deadline-time.time()
         else:
-            _guardian_finalize(plan_path, program_path, child_path, attempt_id, None, deadline, booked_end, True, metadata)
+            _guardian_finalize(plan_path, program_path, child_path, attempt_id, None, deadline, booked_end, True, metadata, plan)
         _run_cleanup_child(plan_path, result_path, owner_path, attempt_id, metadata)
     except BaseException as error:
         _failed_outcome(result_path, attempt_id, error)
@@ -317,11 +326,11 @@ def execute_until(plan_path, booked_end, result_path=None, attempt_id=None):
     try:
         with navi_owner():
             # Cloud claim/spawn may outlive the earlier readiness snapshot.
-            check_home_ready()
-            if result_path is None:
-                execute(plan_path)
-            else:
-                execute(plan_path, result_path=result_path, attempt_id=attempt_id)
+            pin = os.environ.get('AGENTECH_NAVI_PLAN_SHA256')
+            plan = _read_plan(plan_path, pin)
+            ready = check_home_ready(plan, reviewed=pin is not None)
+            execute(plan_path, result_path=result_path, attempt_id=attempt_id, snapshot=plan,
+                    verify_first_stand=ready['posture'] == 'lying')
     finally:
         timer.cancel()
 
@@ -353,8 +362,13 @@ def configure_navi():
     return Agentech
 
 
-def load_plan(path: str) -> list[dict]:
-    plan = json.loads(Path(path).read_text(encoding="utf-8"))
+def _read_plan(path, expected_sha=None) -> NaviPlan:
+    raw = Path(path).read_bytes()
+    if expected_sha is not None and _result_schema.plan_sha256(raw) != expected_sha:
+        raise ValueError('Navi staged plan SHA-256 does not match its reviewed identity')
+    plan = json.loads(raw)
+    if not isinstance(plan, dict):
+        raise ValueError("unsupported Navi command plan")
     commands = plan.get("commands")
     if plan.get("version") != 2 or plan.get("robot_model") != "navi" or not isinstance(commands, list):
         raise ValueError("unsupported Navi command plan")
@@ -364,7 +378,11 @@ def load_plan(path: str) -> list[dict]:
         if not isinstance(command, dict):
             raise ValueError("invalid Navi command plan entry")
         validate_navi_command(command.get("name"), command.get("args"))
-    return commands
+    return NaviPlan(raw, plan)
+
+
+def load_plan(path: str) -> list[dict]:
+    return _read_plan(path).commands
 
 
 def is_recoverable_turn_timeout(name: str, error: BaseException) -> bool:
@@ -375,10 +393,14 @@ def is_recoverable_turn_timeout(name: str, error: BaseException) -> bool:
     )
 
 
-def execute(path: str, *, result_path=None, attempt_id=None) -> None:
-    commands = load_plan(path)
+def execute(path: str, *, result_path=None, attempt_id=None, snapshot=None, verify_first_stand=False) -> None:
+    plan = snapshot if snapshot is not None else _read_plan(path)
+    commands = plan.commands
     agentech = configure_navi()
-    result = _program_base(path, attempt_id) if result_path is not None else None
+    # Booked snapshots have just passed this check under the same SDK owner.
+    if snapshot is None and any(command['name'] == 'return_to_home' for command in commands):
+        verify_home_binding(agentech)
+    result = _program_base(path, attempt_id, plan) if result_path is not None else None
     failure = None
     recoverable_timeouts = 0
     try:
@@ -395,6 +417,8 @@ def execute(path: str, *, result_path=None, attempt_id=None) -> None:
                 sdk_result = getattr(agentech, name)(**arguments)
                 record['result'] = _bounded_result(sdk_result)
                 _assert_sdk_result(name, sdk_result)
+                if index == 1 and verify_first_stand:
+                    _verify_stand_after_lying(agentech)
             except BaseException as error:
                 record.update(status='failed',error=_program_error(error,name,index,command.get('line')))
                 trace = getattr(error, 'feedback_trace_tail', None)
@@ -630,27 +654,44 @@ def _verified_receipt(result, run_id):
             'final_heading_error_deg': heading, 'final_state': _safe_state(result['final_state'])}
 
 
-def check_home_ready():
-    """Legacy CLI name: read-only session readiness, not home readiness.
+def _verify_stand_after_lying(agentech):
+    _battery_guard(agentech)
+    state, _, kind, still = _fresh_posture(agentech)
+    if kind != 'standing' or not still or state['action'] != 3:
+        raise RuntimeError('First stand did not reach healthy stationary normal standing (action=3)')
 
-    Scheduled movement does not require home calibration, camera matching, a
-    boot-bound yaw reference, or a successful return-to-home receipt.
-    """
+
+def check_home_ready(plan=None, *, reviewed=False):
+    """Read-only admission. Only a digest-bound stand-first plan may start lying."""
     agentech = configure_navi()
     _battery_guard(agentech)
+    stand_first = reviewed and plan is not None and plan.commands[0]['name'] == 'stand'
+    posture = 'lowered_damped'
     try:
-        state, body, _, _ = _fresh_posture(agentech, allow_relaxed=True)
+        state, body, kind, still = _fresh_posture(agentech, allow_relaxed=True)
         if state['action'] == 1:
             evidence = 'operator_confirmed_relaxed_mode'
+        elif stand_first and state['action'] == 2 and kind == 'low' and still:
+            for _ in range(2):
+                time.sleep(.1)
+                state, body, kind, still = _fresh_posture(agentech)
+                if state['action'] != 2 or kind != 'low' or not still:
+                    raise RuntimeError('Lying posture changed during stand-first readiness observation')
+            posture, evidence = 'lying', 'verified_stand_first_lying'
         else:
             _posture(state, body, damped=True)
             evidence = 'controller_damping'
     except RuntimeError as error:
-        raise RuntimeError(f"Navi start requires a lowered/damped or verified relaxed posture. {error}") from error
+        allowed = 'lowered/damped or verified relaxed posture'
+        if stand_first:
+            allowed += ', or stable lying for this stand-first plan'
+        raise RuntimeError(f"Navi start requires a {allowed}. {error}") from error
+    if plan is not None and any(command['name'] == 'return_to_home' for command in plan.commands):
+        verify_home_binding(agentech)
     _battery_guard(agentech)
-    result = {'ready_for_session': True, 'posture': 'lowered_damped',
+    result = {'ready_for_session': True, 'posture': posture,
               'posture_evidence': evidence, 'final_state': _safe_state(state)}
-    print('[navi-runner] session-ready verified; return-home not required; '
+    print('[navi-runner] session-ready verified; '
           +json.dumps(result, separators=(',', ':'), allow_nan=False), flush=True)
     return result
 
@@ -723,6 +764,9 @@ def main() -> None:
     if len(sys.argv) == 2 and sys.argv[1] == '--check-home-ready':
         with navi_owner(): check_home_ready()
         return
+    if len(sys.argv) == 4 and sys.argv[1] == '--check-home-ready':
+        with navi_owner(): check_home_ready(_read_plan(sys.argv[2], sys.argv[3]), reviewed=True)
+        return
     if len(sys.argv) == 4 and sys.argv[1] == '--return-home-and-damp' and sys.argv[2] == '--session-plan':
         with navi_owner(): end_session_cleanup(return_home=True, session_plan=sys.argv[3])
         return
@@ -747,7 +791,7 @@ def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit(
             "usage: trusted-navi-runner.py PLAN.json | --validate PLAN.json | "
-            "--return-home-and-damp [--session-plan PLAN.json] | --check-home-ready | --damp | --lie-down | --stop"
+            "--return-home-and-damp [--session-plan PLAN.json] | --check-home-ready [PLAN.json SHA256] | --damp | --lie-down | --stop"
         )
     with navi_owner(): execute(sys.argv[1])
 

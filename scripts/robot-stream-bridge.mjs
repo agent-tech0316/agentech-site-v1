@@ -229,7 +229,8 @@ function stage(session, submission) {
   writeReviewedSource(sourcePath, submission.code);
   if (selectedModel === "navi" || selectedModel === "master") run(localPython, [compiler, sourcePath, submission.id, selectedModel, planPath]);
   else run(localPython, [compiler, sourcePath, submission.id, planPath]);
-  const plan = JSON.parse(readFileSync(planPath, "utf8"));
+  const planBytes = readFileSync(planPath);
+  const plan = JSON.parse(planBytes.toString("utf8"));
   if (plan.source_sha256 !== createHash("sha256").update(submission.code).digest("hex")) throw new Error("compiled plan source hash mismatch");
   const endCleanup = endSessionCleanupPolicy(plan, selectedModel);
   const deviceResultsState = selectedModel === "aegis"
@@ -263,7 +264,7 @@ function stage(session, submission) {
     executionStatus: "pending",
     executionSubmissionId: submission.id,
     executionSourceSha256: plan.source_sha256,
-    executionPlanSha256: createHash("sha256").update(readFileSync(planPath)).digest("hex"),
+    executionPlanSha256: createHash("sha256").update(planBytes).digest("hex"),
     remoteExecutionResult: selectedModel === "aegis"
       ? `${remoteDir}/${prefix}.execution.json`
       : null,
@@ -313,10 +314,34 @@ async function ensureSessionStream(id, item, nowMs) {
   }
 }
 
+function assertNaviStagedBooking(session, item) {
+  if (!claimableStatuses.includes(normalized(session.session_status)) || item.executionAttemptId ||
+      session.approved_run_type !== "custom_code" || robotModel(session.robot_model) !== "navi" ||
+      session.email !== item.accountEmail || session.code_submission_id !== item.executionSubmissionId ||
+      Date.parse(session.scheduled_start) !== Date.parse(item.start) ||
+      Date.parse(session.scheduled_end) !== Date.parse(item.end)) {
+    throw new Error("Navi booking changed since staging");
+  }
+  if (item.localPlan !== join(runtimeDir, `session-${session.id}.plan.json`)) {
+    throw new Error("Navi staged plan path does not belong to this booking");
+  }
+  const bytes = readFileSync(item.localPlan);
+  if (createHash("sha256").update(bytes).digest("hex") !== item.executionPlanSha256) {
+    throw new Error("Navi staged plan hash changed");
+  }
+  const plan = JSON.parse(bytes.toString("utf8"));
+  if (plan.version !== 2 || plan.robot_model !== "navi" || plan.submission_id !== item.executionSubmissionId ||
+      plan.source_sha256 !== item.executionSourceSha256) {
+    throw new Error("Navi staged plan does not match the reviewed submission");
+  }
+}
+
 async function claimSession(session) {
   const statuses = claimableStatuses.join(",");
-  const binding = state.sessions[session.id]?.executionModel === "master"
+  const model = state.sessions[session.id]?.executionModel;
+  const binding = ["navi", "master"].includes(model)
     ? ["scheduled_start", "scheduled_end", "code_submission_id", "robot_model", "approved_run_type"]
+      .concat(model === "navi" ? ["email"] : [])
       .map(key => `&${key}=eq.${encodeURIComponent(session[key])}`).join("")
     : "";
   const claimed = await request(
@@ -393,8 +418,10 @@ async function launch(session) {
     } catch (error) { blocker = error.message; }
     if (!blocker) {
       try {
-        run(localPython, [trustedNaviRunner, "--check-home-ready"], {
+        assertNaviStagedBooking(session, item);
+        run(localPython, [trustedNaviRunner, "--check-home-ready", item.localPlan, item.executionPlanSha256], {
           env:naviEnvironment(), timeout:20000 });
+        assertNaviStagedBooking(session, item);
       } catch (error) { blocker = `Navi live readiness check failed: ${error.message}`; }
     }
     if (blocker) {
@@ -470,7 +497,7 @@ async function launch(session) {
         detached: true,
         windowsHide: true,
         stdio: ["ignore", logFd, logFd],
-        env: naviEnvironment()
+        env: { ...naviEnvironment(), AGENTECH_NAVI_PLAN_SHA256: item.executionPlanSha256 }
       });
       child.on("error", error => console.error(`[robot-stream] Navi supervisor spawn failed: ${error.message}`));
       if (!child.pid) throw new Error("Navi supervisor did not provide a process identity; ownership recovery required");

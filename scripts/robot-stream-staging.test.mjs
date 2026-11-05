@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -40,6 +41,69 @@ test('camera-only delivery is bounded by a current approved booking even when co
 const source = readFileSync(new URL('./robot-stream-bridge.mjs', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('bridge.mjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 const tick = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'tick').getText(ast);
+
+function naviLaunchFixture(t) {
+  const runtimeDir = mkdtempSync(join(tmpdir(), 'eaic-navi-admission-'));
+  t.after(() => rmSync(runtimeDir, { recursive: true, force: true }));
+  const session = { id: 101, email: 'operator@example.test', approved_run_type: 'custom_code',
+    session_status: 'approved', robot_model: 'Navi', code_submission_id: 'reviewed-1',
+    scheduled_start: new Date(Date.now() - 1000).toISOString(), scheduled_end: new Date(Date.now() + 120000).toISOString() };
+  const bytes = Buffer.from(JSON.stringify({ version: 2, robot_model: 'navi', submission_id: 'reviewed-1',
+    source_sha256: 'a'.repeat(64), commands: [{ name: 'stand', args: [] }] }));
+  const item = { status: 'staged', executionModel: 'navi', start: session.scheduled_start, end: session.scheduled_end,
+    accountEmail: session.email, executionSubmissionId: session.code_submission_id, executionSourceSha256: 'a'.repeat(64),
+    localPlan: join(runtimeDir, 'session-101.plan.json'), executionPlanSha256: createHash('sha256').update(bytes).digest('hex') };
+  const calls = [];
+  const io = { bytes, claimRows: [{ id: session.id }], onPreflight() {} };
+  const bindings = { runtimeDir, state: { sessions: { [session.id]: item } }, join, createHash, localPython: 'python',
+    trustedNaviRunner: 'runner', claimableStatuses: ['approved'], normalized: x => x.toLowerCase(),
+    robotModel: x => x.toLowerCase(), readFileSync: path => { assert.equal(path, item.localPlan); return io.bytes; },
+    naviLaunchBlocker: () => null, naviEnvironment: () => ({}),
+    run: (_, args) => { calls.push({ type: 'preflight', args }); io.onPreflight(); },
+    request: async (_, query) => { calls.push({ type: 'claim', query }); return io.claimRows; },
+    createNaviSessionOwner: () => ({ attempt_id: 'one', owner_file: 'owner', result_file: 'result' }),
+    spawn: (_, args, opts) => { calls.push({ type: 'spawn', args, env: opts.env }); return { pid: 123, unref() {}, on() {} }; },
+    saveState() {}, openSync() { return 1; }, closeSync() {}, console: { log() {}, error() {} } };
+  const declarations = ['assertNaviStagedBooking', 'claimSession', 'launch'].map(name =>
+    ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name).getText(ast));
+  const launch = new Function(...Object.keys(bindings), declarations.join('\n') + '; return launch;')(...Object.values(bindings));
+  return { session, item, io, calls, launch: () => launch(session) };
+}
+
+test('Navi readiness, atomic claim and supervisor use the same reviewed booking and exact plan', async t => {
+  const f = naviLaunchFixture(t);
+  await f.launch();
+  assert.deepEqual(f.calls.map(x => x.type), ['preflight', 'claim', 'spawn']);
+  assert.deepEqual(f.calls[0].args, ['runner', '--check-home-ready', f.item.localPlan, f.item.executionPlanSha256]);
+  const filter = new URLSearchParams(f.calls[1].query);
+  for (const key of ['email', 'robot_model', 'approved_run_type', 'code_submission_id', 'scheduled_start', 'scheduled_end']) {
+    assert.ok(filter.getAll(key).includes('eq.' + f.session[key]), key);
+  }
+  assert.equal(f.calls[2].args[2], f.item.localPlan);
+  assert.equal(f.calls[2].env.AGENTECH_NAVI_PLAN_SHA256, f.item.executionPlanSha256);
+});
+
+test('Navi never dispatches a changed plan, rescheduled or re-claimed booking', async t => {
+  const changed = naviLaunchFixture(t);
+  changed.io.onPreflight = () => { changed.io.bytes = Buffer.from('different'); };
+  await changed.launch();
+  assert.deepEqual(changed.calls.map(x => x.type), ['preflight']);
+  assert.match(changed.item.launchBlockedReason, /plan hash changed/);
+  const rescheduled = naviLaunchFixture(t);
+  rescheduled.session.scheduled_start = rescheduled.session.scheduled_end;
+  await rescheduled.launch();
+  assert.deepEqual(rescheduled.calls, []);
+  assert.match(rescheduled.item.launchBlockedReason, /booking changed/);
+  const wrongPath = naviLaunchFixture(t);
+  wrongPath.item.localPlan = join(tmpdir(), 'different-booking.plan.json');
+  await wrongPath.launch();
+  assert.deepEqual(wrongPath.calls, []);
+  assert.match(wrongPath.item.launchBlockedReason, /plan path/);
+  const lost = naviLaunchFixture(t);
+  lost.io.claimRows = [];
+  await lost.launch();
+  assert.deepEqual(lost.calls.map(x => x.type), ['preflight', 'claim']);
+});
 
 test('dispatcher restart cannot replay an exhausted Navi cleanup or convert its failure to success', () => {
   const fn = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'endCleanupCanRun').getText(ast);

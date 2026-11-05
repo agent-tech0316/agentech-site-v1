@@ -343,7 +343,7 @@ test("actual launch rechecks expiration after readiness and after claim", async 
     const state = {sessions:{next:item}, naviResetVerifiedAt:resetAt,
       naviResetResult:{run_id:"verified-boot"}};
     let spawned = 0;
-    const deps = {state,Date:{now:()=>clock,parse:Date.parse},
+    const deps = {state,Date:{now:()=>clock,parse:Date.parse},assertNaviStagedBooking(){},finishExpiredAdmission(){},
       naviLaunchBlocker:()=>null,refreshNaviResetBaseline:()=>({verified_at:resetAt,result:{run_id:"verified-boot"}}),
       run:()=>{if(crossAt==="readiness") clock=1300;},
       claimSession:async()=>{if(crossAt==="claim") clock=1300;return true;},
@@ -360,7 +360,7 @@ test("a launched Navi supervisor receives booked deadline rather than an unbound
   const item = previous({status:"staged",end:"2999-01-01T00:00:00Z",localPlan:"plan.json"});
   let args;
   const deps = {state:{sessions:{next:item},naviResetVerifiedAt:resetAt,naviResetResult:{run_id:"boot"}},
-    naviLaunchBlocker:()=>null,refreshNaviResetBaseline:()=>({verified_at:resetAt,result:{run_id:"boot"}}),
+    assertNaviStagedBooking(){},naviLaunchBlocker:()=>null,refreshNaviResetBaseline:()=>({verified_at:resetAt,result:{run_id:"boot"}}),
     run:()=>{},claimSession:async()=>true,localPython:"python",trustedNaviRunner:"runner",naviEnvironment:()=>({}),
     join:(...parts)=>parts.join("/"),runtimeDir:"runtime",openSync:()=>1,closeSync:()=>{},saveState:()=>{},
     spawn:(_program,command)=>{args=command;return {pid:42,unref(){},on(){}};},console:{log(){},error(){}},
