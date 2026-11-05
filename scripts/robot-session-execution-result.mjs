@@ -4,6 +4,71 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const DEFAULT_MAX_BYTES = 512 * 1024;
 const DEFAULT_MAX_COMMANDS = 256;
 
+// Previous bridge versions read an undefined receipt path after a staged booking expired.
+function missingUndispatchedPath(error) {
+  return typeof error === "string" && error.startsWith('MissingOrInvalidExecutionResult: The "path" argument')
+    && error.endsWith("Received undefined");
+}
+
+function publicAdmissionReason(raw) {
+  if (!raw) return "The booking ended before the gateway admitted the program.";
+  const lines = String(raw).trim().split(/\r?\n/);
+  const last = lines.at(-1).trim();
+  if (/ETIMEDOUT|timed out/i.test(last)) return "The readiness check timed out.";
+  // Child-process errors embed a command, traceback, and local paths. Only publish
+  // the final diagnostic when it is safe to display. Preserve the raw reason locally.
+  if ((lines.length > 1 && !/^(?:[\w.]*Error|Exception): /.test(last)) ||
+      /\\|(?:^|[\s"'=:(])\/|command failed|spawn(?:Sync)? |password|secret|credential|token=|-----BEGIN/i.test(last)) {
+    return "The gateway readiness check failed. The local gateway log contains the diagnostic.";
+  }
+  return last.slice(0, 1500);
+}
+
+export function finishExpiredAdmission(item, nowMs) {
+  if (!item || !["master", "navi"].includes(item.executionModel) || !item.executionResultRequired || item.admissionFailureRecordedAt
+      || !["pending", "failed"].includes(item.executionStatus)
+      || !Number.isFinite(Date.parse(item.end)) || (nowMs < Date.parse(item.end) && !item.claimedWithoutLaunch)
+      || item.executionAttemptId || item.pid || item.executionGuardianPid || item.naviCleanupOwner || item.naviSessionGuardian
+      || item.localExecutionResult || item.executionResult || item.endCleanupAttempts || item.endCleanupResult) return false;
+  const fresh = item.status === "staged";
+  const legacy = item.status === "finished" && item.endCleanupStatus === "not_started" &&
+    (item.claimedWithoutLaunch || item.launchBlockedReason) &&
+    (!item.executionResultError || missingUndispatchedPath(item.executionResultError));
+  if (!fresh && !legacy) return false;
+  Object.assign(item, {
+    status: "finished", endCleanupRequired: false, endCleanupStatus: "not_started",
+    executionStatus: "failed", executionResult: null,
+    executionResultError: "Program did not start. 0 commands dispatched. " + publicAdmissionReason(item.launchBlockedReason),
+    executionResultCollectionAttempted: true, executionResultPersisted: false,
+    admissionFailureRecordedAt: new Date(nowMs).toISOString(),
+  });
+  return true;
+}
+
+export async function publishExpiredAdmission(request, id, item) {
+  // Bind retries and historical repairs to the same booking; a terminal result,
+  // rescheduled/cancelled booking or another owner's error must survive untouched.
+  const filters = new URLSearchParams({id: `eq.${id}`, robot_model: `ilike.${item.executionModel}`,
+    code_submission_id: `eq.${item.executionSubmissionId}`, approved_run_type: "eq.custom_code",
+    scheduled_start: `eq.${item.start}`, scheduled_end: `eq.${item.end}`, execution_result: "is.null"});
+  const table = "agentech_robot_sessions";
+  const rows = await request(table, `${filters}&select=id,session_status,execution_error`);
+  const row = rows?.length === 1 && rows[0];
+  const statuses = ["requested", "confirmed", "approved", "scheduled", "pending", "failed"];
+  if (item.claimedWithoutLaunch) statuses.push("running");
+  if (!row || !statuses.includes(row.session_status) || (row.execution_error !== null
+      && row.execution_error !== item.executionResultError && !missingUndispatchedPath(row.execution_error))) {
+    return false;
+  }
+  filters.set("session_status", `eq.${row.session_status}`);
+  filters.set("execution_error", row.execution_error === null ? "is.null" : `eq.${row.execution_error}`);
+  const written = await request(table, `${filters}&select=id`, {method: "PATCH", body: {
+    session_status: "failed", execution_error: item.executionResultError,
+    execution_updated_at: item.admissionFailureRecordedAt, updated_at: item.admissionFailureRecordedAt,
+  }});
+  return written?.length === 1 && String(written[0].id) === String(id);
+}
+
 
 export function buildExecutionResultPatch(item, updatedAt = new Date().toISOString()) {
   return {

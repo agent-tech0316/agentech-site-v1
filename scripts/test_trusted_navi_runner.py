@@ -928,6 +928,18 @@ class TrustedNaviRunnerTests(unittest.TestCase):
         self.assertEqual(motions(agentech), ['stop'])
 
 
+    def test_refused_session_start_reports_measured_posture_without_motion(self):
+        robot = FakeCleanupAgentech()
+        robot.state.update(action=3, standing=False, estop=0)
+        robot.body.update(z=.1196, vx=.006, vy=.0003, wz=-.0205)
+        with patch.object(runner, 'configure_navi', return_value=robot):
+            with self.assertRaises(RuntimeError) as refusal:
+                runner.check_home_ready()
+        reason = str(refusal.exception)
+        self.assertIn('standing=False, action=3, estop=0, height=0.120 m, still=True', reason)
+        self.assertIn('lowered/damped or verified relaxed', reason)
+        self.assertEqual(motions(robot), [])
+
     def test_check_home_ready_is_read_only_and_requires_damped_posture(self):
         agentech = FakeCleanupAgentech()
         agentech.state.update(action=0, standing=False, estop=1)

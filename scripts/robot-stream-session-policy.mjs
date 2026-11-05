@@ -54,7 +54,9 @@ export function activeCameraStreamDeadline(sessions, nowMs) {
 }
 
 export function finalSessionDatabaseStatus(item) {
-  if (item?.status !== "finished") return null;
+  // Undispatched admissions publish their error and status together under the
+  // original booking identity. Never follow that with an unguarded status write.
+  if (item?.status !== "finished" || item.admissionFailureRecordedAt) return null;
   if (item.executionResultRequired === true) {
     if (item.executionResultPersisted !== true) return null;
     return item.executionStatus === "completed" ? "completed" : "failed";

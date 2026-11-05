@@ -28,6 +28,8 @@ import {
 } from "./robot-session-device-results.mjs";
 import {
   buildExecutionResultPatch,
+  finishExpiredAdmission,
+  publishExpiredAdmission,
   parseExecutionResult,
 } from "./robot-session-execution-result.mjs";
 
@@ -415,6 +417,7 @@ async function launch(session) {
   const masterReadinessLost = masterReadyUntil !== null &&
     (Date.now() >= masterReadyUntil || existsSync(item.masterCancelFile));
   if (Date.now() >= Date.parse(item.end) || masterReadinessLost) {
+    item.claimedWithoutLaunch = true;
     if (masterReadinessLost) {
       item.executionStatus = "failed";
       item.launchBlockedReason = "Master readiness expired or booking cancelled before runner launch";
@@ -422,7 +425,7 @@ async function launch(session) {
     item.status = "finished";
     item.endCleanupRequired = false;
     item.endCleanupStatus = "not_started";
-    item.streamAvailableDuringSession = false;
+    finishExpiredAdmission(item, Date.now());
     saveState();
     return;
   }
@@ -750,13 +753,24 @@ async function syncExecutionResult(id, item) {
     item.executionResultRequired !== true
     || item.executionResultCollectionAttempted !== true
     || item.executionResultPersisted === true
+    || item.admissionPublicationConflict === true
   ) return;
   try {
-    await request(
-      "agentech_robot_sessions",
-      `id=eq.${encodeURIComponent(id)}&select=id`,
-      { method: "PATCH", body: buildExecutionResultPatch(item) },
-    );
+    if (item.admissionFailureRecordedAt) {
+      if (!await publishExpiredAdmission(request, id, item)) {
+        item.admissionPublicationConflict = true;
+        item.executionResultPersistenceError = "Booking or authoritative result changed; admission report kept locally.";
+        saveState();
+        return;
+      }
+      item.databaseStatus = "failed";
+    } else {
+      await request(
+        "agentech_robot_sessions",
+        `id=eq.${encodeURIComponent(id)}&select=id`,
+        { method: "PATCH", body: buildExecutionResultPatch(item) },
+      );
+    }
     item.executionResultPersisted = true;
     delete item.executionResultPersistenceError;
     console.log(`[robot-stream] synchronized authoritative execution result for session ${id}.`);
@@ -847,6 +861,7 @@ async function tick() {
   const now = Date.now();
   const endingSessions = new Set();
   for (const [id, item] of Object.entries(state.sessions)) {
+    if (finishExpiredAdmission(item, now)) saveState();
     if (["running", "completed", "publishing"].includes(item.status) && now >= Date.parse(item.end)) {
       await stopSession(id);
       endingSessions.add(id);

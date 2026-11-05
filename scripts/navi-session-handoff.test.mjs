@@ -7,6 +7,7 @@ import { naviLaunchBlocker, parseNaviCleanupResult } from "./navi-session-handof
 import * as handoff from "./navi-session-handoff.mjs";
 import { finalSessionDatabaseStatus } from "./robot-stream-session-policy.mjs";
 import { masterReceiptNeedsReload } from "./master-session-gateway.mjs";
+import { finishExpiredAdmission } from "./robot-session-execution-result.mjs";
 
 const programExpected = {sessionId:'test',submissionId:'submission',sourceSha256:'a'.repeat(64),
   planSha256:'b'.repeat(64),attemptId:'attempt',guardianPid:42,bookedEnd:'2026-10-22T04:00:00Z'};
@@ -147,7 +148,7 @@ async function tickFixture(failCloud = false, setup = () => {}) {
   const deps = {state, cameraStreamDeadline:0,activeCameraStreamDeadline,startObs:noop,
     masterChecks: { retain:noop }, claimableStatuses:['requested','confirmed','approved','scheduled','pending','running'],
     normalized:value=>String(value ?? '').trim().toLowerCase(),
-    pollNaviHomePreparation:noop,processRunning:()=>false,saveState:noop, collectExecutionResult:noop,
+    finishExpiredAdmission, pollNaviHomePreparation:noop,processRunning:()=>false,saveState:noop, collectExecutionResult:noop,
     publishCaptures:noop,collectDeviceResults:noop,syncDeviceResults:noop,syncExecutionResult:noop,
     syncFinalSessionStatus:noop,keepsStreamActive:()=>false,stopObs:noop,stopObsVirtualCamera:noop,
     stopSession:id=>{state.sessions[id].status="finished";},endCleanupCanRun:item=>item.endCleanupStatus!=="completed",
@@ -275,7 +276,7 @@ test("actual tick refuses launch when stream readiness crosses booked end", asyn
 });
 
 function bridgeFunction(name, nextName, deps, async = false) {
-  deps = { masterReceiptNeedsReload, ...deps };
+  deps = { masterReceiptNeedsReload, finishExpiredAdmission, ...deps };
   const source = readFileSync(new URL("./robot-stream-bridge.mjs", import.meta.url), "utf8");
   const declaration = `${async ? "async " : ""}function ${name}`;
   const section = source.slice(source.indexOf(declaration), source.indexOf(nextName, source.indexOf(declaration)));

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { finalSessionDatabaseStatus } from "./robot-stream-session-policy.mjs";
 import {
   buildExecutionResultPatch,
+  finishExpiredAdmission,
+  publishExpiredAdmission,
   parseExecutionResult,
 } from "./robot-session-execution-result.mjs";
 
@@ -26,6 +29,90 @@ const expected = {
   sourceSha256: "a".repeat(64),
   planSha256: "b".repeat(64),
 };
+
+const expiredNavi = {
+  executionModel: "navi", status: "staged", executionResultRequired: true, executionStatus: "pending",
+  executionSubmissionId: "reviewed-navi", start: "2026-11-05T20:10:00Z", end: "2026-11-05T20:15:00Z",
+  endCleanupRequired: true, endCleanupStatus: "pending", endCleanupAttempts: 0,
+  launchBlockedReason: "Navi live readiness check failed: Command failed: python --check-home-ready\nTraceback (most recent call last):\nRuntimeError: Healthy lowered/damped terminal posture is not verified",
+  streamAvailableDuringSession: true,
+};
+const expiry = Date.parse(expiredNavi.end);
+const undefinedPath = 'MissingOrInvalidExecutionResult: The "path" argument must be of type string or an instance of Buffer or URL. Received undefined';
+
+test("expired staged Navi booking retains readiness refusal and delivery without receipt or cleanup", () => {
+  const item = {...expiredNavi};
+  assert.equal(finishExpiredAdmission(item, expiry - 1), false);
+  assert.equal(finishExpiredAdmission(item, expiry), true);
+  assert.match(item.executionResultError, /0 commands dispatched.*Healthy lowered\/damped terminal posture is not verified/);
+  assert.doesNotMatch(item.executionResultError, /Traceback|undefined/);
+  assert.equal(item.executionResult, null);
+  assert.equal(item.endCleanupRequired, false);
+  assert.equal(item.endCleanupStatus, "not_started");
+  assert.equal(item.executionResultCollectionAttempted, true);
+  assert.equal(item.streamAvailableDuringSession, true);
+  assert.equal(item.executionStatus, "failed");
+  assert.equal(finishExpiredAdmission(item, expiry + 1), false);
+  assert.equal(finalSessionDatabaseStatus(item), null);
+  assert.equal(finalSessionDatabaseStatus({...item, executionResultPersisted: true}), null);
+});
+
+test("publish observed posture details but omit command lines, file paths and timeout traces", () => {
+  for (const reason of [
+    "Navi live readiness check failed: Command failed: C:\\Python\\python.exe --check-home-ready\nTraceback...\nRuntimeError: Healthy lowered/damped terminal posture is not verified. Observed standing=True, action=3, estop=0, height=0.285 m, still=True",
+    "Master readiness check failed: spawnSync C:\\Users\\operator\\Python310\\python.exe ETIMEDOUT",
+    "Traceback (most recent call last):\nFileNotFoundError: [Errno 2] missing: '/private/trust.json'",
+  ]) {
+    const item = {...expiredNavi, launchBlockedReason: reason};
+    finishExpiredAdmission(item, expiry);
+    assert.doesNotMatch(item.executionResultError, /Traceback|C:\\|--check-ready|private\/trust/);
+    if (reason.includes("height")) assert.match(item.executionResultError, /height=0.285 m, still=True/);
+    if (reason.includes("ETIMEDOUT")) assert.match(item.executionResultError, /timed out/);
+  }
+});
+
+test("repair only the prior undefined-path failure without rewriting dispatched runs", () => {
+  const legacy = {...expiredNavi, executionModel: "master", masterPreparedAttemptId: "preflight-only",
+    status: "finished", endCleanupStatus: "not_started", executionStatus: "failed", executionResult: null,
+    executionResultError: undefinedPath, executionResultPersisted: true, databaseStatus: "failed"};
+  for (const evidence of [{pid: "42"}, {executionAttemptId: "a"}, {executionGuardianPid: 42},
+    {naviCleanupOwner: {}}, {localExecutionResult: "receipt.json"}, {executionResult: {}},
+    {executionResultError: "SomeOtherFailure"}, {endCleanupAttempts: 1}]) {
+    assert.equal(finishExpiredAdmission({...legacy, ...evidence}, expiry), false);
+  }
+  assert.equal(finishExpiredAdmission(legacy, expiry), true);
+  assert.equal(legacy.executionResultPersisted, false);
+});
+
+test("publish a bounded terminal update only for the matching unfinished or legacy-failed row", async () => {
+  const item = {...expiredNavi};
+  finishExpiredAdmission(item, expiry);
+  let patches = 0;
+  const request = async (table, query, options) => {
+    assert.equal(table, "agentech_robot_sessions");
+    const filters = new URLSearchParams(query);
+    assert.equal(filters.get("execution_result"), "is.null");
+    assert.equal(filters.get("scheduled_end"), "eq." + item.end);
+    assert.equal(filters.get("code_submission_id"), "eq." + item.executionSubmissionId);
+    if (!options) return [{id:100, session_status:"failed", execution_error:undefinedPath}];
+    patches++;
+    assert.equal(filters.get("execution_error"), "eq." + undefinedPath);
+    assert.equal(filters.get("session_status"), "eq.failed");
+    assert.deepEqual(options.body, {session_status:"failed", execution_error:item.executionResultError,
+      execution_updated_at:item.admissionFailureRecordedAt, updated_at:item.admissionFailureRecordedAt});
+    return [{id:100}];
+  };
+  assert.equal(await publishExpiredAdmission(request, 100, item), true);
+  assert.equal(patches, 1);
+  for (const rows of [[], [{id:100,session_status:"cancelled",execution_error:null}],
+    [{id:100,session_status:"failed",execution_error:"actual runner failure"}]]) {
+    assert.equal(await publishExpiredAdmission(async (_table, _query, options) => {
+      assert.equal(options, undefined); return rows;
+    }, 100, item), false);
+  }
+  assert.equal(await publishExpiredAdmission(async (_table, _query, options) => options ? [] :
+    [{id:100,session_status:"failed",execution_error:undefinedPath}], 100, item), false);
+});
 
 
 test("accepts an identity-bound completed execution result", () => {

@@ -516,6 +516,8 @@ def _posture(state, body, *, damped=False, allow_relaxed=False):
     if not (-.67 <= values['vx'] <= 1.34 and abs(values['vy']) <= .67 and abs(values['wz']) <= 6.3):
         raise RuntimeError("Body velocity exceeds known controller bounds")
     still = max(abs(values[field]) for field in ('vx', 'vy', 'wz')) < .03
+    observed = (f"standing={state['standing']}, action={state['action']}, estop={state['estop']}, "
+                f"height={values['z']:.3f} m, still={still}")
     low = (state['standing'] is False and state['action'] in (0, 2)
            and 0 <= values['z'] <= .12 and still
            and (state['estop'] == 0 or state['action'] == 0 and state['estop'] == 1))
@@ -524,7 +526,8 @@ def _posture(state, body, *, damped=False, allow_relaxed=False):
                 and state['estop'] == 0 and .20 <= values['z'] <= .305)
     if damped:
         if not low or state['action'] != 0 or state['estop'] != 1:
-            raise RuntimeError("Healthy lowered/damped terminal posture is not verified")
+            raise RuntimeError(f"Healthy lowered/damped terminal posture is not verified. Observed {observed}. "
+                               "Expected lowered and still, with action=0 and estop=1.")
         return 'low', still
     # Operator-confirmed relaxed posture (2026-10-22) can retain Wake/action 1.
     # Recognize its very low, still pose for session handling, not as proof that
@@ -533,7 +536,7 @@ def _posture(state, body, *, damped=False, allow_relaxed=False):
             and state['estop'] == 0 and 0 <= values['z'] <= .04 and still):
         low = True
     if not low and not standing:
-        raise RuntimeError("Unknown, fallen or active e-stop posture; autonomous recovery refused")
+        raise RuntimeError(f"Controller posture is outside the admitted states. Observed {observed}.")
     return ('low' if low else 'standing'), still
 
 
@@ -635,12 +638,15 @@ def check_home_ready():
     """
     agentech = configure_navi()
     _battery_guard(agentech)
-    state, body, _, _ = _fresh_posture(agentech, allow_relaxed=True)
-    if state['action'] == 1:
-        evidence = 'operator_confirmed_relaxed_mode'
-    else:
-        _posture(state, body, damped=True)
-        evidence = 'controller_damping'
+    try:
+        state, body, _, _ = _fresh_posture(agentech, allow_relaxed=True)
+        if state['action'] == 1:
+            evidence = 'operator_confirmed_relaxed_mode'
+        else:
+            _posture(state, body, damped=True)
+            evidence = 'controller_damping'
+    except RuntimeError as error:
+        raise RuntimeError(f"Navi start requires a lowered/damped or verified relaxed posture. {error}") from error
     _battery_guard(agentech)
     result = {'ready_for_session': True, 'posture': 'lowered_damped',
               'posture_evidence': evidence, 'final_state': _safe_state(state)}
