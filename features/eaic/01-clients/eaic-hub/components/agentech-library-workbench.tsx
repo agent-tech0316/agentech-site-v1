@@ -742,7 +742,7 @@ function MasterScheduledMethodReference() {
   return (
     <details data-master-scheduled-methods="true" className="w-full min-w-0 rounded-[12px] border border-[#d8d3ca] bg-[#faf9f6] p-4">
       <summary className="cursor-pointer text-sm font-semibold text-[#111111]">Scheduled Master programs · {masterScheduledMethodCount} supported methods</summary>
-      <p className="mt-3 text-xs leading-5 text-[#5f6368]">Use these methods in Code Certification. Walking, head control, bow and seated actions are outside this execution contract. The full SDK reference remains available in View SDK.</p>
+      <p className="mt-3 text-xs leading-5 text-[#5f6368]">Use these methods in Code Certification. Standing head turns and shakes are supported with uppercase Agentech. Walking, bow and seated actions are outside this execution contract. The full SDK reference remains available in View SDK.</p>
       <div className="mt-4 grid gap-4">
         {masterScheduledMethodGroups.map((group) => (
           <div key={group.id} data-master-method-group={group.id} className="min-w-0">

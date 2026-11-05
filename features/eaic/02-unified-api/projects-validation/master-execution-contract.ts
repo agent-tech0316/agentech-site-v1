@@ -183,6 +183,10 @@ function validateArguments(name: string, spec: Command, args: Record<string, Lit
   if (has("maximum_degrees_per_second") && Number(args.maximum_degrees_per_second) <= 0) throw new Error("maximum_degrees_per_second must be positive.");
   for (const key of ["arm_duration_seconds", "waist_max_duration_seconds", "seconds"]) if (has(key) && Number(args[key]) <= 0) throw new Error(`${key} must be positive.`);
   if (spec.validator === "standing_heart" && args.hand === "stand" && has("posture")) throw new Error("Heart posture was provided twice.");
+  if (spec.validator === "head_shake") {
+    if (args.angle_degrees === 0) throw new Error("Head shake angle must be nonzero.");
+    if (has("cycles") && !Number.isInteger(args.cycles)) throw new Error("Head shake cycles must be a whole number from 1 to 10.");
+  }
   if (spec.validator === "elbow_selector") {
     if (has("degrees") === has("position")) throw new Error("Provide exactly one of degrees or position.");
     if (has("speed") && has("duration_seconds")) throw new Error("Choose speed or duration_seconds.");
@@ -232,7 +236,7 @@ export function checkMasterExecutionCode(source: string): SoftwareCheckReport {
         validateArguments(name, spec, args);
         if (spec.backend === "raw_upper_body" && !rawEntrySeen) throw new Error('Master adjustments require Agentech.enter_stand_hand_guide("both") before adjustment commands.');
         if (name === "enter_stand_hand_guide") rawEntrySeen = true;
-        else if (["native_preset", "native_golf", "movement_a"].includes(spec.backend ?? "") || ["restore_stand_hand_guide", "restore_stand_default", "release_returned_hold", "release_return_hold"].includes(name)) rawEntrySeen = false;
+        else if (["native_preset", "native_head", "native_golf", "movement_a"].includes(spec.backend ?? "") || ["restore_stand_hand_guide", "restore_stand_default", "release_returned_hold", "release_return_hold"].includes(name)) rawEntrySeen = false;
         accepted.push(name);
         if (saveResultAs) savedResults.add(saveResultAs);
       } catch (error) {

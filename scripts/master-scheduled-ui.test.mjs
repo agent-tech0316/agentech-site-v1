@@ -47,10 +47,10 @@ test("Master scheduled reference covers every allowed method once and keeps unsu
   const { masterScheduledMethodGroups } = loadTypeScriptModule("features/eaic/01-clients/eaic-hub/contracts/master-execution-documentation.ts");
   const contract = JSON.parse(readFileSync(new URL("./master-command-contract.json", import.meta.url), "utf8"));
   const names = masterScheduledMethodGroups.flatMap(group => group.methods);
-  assert.equal(names.length, 50);
+  assert.equal(names.length, 52);
   assert.equal(new Set(names).size, names.length);
   assert.deepEqual([...names].sort(), Object.keys(contract.commands).sort());
-  for (const unsupported of ["forward", "walk", "turn_head", "center", "bow", "sit"]) {
+  for (const unsupported of ["forward", "walk", "center", "bow", "sit"]) {
     assert.ok(!names.includes(unsupported), unsupported);
   }
 });
@@ -69,5 +69,5 @@ test("Master offers a valid Movement A example and explains distinct runtime pre
   assert.match(docs.masterScheduledMethodGroups.find(group => group.id === "native-presets").description, /does not automatically return from raw guidance/);
   const guide = readFileSync(new URL("../docs/master-eaic-scheduling.md", import.meta.url), "utf8");
   assert.doesNotMatch(guide, /covers 21|movement_a` is not exposed|Certification rejects it before booking/);
-  assert.match(guide, /50/);
+  assert.match(guide, /52/);
 });

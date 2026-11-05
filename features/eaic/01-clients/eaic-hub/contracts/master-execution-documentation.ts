@@ -9,6 +9,12 @@ export type MasterScheduledMethodGroup = {
 
 export const masterScheduledMethodGroups: readonly MasterScheduledMethodGroup[] = [
   {
+    id: "native-head",
+    title: "Standing head actions",
+    description: "Agentech.turn_head() turns to 5 degrees right by default. Pass angle_degrees from -20 to 20; zero centres the head. Agentech.shake_head(angle_degrees, cycles) uses a nonzero angle within the same bounds and 1 to 10 whole cycles, then returns to centre. Both require uppercase Agentech. EAIC selects standing posture and verifies native control and measured endpoints; no arm-guidance entry is needed.",
+    methods: ["turn_head", "shake_head"],
+  },
+  {
     id: "adjustments",
     title: "Guidance, both arms and waist",
     description: "Arm and waist adjustments use verified raw STAND_DEFAULT guidance. An explicit Agentech.enter_stand_hand_guide(\"both\") call is required before adjustments; omitted entry is rejected. undo_waist accepts only a saved result from a successful adjust_waist call in the same program.",

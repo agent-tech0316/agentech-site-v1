@@ -10,6 +10,38 @@ const root = "features/eaic/02-unified-api/";
 const rawEntry = 'Agentech.enter_stand_hand_guide(side="both")';
 const inRawMode = code => `${rawEntry}\n${code}`;
 
+test("Master reviews native standing head turns with the Console default and angle bounds", () => {
+  const { checkMasterExecutionCode } = loadTypeScriptModule(`${root}projects-validation/master-execution-contract.ts`);
+  for (const code of ['Agentech.turn_head()', 'Agentech.turn_head(20)', 'Agentech.turn_head(-20)',
+    'Agentech.turn_head(angle_degrees=0)', 'Agentech.turn_head(5, posture="stand")']) {
+    assert.equal(checkMasterExecutionCode(`from agentech import Agentech\n\n${code}`).status, 'PASS', code);
+  }
+  for (const code of ['Agentech.turn_head(20.01)', 'Agentech.turn_head(-20.01)',
+    'Agentech.turn_head(True)', 'Agentech.turn_head(None)', 'Agentech.turn_head("20")',
+    'Agentech.turn_head(5, posture="sit")', 'Agentech.turn_head(5, speed=10)',
+    'Agentech.turn_head(10 + 5)', 'Agentech.turn_head(value)',
+    'Agentech.turn_head(5, angle_degrees=10)', 'Agentech.forward()']) {
+    assert.equal(checkMasterExecutionCode(code).status, 'FAIL', code);
+  }
+  assert.equal(checkMasterExecutionCode(`${rawEntry}\nAgentech.turn_head()\nAgentech.adjust_both_elbows(5)`).status, 'FAIL');
+});
+
+test("Master reviews uppercase head shakes with positional angle and cycle count", () => {
+  const { checkMasterExecutionCode } = loadTypeScriptModule(`${root}projects-validation/master-execution-contract.ts`);
+  for (const code of ['Agentech.shake_head()', 'Agentech.shake_head(5, 2)',
+    'Agentech.shake_head(-20, 10)', 'Agentech.shake_head(angle_degrees=20, cycles=1)']) {
+    assert.equal(checkMasterExecutionCode(code).status, 'PASS', code);
+  }
+  for (const code of ['Agentech.shake_head(0, 1)', 'Agentech.shake_head(21, 1)',
+    'Agentech.shake_head(5, 0)', 'Agentech.shake_head(5, 11)', 'Agentech.shake_head(5, 1.5)',
+    'Agentech.shake_head(5, True)', 'Agentech.shake_head(5, "2")', 'Agentech.shake_head(5, None)',
+    'Agentech.shake_head(5, 2, posture="sit")', 'Agentech.shake_head(angle, cycle)',
+    'Agentech.shake_head(5, 2, cycles=3)', 'agentech.turn_head()', 'agentech.shake_head(5, 2)',
+    'from agentech import Agentech as agentech\nagentech.shake_head(5, 2)']) {
+    assert.equal(checkMasterExecutionCode(code).status, 'FAIL', code);
+  }
+});
+
 test("Master requires explicit bilateral raw-mode entry", () => {
   const { checkMasterExecutionCode, masterExecutionStarterCode } = loadTypeScriptModule(`${root}projects-validation/master-execution-contract.ts`);
   const move = 'Agentech.adjust_both_elbows(degrees=5)';
@@ -49,7 +81,7 @@ test("Master schedules connected standing presets, arm and waist sequences, and 
     'Agentech.wave("both")', 'Agentech.wave()', 'Agentech.heart(posture="sit")',
     'Agentech.stiff("passive")', 'Agentech.stay(301)', 'Agentech.stay(0)',
     'Agentech.close_door("both")', 'Agentech.golf_put(include_stroke=1)',
-    'Agentech.turn_head(5, posture="stand")', 'Agentech.sit()', 'Agentech.check_heart_support()',
+    'Agentech.turn_head(5, posture="sit")', 'Agentech.sit()', 'Agentech.check_heart_support()',
     'Agentech.adjust_waist(yaw=1, torque={"left_hip_pitch_joint": 1})',
   ]) assert.equal(checkMasterExecutionCode(code).status, 'FAIL', code);
 });
@@ -221,14 +253,29 @@ test("real Master code submission persists the normal review gate with explicit 
   const oldNodeEnv = process.env.NODE_ENV;
   process.env.NODE_ENV = "production";
   try {
-    const result = await POST({ json: async () => ({ robotModel: "Master", reviewStage: "physical", runMode: "Software check", code: inRawMode('Agentech.adjust_waist(yaw=5)') }) });
-    assert.equal(result.status, 200);
-    assert.equal(result.body.physicalSafetyStatus, "passed");
-    assert.equal(result.body.validationKind, "master_upper_body_static_contract");
-    assert.equal(result.body.physicalQualified, false);
-    assert.equal(result.body.runtimeChecksRequired, true);
-    assert.equal(persisted[0].robotModel, "Master");
-    assert.equal(persisted[1].aiSecurityStatus, "locked");
+    for (const code of [inRawMode('Agentech.adjust_waist(yaw=5)'),
+      'from agentech import Agentech\n\nAgentech.turn_head()', 'Agentech.turn_head(20)', 'Agentech.turn_head(-20)',
+      'Agentech.shake_head()', 'Agentech.shake_head(5, 2)', 'Agentech.shake_head(-20, 10)']) {
+      const result = await POST({ json: async () => ({ robotModel: "Master", reviewStage: "physical", runMode: "Software check", code }) });
+      assert.equal(result.status, 200);
+      assert.equal(result.body.physicalSafetyStatus, "passed");
+      assert.equal(result.body.validationKind, "master_upper_body_static_contract");
+      assert.equal(result.body.physicalQualified, false);
+      assert.equal(result.body.runtimeChecksRequired, true);
+      assert.equal(persisted.at(-2).robotModel, "Master");
+      assert.equal(persisted.at(-1).aiSecurityStatus, "locked");
+      assert.equal(persisted.at(-2).code, code);
+    }
+    const savedCount = persisted.length;
+    const invalid = await POST({ json: async () => ({ robotModel: "Master", code: 'Agentech.turn_head(21)' }) });
+    assert.equal(invalid.status, 400);
+    assert.equal(invalid.body.errorCode, 'CODE_VALIDATION_FAILED');
+    assert.equal(persisted.length, savedCount);
+    for (const code of ['agentech.turn_head()', 'agentech.shake_head(5, 2)', 'Agentech.shake_head(5, 1.5)']) {
+      const rejected = await POST({ json: async () => ({ robotModel: 'Master', code }) });
+      assert.equal(rejected.status, 400, code);
+      assert.equal(persisted.length, savedCount);
+    }
   } finally { if (oldNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = oldNodeEnv; }
 });
 

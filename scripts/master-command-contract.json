@@ -3,6 +3,36 @@
   "scope": "master-upper-body",
   "unsupported_commands": {},
   "commands": {
+    "shake_head": {
+      "parameters": {
+        "angle_degrees": {"type": "number", "min": -20, "max": 20},
+        "cycles": {"type": "number", "min": 1, "max": 10},
+        "posture": {"type": "string", "values": ["stand"]}
+      },
+      "required": [],
+      "positional": ["angle_degrees", "cycles"],
+      "defaults": {"angle_degrees": 5, "cycles": 1, "posture": "stand"},
+      "validator": "head_shake",
+      "backend": "native_head"
+    },
+    "turn_head": {
+      "parameters": {
+        "angle_degrees": {
+          "type": "number",
+          "min": -20,
+          "max": 20
+        },
+        "posture": {
+          "type": "string",
+          "values": ["stand"]
+        }
+      },
+      "required": [],
+      "positional": ["angle_degrees"],
+      "defaults": {"angle_degrees": 5, "posture": "stand"},
+      "validator": "none",
+      "backend": "native_head"
+    },
     "enter_stand_hand_guide": {
       "parameters": {
         "side": {

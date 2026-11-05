@@ -72,6 +72,11 @@ def validate_master_command(name: object, arguments: object) -> None:
         _check_type(value, command['parameters'][key], key)
     present = {key for key, value in arguments.items() if value is not None}
     validator = command['validator']
+    if validator == 'head_shake':
+        if arguments.get('angle_degrees') == 0:
+            raise ValueError('Master head shake angle must be nonzero')
+        if 'cycles' in arguments and not float(arguments['cycles']).is_integer():
+            raise ValueError('Master head shake cycles must be a whole number from 1 to 10')
     for key in ('duration_seconds', 'max_duration_seconds', 'speed', 'maximum_degrees_per_second',
                 'arm_duration_seconds', 'waist_max_duration_seconds', 'seconds'):
         if key in present and arguments[key] <= 0:
@@ -139,7 +144,7 @@ def validate_master_plan(commands):
             raise ValueError('Master adjustments require Agentech.enter_stand_hand_guide("both") before adjustment commands')
         if command['name'] == 'enter_stand_hand_guide':
             raw_entry_seen = True
-        elif spec['backend'] in {'native_preset', 'native_golf', 'movement_a'} or command['name'] in {
+        elif spec['backend'] in {'native_preset', 'native_head', 'native_golf', 'movement_a'} or command['name'] in {
                 'restore_stand_hand_guide', 'restore_stand_default', 'release_returned_hold', 'release_return_hold'}:
             raw_entry_seen = False
         for key, parameter in spec['parameters'].items():

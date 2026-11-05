@@ -55,7 +55,7 @@ class MasterContractTests(unittest.TestCase):
         for name, args in [('wave', {'hand': 'both'}), ('heart', {'posture': 'sit'}),
                            ('stay', {'seconds': 301}), ('stay', {'seconds': 0}),
                            ('golf_put', {'include_stroke': 1}), ('stiff', {'level': 'passive'}),
-                           ('sit', {}), ('check_heart_support', {}), ('turn_head', {'angle_degrees': 5})]:
+                           ('sit', {}), ('check_heart_support', {}), ('turn_head', {'angle_degrees': 21})]:
             with self.subTest(name=name, args=args), self.assertRaises(ValueError): self.validate(name, args)
 
     def test_compiler_normalizes_imported_enum_literals_and_standing_namespace(self):

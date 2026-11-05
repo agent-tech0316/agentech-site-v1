@@ -29,6 +29,16 @@ HANDOFF_GAP = ('The current held owner has not been verified for the next sessio
                'This does not require an automatic pose return or stiffness change.')
 
 
+def sdk_arguments(name, arguments):
+    # Plain SDK head calls default to seated; turn_head also requires an angle.
+    # Scheduled head actions use VORLD's defaults and native standing path.
+    validate_master_command(name, arguments)
+    result = {**MASTER_COMMANDS[name].get('defaults', {}), **arguments}
+    if name == 'shake_head':
+        result['cycles'] = int(result['cycles'])
+    return result
+
+
 def _timestamp(value):
     if not isinstance(value, str):
         raise ValueError('session timestamp must be an ISO string')
@@ -234,7 +244,7 @@ class SDKAdapter:
             # Undo requires the signed live result from this exact SDK instance.
             if name in {'status', 'get_status', 'get_motion_readiness', 'action_catalog', 'undo_waist'}:
                 continue
-            plan = method(**command['args'])
+            plan = method(**sdk_arguments(name, command['args']))
             if isinstance(plan, dict) and plan.get('qualificationState') == 'simultaneous-public-call-pending':
                 raise RuntimeError('selected SDK supports this upper-body combination as a plan only; live path requires waist plus both_elbows or admitted arm torque')
 
@@ -313,6 +323,8 @@ class SDKAdapter:
                 return self.movement_a_adapter().preflight()
             if backend == 'native_preset':
                 return {'mode_entry_required': False, 'owner': self.native_ready(), 'robot_commands_sent': False}
+            if backend == 'native_head':
+                return {'mode_entry_required': False, 'owner': self.native_ready(require_presets=False), 'robot_commands_sent': False}
             if backend in {'passive', 'owner_control', 'native_golf'}:
                 # Existing explicit recovery and golf methods own their own live
                 # admission. A readiness observation must not block fault recovery.
@@ -397,8 +409,13 @@ class SDKAdapter:
             self.check_ready()
         elif backend == 'native_preset':
             self.native_ready()
+        elif backend == 'native_head':
+            # No raw arm entry, preset task, or controller handoff. The pinned
+            # SDK also verifies its approved head controller and fresh feedback.
+            self.native_ready(require_presets=False)
+            arguments = sdk_arguments(name, arguments)
         self._admit()
-        if backend in {'native_preset', 'native_golf'} or name in {
+        if backend in {'native_preset', 'native_head', 'native_golf'} or name in {
                 'restore_stand_hand_guide', 'restore_stand_default', 'release_returned_hold', 'release_return_hold'}:
             self.explicit_raw_entry = False
         if backend == 'native_golf':
@@ -429,6 +446,17 @@ def require_completed(name, result):
         complete = (result.get('succeeded') is True and type(result.get('task_id')) is int
             and result['task_id'] > 0 and result.get('task_state') == 1
             and result.get('posture_before') == 'STAND_DEFAULT' and result.get('posture_after') == 'STAND_DEFAULT')
+    elif backend == 'native_head':
+        complete = (result.get('dry_run') is False and result.get('operation') == name
+            and result.get('posture') == 'stand' and result.get('phase') == 'head-sequence-complete'
+            and all(result.get(key) is True for key in (
+                'live_enabled', 'measured_endpoint_verified',
+                'native_ownership_verified_before_and_after', 'native_balance_retained',
+                'other_joint_targets_unchanged', 'other_joint_gains_unchanged'))
+            and all(result.get(key) is False for key in (
+                'mode_changes', 'direct_hal_commands', 'head_mapping_qualification_required')))
+        if name == 'shake_head':
+            complete = complete and result.get('exact_center_return') is True
     elif name == 'movement_a':
         complete = (result.get('ok') is True and result.get('reachedTopHold') is True
             and result.get('endpointVerified') is True and isinstance(result.get('ownerBinding'), dict))
@@ -519,6 +547,9 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
                 receipt['owner_binding'] = adapter.check_ready()
             elif first_backend == 'native_preset':
                 receipt['owner_binding'] = adapter.native_ready()
+                receipt['owner_hold_preserved'] = False
+            elif first_backend == 'native_head':
+                receipt['owner_binding'] = adapter.native_ready(require_presets=False)
                 receipt['owner_hold_preserved'] = False
             saved_results = {}
             for index, command in enumerate(plan['commands'], 1):

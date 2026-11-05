@@ -48,6 +48,38 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         return self.runner.execute_plan(self.plan_path, self.deployment_path, self.result,
             adapter_factory=lambda config: self.adapter, now=lambda: 1792670400, **kwargs)
 
+    def test_native_head_plan_keeps_booking_receipts_without_raw_entry(self):
+        from test_master_head_execution import completed_head
+        self.replace_commands([{'name': 'turn_head', 'args': {}},
+                               {'name': 'shake_head', 'args': {'angle_degrees': 5, 'cycles': 2}},
+                               {'name': 'turn_head', 'args': {'angle_degrees': -20}}])
+        owner = dict(ownerMode='native-standing', nativeOwner='native-mc', aimdkMcMode='STAND_DEFAULT',
+                     presetActionsReady=True, noActivePublisher=True, sdk_fresh_ready_verified=True)
+        self.adapter.native_ready.return_value = owner
+        self.adapter.check_ready.return_value = owner
+        self.adapter.execute.side_effect = lambda name, args: {**completed_head(name), 'exact_center_return': True}
+        result = self.run_plan()
+        self.assertEqual(result['outcome'], 'completed')
+        self.assertEqual(result['completed_count'], 3)
+        self.assertEqual(result['handoff_mode'], 'native-standing')
+        self.adapter.native_ready.assert_called_once_with(require_presets=False)
+        self.adapter.prepare_mode.assert_not_called()
+        self.assertEqual(self.adapter.execute.call_args_list[0].args, ('turn_head', {}))
+
+    def test_native_head_missing_endpoint_stops_plan_and_preserves_failed_receipt(self):
+        from test_master_head_execution import completed_head
+        self.replace_commands([{'name': 'turn_head', 'args': {}},
+                               {'name': 'turn_head', 'args': {'angle_degrees': 20}}])
+        self.adapter.execute.return_value = {**completed_head(), 'measured_endpoint_verified': False}
+        self.adapter.native_ready.return_value = {'ownerMode': 'native-standing'}
+        result = self.run_plan()
+        self.assertEqual(result['outcome'], 'failed')
+        self.assertEqual(result['completed_count'], 0)
+        self.assertEqual(result['error']['command'], 'turn_head')
+        self.adapter.execute.assert_called_once()
+        self.adapter.stop.assert_not_called()
+        self.adapter.restore.assert_not_called()
+
     def test_booking_timestamps_accept_postgres_fractional_precision(self):
         for fraction in ('7', '72', '722', '7228', '72287', '722870'):
             with self.subTest(fraction=fraction):

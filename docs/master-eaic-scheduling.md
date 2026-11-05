@@ -2,17 +2,18 @@
 
 The EAIC Hub Code Certification page now accepts Master programs through the
 normal reviewed-submission and robot-slot flow. Camera-only Master Live Test
-remains separate and cannot authorize execution. Walking, head control, bow and
+remains separate and cannot authorize execution. Walking, bow and
 seated actions are excluded from scheduled execution.
 The Master SDK and robot controller are unchanged.
 
 ## Existing SDK and raw-mode behavior
 
 `scripts/master-command-contract.json` is the shared web/compiler allowlist.
-It covers 50 reviewed methods, grouped in the Master editor and View SDK:
+It covers 52 reviewed methods, grouped in the Master editor and View SDK:
 
 | Group | Accepted method names |
 | --- | --- |
+| Native standing head | `turn_head`, `shake_head` |
 | Guidance, arms and waist | `enter_stand_hand_guide`, `adjust_right_shoulder`, `adjust_left_shoulder`, `adjust_right_elbow`, `adjust_left_elbow`, `adjust_both_elbows`, `adjust_elbow`, `adjust_right_wrist`, `adjust_left_wrist`, `adjust_wrist`, `adjust_upper_body`, `adjust_waist`, `return_waist_to_neutral`, `undo_waist` |
 | Arm poses and upper-body sequences | `move_arms_to`, `move_elbows_to`, `move_mirrored_arms_to`, `mirror_arm_pose`, `movement_b`, `showcase`, `close_door` |
 | Retained right-arm preset | `movement_a` |
@@ -58,6 +59,41 @@ Agentech.movement_a()
 
 Loading or copying an example does not execute it. A reviewed submission, an
 approved booking and fresh execution-time checks are still required.
+
+## Standing head actions
+
+```python
+from agentech import Agentech
+Agentech.use("master")
+Agentech.turn_head()                  # absolute target 5 degrees right
+Agentech.turn_head(20)                # absolute target 20 degrees right
+Agentech.turn_head(angle_degrees=0)   # centre
+Agentech.turn_head(-20)               # absolute target 20 degrees left
+Agentech.shake_head(5, 2)             # two cycles, then centre
+Agentech.shake_head(angle_degrees=10, cycles=3)
+```
+
+The shared contract accepts finite angles from -20 to 20 degrees. The runner
+supplies the 5-degree default and `posture="stand"` to both the dry-run planner
+and live SDK. Explicit standing posture is accepted; seated posture, arbitrary
+controller options, expressions and out-of-range angles are rejected. A head
+turn uses the existing native head controller without entering arm guidance,
+changing control modes, or sending direct joint commands.
+
+`shake_head` accepts angle and cycle count as its first and second positional
+arguments, or as `angle_degrees` and `cycles` keywords. Shake amplitude must be
+nonzero within -20 to 20 degrees, and cycles must be a whole number from 1 to 10.
+Defaults are 5 degrees and one cycle. The SDK returns to centre after the final
+cycle, with measured completion required. Both methods accept only the uppercase
+`Agentech` command root; lowercase `agentech` and import aliases remain rejected.
+
+The gateway must run the updated contract and trusted runner with a pinned SDK
+that implements native standing head control and its locally approved controller
+identity. Missing SDK support or readiness refuses dispatch. Completion requires
+the SDK's measured endpoint, native ownership before and after, retained balance,
+and unchanged other-joint target/gain evidence. Static review alone never claims
+physical qualification. No controller update or physical motion is performed by
+the offline regression suite or by publishing this website change.
 
 ## Runtime boundary
 
