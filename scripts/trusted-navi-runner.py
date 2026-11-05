@@ -399,7 +399,7 @@ def execute(path: str, *, result_path=None, attempt_id=None, snapshot=None, veri
     agentech = configure_navi()
     # Booked snapshots have just passed this check under the same SDK owner.
     if snapshot is None and any(command['name'] == 'return_to_home' for command in commands):
-        verify_home_binding(agentech)
+        home_heading_readiness(agentech, allow_recovery=True)
     result = _program_base(path, attempt_id, plan) if result_path is not None else None
     failure = None
     recoverable_timeouts = 0
@@ -620,15 +620,51 @@ def _current_run_id(agentech):
     return run_id
 
 
-def verify_home_binding(agentech):
+def home_heading_readiness(agentech, *, allow_recovery=False):
     config = _load_home_calibration()
     if (config.get('schema_version') != 2 or config.get('mode') != 'cell_return_to_home'
             or config.get('motion_enabled') is not True or config.get('motion', {}).get('enabled') is not True):
         raise RuntimeError("Enabled schema-2 home calibration is required")
-    run_id = config['motion'].get('run_id')
-    if not isinstance(run_id, str) or not run_id.strip() or _current_run_id(agentech) != run_id:
-        raise RuntimeError("Current ROS boot identity does not match home calibration")
-    return run_id
+    saved_boot = config['motion'].get('run_id')
+    if not isinstance(saved_boot, str) or not saved_boot.strip():
+        raise RuntimeError("Home calibration is missing its saved ROS boot identity")
+    live_boot = _current_run_id(agentech)
+    if live_boot == saved_boot:
+        return {'state':'resolved', 'source':'original_calibration', 'run_id':live_boot}
+
+    # The selected SDK owns the binding store and checks the robot, cell and calibration.
+    home = importlib.import_module('agentech.robots.navi.movements.home')
+    eligibility = getattr(home, 'home_heading_eligibility', None) if allow_recovery else None
+    resolve = eligibility if callable(eligibility) else getattr(home, 'resolve_home_heading', None)
+    unavailable = ("The saved home calibration is intact, but no verified home direction is available "
+                   "for this controller session. To run the other motions now, submit the plan without return_to_home().")
+    if not callable(resolve):
+        raise RuntimeError(unavailable)
+    try:
+        reference = resolve(agentech._selected_controller, config, live_boot)
+    except (RuntimeError, ValueError, OSError) as error:
+        raise RuntimeError(unavailable) from error
+    if callable(eligibility):
+        if isinstance(reference, dict) and reference.get('state') == 'recovery_eligible':
+            if (reference.get('run_id') != live_boot or reference.get('source') != 'qualified_procedure'
+                    or 'home_yaw_rad' in reference):
+                raise RuntimeError(unavailable) from ValueError("Invalid SDK automatic home-heading eligibility")
+            return {'state':'recovery_eligible', 'source':'qualified_procedure', 'run_id':live_boot}
+        if not isinstance(reference, dict) or reference.get('state') != 'resolved':
+            raise RuntimeError(unavailable) from ValueError("Unexpected SDK home-heading readiness state")
+    if (not isinstance(reference, dict) or reference.get('run_id') != live_boot
+            or reference.get('source') != 'qualified_binding'):
+        raise RuntimeError(unavailable) from ValueError("Invalid qualified heading binding from SDK")
+    try:
+        _number(reference.get('home_yaw_rad'), 'qualified home yaw')
+    except ValueError as error:
+        raise RuntimeError(unavailable) from error
+    return {'state':'resolved', 'source':'qualified_binding', 'run_id':live_boot}
+
+
+def verify_home_binding(agentech):
+    """A cleanup receipt needs an already resolved heading, not permission to recover one."""
+    return home_heading_readiness(agentech)['run_id']
 
 
 def _safe_state(state):
@@ -686,11 +722,14 @@ def check_home_ready(plan=None, *, reviewed=False):
         if stand_first:
             allowed += ', or stable lying for this stand-first plan'
         raise RuntimeError(f"Navi start requires a {allowed}. {error}") from error
+    heading = None
     if plan is not None and any(command['name'] == 'return_to_home' for command in plan.commands):
-        verify_home_binding(agentech)
+        heading = home_heading_readiness(agentech, allow_recovery=True)
     _battery_guard(agentech)
     result = {'ready_for_session': True, 'posture': posture,
               'posture_evidence': evidence, 'final_state': _safe_state(state)}
+    if heading is not None:
+        result['home_heading'] = heading
     print('[navi-runner] session-ready verified; '
           +json.dumps(result, separators=(',', ':'), allow_nan=False), flush=True)
     return result

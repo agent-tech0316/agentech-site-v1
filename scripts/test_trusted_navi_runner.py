@@ -663,10 +663,10 @@ class TrustedNaviRunnerTests(unittest.TestCase):
         )
 
         with patch.object(runner, "configure_navi", return_value=agentech), \
-             patch.object(runner, "verify_home_binding",return_value='test-boot') as verify:
+             patch.object(runner, "home_heading_readiness",return_value={'state':'resolved'}) as verify:
             runner.execute(str(path))
 
-        verify.assert_called_once_with(agentech)
+        verify.assert_called_once_with(agentech, allow_recovery=True)
         self.assertEqual(agentech.calls, ["return_to_home", "stop"])
 
     def test_end_session_uses_original_return_receipt_without_duplicate_damp_or_stop(self) -> None:
@@ -951,7 +951,7 @@ class TrustedNaviRunnerTests(unittest.TestCase):
         digest = runner._result_schema.plan_sha256(Path(path).read_bytes())
         output = io.StringIO()
         with patch.object(runner, 'configure_navi', return_value=robot), \
-             patch.object(runner, 'verify_home_binding') as home, \
+             patch.object(runner, 'home_heading_readiness') as home, \
              patch.object(runner, 'navi_owner',return_value=nullcontext()), \
              patch.object(runner.time, 'sleep'), redirect_stdout(output), \
              patch.object(sys, 'argv', ['runner','--check-home-ready',path,digest]):
@@ -1029,7 +1029,7 @@ class TrustedNaviRunnerTests(unittest.TestCase):
         with patch.dict('os.environ',{'AGENTECH_NAVI_PLAN_SHA256':digest}), \
              patch.object(runner,'navi_owner',return_value=nullcontext()), \
              patch.object(runner,'configure_navi',return_value=robot), patch.object(runner.time,'sleep'), \
-             patch.object(runner,'verify_home_binding',side_effect=RuntimeError('boot mismatch')), \
+             patch.object(runner,'home_heading_readiness',side_effect=RuntimeError('boot mismatch')), \
              self.assertRaisesRegex(RuntimeError,'boot mismatch'):
             runner.execute_until(path,(datetime.now(timezone.utc)+timedelta(minutes=1)).isoformat())
         self.assertEqual(motions(robot), [])
@@ -1064,12 +1064,72 @@ class TrustedNaviRunnerTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     runner.verify_home_binding(FakeCleanupAgentech())
         with patch.object(runner, '_load_home_calibration', return_value=valid), \
-             patch.object(runner, '_current_run_id', return_value='calibration-boot'):
+             patch.object(runner, '_current_run_id', return_value='calibration-boot'), \
+             patch.object(runner.importlib, 'import_module', side_effect=AssertionError('same boot needs no binding')):
             self.assertEqual(runner.verify_home_binding(FakeCleanupAgentech()), 'calibration-boot')
         with patch.object(runner, '_load_home_calibration', return_value=valid), \
+             patch.object(runner.importlib, 'import_module', return_value=SimpleNamespace()), \
              patch.object(runner, '_current_run_id', return_value='other-boot'):
-            with self.assertRaisesRegex(RuntimeError, 'boot identity'):
+            with self.assertRaisesRegex(RuntimeError, 'saved home calibration is intact.*no verified home direction'):
                 runner.verify_home_binding(FakeCleanupAgentech())
+
+    def test_changed_home_boot_uses_only_selected_sdk_qualified_binding(self):
+        config = {'schema_version':2, 'mode':'cell_return_to_home', 'motion_enabled':True,
+                  'motion':{'enabled':True, 'run_id':'original'}}
+        controller = SimpleNamespace(host='test-navi', port=9090)
+        facade = SimpleNamespace(_selected_controller=controller)
+        result = {'run_id':'live', 'source':'qualified_binding', 'home_yaw_rad':-.32}
+        home = SimpleNamespace(resolve_home_heading=lambda *_: None)
+        with patch.object(runner,'_load_home_calibration',return_value=config), \
+             patch.object(runner,'_current_run_id',return_value='live'), \
+             patch.object(runner.importlib,'import_module',return_value=home) as load, \
+             patch.object(home,'resolve_home_heading',return_value=result) as resolve:
+            self.assertEqual(runner.verify_home_binding(facade), 'live')
+            load.assert_called_once_with('agentech.robots.navi.movements.home')
+            resolve.assert_called_once_with(controller, config, 'live')
+            for bad in (None, {**result,'source':'original_calibration'}, {**result,'run_id':'stale'},
+                        {**result,'home_yaw_rad':True}, {**result,'home_yaw_rad':float('nan')}):
+                with self.subTest(bad=bad), self.assertRaises((RuntimeError, ValueError)):
+                    resolve.return_value = bad
+                    runner.verify_home_binding(facade)
+            resolve.side_effect = RuntimeError('no qualified binding for this robot and cell')
+            with self.assertRaisesRegex(RuntimeError,'no verified home direction') as missing:
+                runner.verify_home_binding(facade)
+            self.assertIn('no qualified binding', str(missing.exception.__cause__))
+
+    def test_only_explicit_home_can_defer_qualified_recovery_and_admission_moves_nothing(self):
+        config = {'schema_version':2,'mode':'cell_return_to_home','motion_enabled':True,
+                  'motion':{'enabled':True,'run_id':'previous'}}
+        robot = self.lying_robot()
+        robot._selected_controller = SimpleNamespace(host='navi-test',port=9090)
+        expected = {'state':'recovery_eligible','source':'qualified_procedure','run_id':'live'}
+        home = SimpleNamespace(home_heading_eligibility=lambda *_: None, resolve_home_heading=lambda *_: None)
+        with patch.object(runner,'configure_navi',return_value=robot), patch.object(runner.time,'sleep'), \
+             patch.object(runner,'_load_home_calibration',return_value=config), \
+             patch.object(runner,'_current_run_id',return_value='live'), \
+             patch.object(runner.importlib,'import_module',return_value=home), \
+             patch.object(home,'home_heading_eligibility',return_value=expected) as eligible, \
+             patch.object(home,'resolve_home_heading',side_effect=RuntimeError('no current binding')) as resolve:
+            plan = runner._read_plan(write_plan(['stand','return_to_home']))
+            receipt = runner.check_home_ready(plan, reviewed=True)
+            self.assertEqual(receipt['home_heading'],expected)
+            eligible.assert_called_once_with(robot._selected_controller, config, 'live')
+            resolve.assert_not_called()
+            for wrong in (None, {**expected,'state':'unknown'}, {**expected,'run_id':'previous'},
+                          {**expected,'source':'inferred'}, {**expected,'home_yaw_rad':0.1}):
+                with self.subTest(wrong=wrong), self.assertRaises(RuntimeError):
+                    eligible.return_value = wrong
+                    runner.home_heading_readiness(robot, allow_recovery=True)
+            eligible.return_value = {'state':'resolved','run_id':'live','source':'qualified_binding','home_yaw_rad':0.2}
+            self.assertEqual(runner.home_heading_readiness(robot, allow_recovery=True),
+                             {'state':'resolved','source':'qualified_binding','run_id':'live'})
+            eligible.side_effect = RuntimeError('procedure not qualified')
+            with self.assertRaisesRegex(RuntimeError,'no verified home direction') as missing:
+                runner.check_home_ready(plan, reviewed=True)
+            self.assertIn('not qualified', str(missing.exception.__cause__))
+            with self.assertRaisesRegex(RuntimeError,'no verified home direction'):
+                runner.verify_home_binding(robot)
+        self.assertEqual(motions(robot), [])
 
     def test_automatic_home_preparation_is_not_in_this_release(self):
         self.assertFalse(hasattr(runner, 'ensure_home_ready'))

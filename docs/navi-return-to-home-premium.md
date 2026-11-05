@@ -19,13 +19,36 @@ Current policy is **damp-only**, as requested for the October 2026 showcase.
 At the booked end, the trusted supervisor stops and damps Navi, verifies healthy
 lowered/damped telemetry, and records `home_verified: false`. It does not require
 a home-reset receipt or camera calibration before ordinary movement. Admission
-still requires exclusive ownership, fresh healthy damped/recognized relaxed
-posture, and battery checks. Explicit customer `return_to_home()` remains premium
-and retains its own camera, calibration, and boot-heading requirements.
+still requires exclusive ownership, fresh controller and battery readings, and
+a supported starting posture. A reviewed program whose first command is
+`Agentech.stand()` can also start from a healthy, stationary `lie_down` state
+(action `2`). The runner checks three samples before admission and confirms
+normal standing after `stand()` before sending the next command. Explicit
+customer `return_to_home()` remains premium. Its fixed home coordinate,
+floor geometry, and requested facing direction persist across robot restarts.
+The native yaw sensor can restart at a different zero. The SDK resolves that
+offset separately so that a reboot does not require recalibrating the cameras.
+EAIC's admission check is read-only. It can accept a measured reference for
+the current controller session or a recovery procedure already qualified for
+this robot, cell, and SDK implementation. Only an explicit home return may run
+that procedure. An installation without either reference reports the missing
+direction before running earlier commands in the same program. Ordinary
+bookings do not depend on home-heading recovery.
 Cleanup validates the inert session plan. Explicit return-home cleanup refuses a
 plan containing `emergency_stop`; damp-only cleanup instead applies its fresh
 posture/telemetry checks. Unknown ownership or unhealthy telemetry never counts
 as ready.
+
+On November 5, 2026, booking #100 expired before its first command. A reading
+in the booking window showed `standing=false`, action `3`, height 0.120 m,
+and zero error, warning, and e-stop flags. A later **direct SDK** test sent one
+right sideflip. The SDK reported success and subsequent readings showed Navi
+upright and still. That test did not exercise the EAIC scheduler. The owner
+then certified an identical copy of #100's six commands through EAIC
+(`agentech-20261105204320-q6kvo7`). At that point the updated gateway passed
+the lying-start check on Navi and declined the full plan before dispatch because
+the SDK could not resolve its home heading. No EAIC flip or home return was
+physically qualified by those checks.
 
 The installed gateway now launches a detached trusted supervisor with the absolute
 booked deadline. It retains ownership until that deadline even when the inert
