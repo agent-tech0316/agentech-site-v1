@@ -145,6 +145,8 @@ async function tickFixture(failCloud = false, setup = () => {}) {
     next:previous({status:"staged",end:"2999-01-01T00:00:00Z"})}};
   const noop = () => {};
   const deps = {state, cameraStreamDeadline:0,activeCameraStreamDeadline,startObs:noop,
+    masterChecks: { retain:noop }, claimableStatuses:['requested','confirmed','approved','scheduled','pending','running'],
+    normalized:value=>String(value ?? '').trim().toLowerCase(),
     pollNaviHomePreparation:noop,processRunning:()=>false,saveState:noop, collectExecutionResult:noop,
     publishCaptures:noop,collectDeviceResults:noop,syncDeviceResults:noop,syncExecutionResult:noop,
     syncFinalSessionStatus:noop,keepsStreamActive:()=>false,stopObs:noop,stopObsVirtualCamera:noop,

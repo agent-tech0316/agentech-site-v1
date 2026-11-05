@@ -55,6 +55,8 @@ test('dispatcher restart cannot replay an exhausted Navi cleanup or convert its 
 function fixture({ sessions = [booking()], stageError, deadline = 0, fetchError } = {}) {
   const events = [];
   const bindings = { state: { sessions: {} }, Date: { now: () => now }, cameraStreamDeadline: deadline,
+    masterChecks: { retain() {} }, claimableStatuses: ['requested', 'confirmed', 'approved', 'scheduled', 'pending', 'running'],
+    normalized:value=>String(value ?? '').trim().toLowerCase(),
     activeCameraStreamDeadline, keepsStreamActive: () => false,
     dueSessions: async () => { if (fetchError) throw fetchError; return sessions; },
     reviewedSubmission: async () => ({ code: 'Agentech.turn_head()' }),
