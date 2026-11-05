@@ -45,3 +45,14 @@ restart. A stale installer lock after a crash requires checking the owner,
 receipt, prior bytes, booking state and running bridge before recovery.
 Noncooperating legacy copy scripts do not participate in this lock. Route
 every production gateway script update through the guard.
+
+Windows can withhold the command lines for the two protected Master video
+relays. Before exempting one, the guard verifies a session-0 Node child of
+PowerShell launched by the running Windows Schedule service, ordered creation
+times, and a single loopback listener owned exclusively by that process. Port
+4173 must report the preview/proxy role and 4175 the primary role through the
+local metadata-only `/health` endpoint. The response must contain the relay
+counters and zero pending service calls. The guard checks the same PID,
+creation time, ancestry and listener again after that request. An unreadable
+Python process, an unclassified Node, changed identity or an unexpected
+listener blocks activation. This check opens no robot, camera or video stream.

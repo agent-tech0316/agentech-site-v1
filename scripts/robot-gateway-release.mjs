@@ -4,7 +4,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
-import {pathToFileURL} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {smokeGatewayRoutes} from './robot-gateway-release-smoke.mjs';
 
 const scopes = {
@@ -211,10 +211,13 @@ export async function windowsQuiescent({gateway, powershellPath = process.env.AG
 $ErrorActionPreference='Stop'
 $dir=Join-Path $env:AGENTECH_RELEASE_GATEWAY_ROOT 'scripts'
 . (Join-Path $dir 'robot-stream-process.ps1')
-$state=Get-Content -Raw -LiteralPath (Join-Path $env:AGENTECH_RELEASE_GATEWAY_ROOT '.robot-stream-runtime\state.json') | ConvertFrom-Json
+. $env:AGENTECH_RELEASE_RELAY_IDENTITY
+$jsonOptions=@{}
+if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) { $jsonOptions.DateKind='String' }
+$state=Get-Content -Raw -LiteralPath (Join-Path $env:AGENTECH_RELEASE_GATEWAY_ROOT '.robot-stream-runtime\state.json') | ConvertFrom-Json @jsonOptions
 $bridges=0
 foreach($p in @(Get-CimInstance Win32_Process | Where-Object {$_.Name -match '^(node|python|pythonw)(\.exe)?$'})){
-  if(!$p.CommandLine){throw 'Cannot verify all process identities'}
+  if(!$p.CommandLine){Assert-ProtectedMediaRelay $p;continue}
   if($p.CommandLine -match 'trusted-(master|navi|robot)-runner\.py'){throw 'Trusted runner or cleanup is active'}
   if($p.CommandLine -match 'robot-stream-bridge\.mjs'){
     if(!(Test-CommandLineArgumentPath -CommandLine $p.CommandLine -ExpectedPath (Join-Path $dir 'robot-stream-bridge.mjs'))){throw 'Unexpected gateway bridge identity'}
@@ -227,7 +230,8 @@ $lease=Join-Path $env:AGENTECH_RELEASE_GATEWAY_ROOT '.robot-stream-runtime\navi-
 if(Test-Path -LiteralPath $lease){$h=[IO.File]::Open($lease,'Open','ReadWrite','ReadWrite');try{$h.Lock(0,1);$h.Unlock(0,1)}finally{$h.Dispose()}}
 `;
   execFileSync(powershellPath,['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(query,'utf16le').toString('base64')],
-    {windowsHide:true,stdio:'pipe',env:{...process.env,AGENTECH_RELEASE_GATEWAY_ROOT:gateway}});
+    {windowsHide:true,stdio:'pipe',env:{...process.env,AGENTECH_RELEASE_GATEWAY_ROOT:gateway,
+      AGENTECH_RELEASE_RELAY_IDENTITY:fileURLToPath(new URL('./robot-gateway-relay-identity.ps1',import.meta.url))}});
   const {SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY:key} = process.env;
   check(SUPABASE_URL && key,'Live cloud booking check requires gateway environment');
   const url = new URL(SUPABASE_URL.replace(/\/$/,'').replace(/\/rest\/v1$/,'')+'/rest/v1/agentech_robot_sessions');
