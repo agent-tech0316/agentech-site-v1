@@ -48,6 +48,42 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         return self.runner.execute_plan(self.plan_path, self.deployment_path, self.result,
             adapter_factory=lambda config: self.adapter, now=lambda: 1792670400, **kwargs)
 
+    def test_mixed_head_plan_refusal_precedes_first_gesture_in_both_entry_points(self):
+        self.replace_commands([{'name': 'heart', 'args': {'hand': 'both'}},
+                               {'name': 'turn_head', 'args': {'angle_degrees': 20}}])
+        self.adapter.verify_head_contract.side_effect = RuntimeError('head controller key changed')
+        self.adapter.preflight_mode.return_value = {'robot_commands_sent': False}
+        with self.assertRaisesRegex(RuntimeError, 'head controller key changed'):
+            self.runner.preflight(self.plan_path, self.deployment_path, adapter_factory=lambda _: self.adapter)
+        receipt = self.run_plan()
+        self.assertEqual(self.adapter.verify_head_contract.call_count, 2)
+        self.assertEqual(receipt['error']['message'], 'head controller key changed')
+        self.assertEqual(receipt['commands'], [])
+        self.assertEqual(receipt['completed_count'], 0)
+        self.adapter.preflight_mode.assert_not_called()
+        self.adapter.native_ready.assert_not_called()
+        self.adapter.execute.assert_not_called()
+
+    def test_mixed_head_plan_rechecks_approved_contract_before_each_admission(self):
+        from test_master_head_execution import completed_head
+        self.replace_commands([{'name': 'heart', 'args': {'hand': 'both'}},
+                               {'name': 'turn_head', 'args': {'angle_degrees': 20}}])
+        self.adapter.preflight_mode.return_value = {'robot_commands_sent': False}
+        owner = dict(ownerMode='native-standing', nativeOwner='native-mc', aimdkMcMode='STAND_DEFAULT',
+                     presetActionsReady=True, noActivePublisher=True, sdk_fresh_ready_verified=True)
+        self.adapter.native_ready.return_value = owner
+        self.adapter.check_ready.return_value = owner
+        self.adapter.execute.side_effect = [dict(succeeded=True, task_id=4, task_state=1,
+            posture_before='STAND_DEFAULT', posture_after='STAND_DEFAULT'), completed_head()]
+        self.runner.preflight(self.plan_path, self.deployment_path, adapter_factory=lambda _: self.adapter)
+        self.assertEqual([c[0] for c in self.adapter.method_calls], ['validate','verify_head_contract','preflight_mode'])
+        self.adapter.reset_mock()
+        receipt = self.run_plan()
+        self.assertEqual(receipt['outcome'], 'completed')
+        self.assertEqual(receipt['completed_count'], 2)
+        self.assertEqual([c[0] for c in self.adapter.method_calls][:4],
+                         ['validate','verify_head_contract','native_ready','execute'])
+
     def test_native_head_plan_keeps_booking_receipts_without_raw_entry(self):
         from test_master_head_execution import completed_head
         self.replace_commands([{'name': 'turn_head', 'args': {}},

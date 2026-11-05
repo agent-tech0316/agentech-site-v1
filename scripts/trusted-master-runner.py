@@ -252,6 +252,33 @@ class SDKAdapter:
                 raise RuntimeError('selected SDK supports this upper-body combination as a plan only; live path requires waist plus both_elbows or admitted arm torque')
         return preset_plans
 
+    def verify_head_contract(self):
+        """Check the pinned SDK's native head contract without advertising or moving."""
+        try:
+            from agentech.robots.master.standing_head_control import _head_controller_approval_path
+        except ModuleNotFoundError as error:
+            if error.name != 'agentech.robots.master.standing_head_control':
+                raise
+            raise RuntimeError('selected Master SDK lacks native standing head control') from error
+
+        path = _head_controller_approval_path()
+        try:
+            approval = json.loads(path.read_text())
+        except FileNotFoundError as error:
+            raise RuntimeError(f'Native head controller approval is missing: {path}') from error
+        except (OSError, ValueError) as error:
+            raise RuntimeError(f'Cannot read native head controller approval: {path}') from error
+        if not isinstance(approval, dict) or approval.get('readOnlyApproved') is not True:
+            raise RuntimeError('Native head controller requires owner-approved read-only access')
+
+        # Use the SDK's own identity, pinned file/fingerprint and native-owner
+        # checks. This fresh control instance never opens a motion session.
+        control = self.robot._standing_head_control()
+        identity = control.reader()
+        control.calibration = control.mapping_reader(identity)
+        control.calibration.require_qualified()
+        control._identity(identity)
+
     def plan_connection_session(self):
         # Optional optimization from the pinned SDK. Older selected SDKs retain
         # their existing connections; missing dependencies must still fail.
@@ -530,11 +557,18 @@ def require_completed(name, result, preset_plan=None):
         raise RuntimeError('Master command did not return a verified measured endpoint; hold preserved and request not retried')
 
 
+def validate_plan_admission(adapter, commands):
+    preset_plans = adapter.validate(commands)
+    if any(MASTER_COMMANDS[command['name']]['backend'] == 'native_head' for command in commands):
+        adapter.verify_head_contract()
+    return preset_plans
+
+
 def preflight(plan_path, deployment_path, *, session_end=None, adapter_factory=SDKAdapter):
     config = load_deployment(deployment_path)
     plan, _, _ = load_bound_plan(plan_path, config, session_end)
     adapter = adapter_factory(config)
-    adapter.validate(plan['commands'])
+    validate_plan_admission(adapter, plan['commands'])
     return {'ready': True, 'robot_model': 'master', **adapter.preflight_mode(plan['commands']),
             'plan_sha256': config['plan_sha256'], 'robot_commands_sent': False}
 
@@ -564,7 +598,7 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
         with master_lease(lease), ExitStack() as connections:
             adapter = adapter_factory(config)
             adapter.admission_check = admitted
-            preset_plans = adapter.validate(plan['commands'])
+            preset_plans = validate_plan_admission(adapter, plan['commands'])
             admitted()
             session_factory = getattr(type(adapter), 'plan_connection_session', None)
             if callable(session_factory):

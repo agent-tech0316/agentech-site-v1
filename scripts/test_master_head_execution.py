@@ -3,7 +3,9 @@ import importlib.util
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+import json
+import tempfile
 
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
@@ -104,6 +106,42 @@ class HeadAdapterTests(unittest.TestCase):
         adapter.admission_check = Mock()
         adapter.binding = None
         return adapter
+
+    def test_missing_controller_approval_fails_before_robot_observation(self):
+        adapter = self.adapter()
+        with tempfile.TemporaryDirectory() as temp:
+            sdk = Mock()
+            sdk._head_controller_approval_path.return_value = Path(temp) / 'head-controller.json'
+            with patch.dict(sys.modules, {'agentech.robots.master.standing_head_control': sdk}):
+                with self.assertRaisesRegex(RuntimeError, 'head-controller.json'):
+                    adapter.verify_head_contract()
+        adapter.robot._standing_head_control.assert_not_called()
+        adapter.native_ready.assert_not_called()
+
+    def test_head_contract_uses_fresh_sdk_identity_mapping_and_ownership_without_motion(self):
+        adapter = self.adapter()
+        control = adapter.robot._standing_head_control.return_value
+        with tempfile.TemporaryDirectory() as temp:
+            approval_path = Path(temp) / 'head-controller.json'
+            approval_path.write_text(json.dumps({'readOnlyApproved': True, 'controllerHost': '10.0.200.40',
+                'robotSerial': 'approved-test-serial', 'sha256Fingerprint': 'SHA256:test'}))
+            sdk = Mock()
+            sdk._head_controller_approval_path.return_value = approval_path
+            with patch.dict(sys.modules, {'agentech.robots.master.standing_head_control': sdk}):
+                control.mapping_reader.side_effect = RuntimeError('Approved native head controller SSH key changed')
+                with self.assertRaisesRegex(RuntimeError, 'SSH key changed'):
+                    adapter.verify_head_contract()
+                control._identity.assert_not_called()
+                control.mapping_reader.side_effect = None
+                adapter.verify_head_contract()
+        self.assertEqual(control.reader.call_count, 2)
+        self.assertEqual(control.mapping_reader.call_count, 2)
+        control.mapping_reader.assert_called_with(control.reader.return_value)
+        control.mapping_reader.return_value.require_qualified.assert_called_once()
+        control._identity.assert_called_once_with(control.reader.return_value)
+        control.execute.assert_not_called()
+        adapter.robot.turn_head.assert_not_called()
+        adapter.robot.shake_head.assert_not_called()
 
     def test_dry_validation_and_live_dispatch_select_standing_and_default_five_degrees(self):
         adapter = self.adapter()
