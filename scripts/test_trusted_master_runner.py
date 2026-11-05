@@ -55,6 +55,53 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         return self.runner.execute_plan(self.plan_path, self.deployment_path, self.result,
             adapter_factory=lambda config: self.adapter, now=lambda: 1792670400, **kwargs)
 
+    def test_viewer_countdown_allows_setup_but_never_early_mode_entry_or_sdk_dispatch(self):
+        start = self.runner._timestamp(self.deployment['scheduled_start'])
+        clock = [start + 1]
+        calls = []
+        self.adapter.validate.side_effect = lambda _: calls.append(('validate', clock[0]))
+        self.adapter.prepare_mode.side_effect = lambda: calls.append(('enter', clock[0]))
+        accepted = self.adapter.execute.return_value
+        def execute(name, args):
+            calls.append((name, clock[0]))
+            return accepted
+        self.adapter.execute.side_effect = execute
+        def advance(seconds):
+            clock[0] += seconds
+        self.replace_commands([{'name':'enter_stand_hand_guide','args':{'side':'both'}}])
+        result = self.runner.execute_plan(self.plan_path, self.deployment_path, self.result,
+            adapter_factory=lambda _: self.adapter, first_command_not_before=self.runner._iso(start + 20),
+            now=lambda:clock[0], sleep=advance)
+        self.assertEqual(result['completed_count'], 1)
+        self.assertEqual(calls, [('validate', start + 1), ('enter', start + 20),
+                                 ('enter_stand_hand_guide', start + 20)])
+
+    def test_countdown_cancellation_preserves_hold_without_dispatch(self):
+        start = self.runner._timestamp(self.deployment['scheduled_start'])
+        cancel = self.root/'cancel'
+        result = self.runner.execute_plan(self.plan_path,self.deployment_path,self.result,
+            adapter_factory=lambda _:self.adapter, now=lambda:start + 1, sleep=lambda _:cancel.touch(),
+            first_command_not_before=self.runner._iso(start + 20), cancel_file=cancel)
+        self.assertIn('cancelled', result['error']['message'])
+        self.adapter.prepare_mode.assert_not_called()
+        self.adapter.execute.assert_not_called()
+
+    def test_first_native_admission_is_single_use_and_scoped_to_the_first_call(self):
+        from unittest.mock import patch
+        adapter = object.__new__(self.runner.SDKAdapter)
+        args = {'hand':'both'}
+        with patch.object(self.runner.time,'monotonic',return_value=100), \
+                patch.object(self.runner,'native_sequence_ready') as check:
+            adapter._first_native_observation = ('heart',args,99.95)
+            adapter._admit_native_command('heart',args)
+            check.assert_not_called()
+            adapter._admit_native_command('heart',args)
+            adapter._first_native_observation = ('heart',args,99.0)
+            adapter._admit_native_command('heart',args)
+            adapter._first_native_observation = ('heart',args,99.95)
+            adapter._admit_native_command('shake_head',{'cycles':2})
+            self.assertEqual(check.call_count,3)
+
     def test_mixed_head_plan_refusal_precedes_first_gesture_in_both_entry_points(self):
         self.replace_commands([{'name': 'heart', 'args': {'hand': 'both'}},
                                {'name': 'turn_head', 'args': {'angle_degrees': 20}}])
@@ -80,7 +127,7 @@ class TrustedMasterRunnerTests(unittest.TestCase):
                      presetActionsReady=True, noActivePublisher=True, sdk_fresh_ready_verified=True)
         self.adapter.native_ready.return_value = owner
         self.adapter.check_ready.return_value = owner
-        plan = dict(operation='heart',hand='both',motion_id=1007,control_area=3,dry_run=True)
+        plan = dict(operation='heart',hand='both',motion_id=1007,control_area=3,dry_run=True,required_posture='STAND_DEFAULT')
         self.adapter.validate.return_value = {1:plan}
         self.adapter.execute.side_effect = [{**plan, **dict(dry_run=False,required_posture='STAND_DEFAULT',succeeded=True, task_id=4, task_state=1,
             posture_before='STAND_DEFAULT', posture_after='STAND_DEFAULT')}, {**completed_head(),'angle_degrees':20}]
@@ -128,6 +175,30 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.adapter.stop.assert_not_called()
         self.adapter.restore.assert_not_called()
 
+    def test_interrupted_shake_keeps_partial_evidence_without_crediting_the_call(self):
+        self.replace_commands([{'name':'shake_head','args':{'cycles':2,'angle_degrees':5}}])
+        fault = RuntimeError('Native head acknowledgment timed out; no retry sent')
+        fault.head_motion_progress = {
+            'sequence_completed':False, 'automatic_retry_sent':False,
+            'first_motion_publication_utc':'2026-11-05T22:25:38Z', 'motion_publication_count':20,
+            'completed_endpoints':[{'target_degrees':0, 'measured_degrees':0.01}],
+            'failed_step':{'index':6,'kind':'head_yaw','target_degrees':-5},
+            'acknowledgment':{'reason':'timeout','expected_count':-3,'observed_count':-4},
+        }
+        self.adapter.execute.side_effect = fault
+        receipt = self.run_plan()
+        self.assertEqual((receipt['outcome'],receipt['completed_count'],receipt['handoff_ready']),('failed',0,False))
+        step = receipt['commands'][0]
+        self.assertEqual(step['status'],'failed')
+        self.assertEqual(step['result']['phase'],'head-sequence-interrupted')
+        self.assertFalse(step['result']['sequence_completed'])
+        self.assertFalse(step['result']['measured_endpoint_verified'])
+        self.assertEqual(step['result']['completed_endpoints'], fault.head_motion_progress['completed_endpoints'])
+        self.assertEqual(step['result']['first_motion_publication_utc'],'2026-11-05T22:25:38Z')
+        self.assertEqual(step['error']['message'],str(fault))
+        self.adapter.execute.assert_called_once()
+        self.adapter.stop.assert_not_called()
+
     def test_scoped_handoff_refuses_replaced_owner_and_does_not_claim_restoration(self):
         from test_master_head_execution import completed_head
         self.replace_commands([{'name':'turn_head', 'args':{}}])
@@ -146,11 +217,13 @@ class TrustedMasterRunnerTests(unittest.TestCase):
 
     def test_heart_in_mixed_non_head_plan_keeps_original_preset_gate(self):
         self.replace_commands([{'name':'heart','args':{'hand':'both'}},{'name':'wave','args':{'hand':'left'}}])
-        self.adapter.native_ready.side_effect = RuntimeError('named native gains required')
+        from test_master_native_gesture_readiness import observation
+        self.adapter.native_gesture_ready.return_value.update(observation())
         receipt = self.run_plan()
         self.assertEqual(receipt['outcome'],'failed')
         self.assertEqual(receipt['completed_count'],0)
-        self.adapter.native_gesture_ready.assert_not_called()
+        self.assertIn('recognized SDK standing profile',receipt['error']['message'])
+        self.adapter.native_gesture_ready.assert_called_once_with(include_heart=True)
         self.adapter.execute.assert_not_called()
 
     def test_last_head_call_that_finishes_after_expiry_can_observe_the_final_owner(self):
@@ -386,11 +459,19 @@ class TrustedMasterRunnerTests(unittest.TestCase):
             'presetActionsReady': True, 'standingStateVerified': True, 'noActivePublisher': True}
         self.adapter.native_ready.return_value = owner
         self.adapter.check_ready.return_value = owner
-        self.adapter.execute.return_value = {'succeeded': True, 'task_id': 7, 'task_state': 1,
+        from test_master_native_gesture_readiness import observation
+        self.adapter.native_gesture_ready.return_value.update(observation(), **owner, armGainProfile='native-startup')
+        startup = self.runner.native_gesture.ARM_PROFILES['native-startup']
+        self.adapter.native_gesture_ready.return_value['armGains'] = {
+            side+'_'+axis+'_joint': {'stiffness':kp,'damping':kd}
+            for side in ('left','right') for axis,(kp,kd) in startup.items()}
+        plan = dict(operation='wave', hand='left', motion_id=1002, control_area=1, required_posture='STAND_DEFAULT', dry_run=True)
+        self.adapter.validate.return_value = {1:plan}
+        self.adapter.execute.return_value = {**plan, 'dry_run':False, 'succeeded': True, 'task_id': 7, 'task_state': 1,
             'posture_before': 'STAND_DEFAULT', 'posture_after': 'STAND_DEFAULT'}
         receipt = self.run_plan()
         self.assertEqual(receipt['outcome'], 'completed')
-        self.assertEqual(receipt['handoff_mode'], 'native-standing')
+        self.assertEqual(receipt['handoff_mode'], 'native-preset-head')
         self.assertNotIn('publisherPid', receipt['final_owner_binding'])
         self.adapter.prepare_mode.assert_not_called()
 

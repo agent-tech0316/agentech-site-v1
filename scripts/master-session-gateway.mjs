@@ -1,5 +1,32 @@
 import { parseExecutionResult } from './robot-session-execution-result.mjs';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+
+const { native_presets: nativePresets, native_preset_arm_gains: armProfiles } =
+  JSON.parse(readFileSync(new URL('./master-command-contract.json', import.meta.url), 'utf8'));
+const scopedModes = new Set(['native-heart-head', 'native-preset-head']);
+
+function bilateralHeart(command) {
+  return command.name === 'heart' && [undefined, 'both', 'stand'].includes(command.args?.hand);
+}
+
+function presetProfileVerified(binding) {
+  if (!['commandPoseReady','standDefaultPoseVerified','armPoseSettled','measuredPoseAtCanonical'].every(k => binding[k] === true)
+      || !Number.isInteger(binding.settleSampleCount) || binding.settleSampleCount < 3) return false;
+  const profile = binding.nativePresetStartProfile;
+  const firmwareFallback = profile === 'v1.0.10-animation';
+  if (firmwareFallback) {
+    if (binding.nativePresetFirmware !== 'release-lx2501_3_t2d5-soc1-v1.0.10/lx2501_3_t2d5-soc1-v0.5.15_hotfix_v2' ||
+        ![binding.nativePresetBootId, binding.nativePresetMcNode].every(x => typeof x === 'string' && x.trim())) return false;
+  } else if (!Object.hasOwn(armProfiles,profile) || binding.presetActionsReady !== true || binding.armGainProfile !== profile) return false;
+  if (!binding.armGains || Object.keys(binding.armGains).length !== 14) return false;
+  const expected = armProfiles[firmwareFallback ? 'native-startup' : profile];
+  return ['left','right'].every(side => Object.entries(expected).every(([axis, [stiffness,damping]]) => {
+    const gain = binding.armGains[side+'_'+axis+'_joint'];
+    return Number.isFinite(gain?.stiffness) && Number.isFinite(gain.damping)
+      && Math.abs(gain.stiffness-stiffness) <= .05 && Math.abs(gain.damping-damping) <= .05;
+  }));
+}
 
 export const MASTER_GATEWAY_PROTOCOL = 'master-arm-session-v1';
 
@@ -40,7 +67,7 @@ function recoveryMatches(recovery, id, previous) {
 }
 
 function masterHandoffResolved(sessions, id, previous) {
-  if (previous.executionResult?.handoff_mode === 'native-heart-head') {
+  if (scopedModes.has(previous.executionResult?.handoff_mode)) {
     const result = previous.executionResult;
     return previous.masterHandoffReady === true && result.session_id === String(id)
       && result.robot_model === 'master' && result.attempt_id === previous.executionAttemptId
@@ -72,17 +99,42 @@ export function scopedNativeOwner(binding, needsHeart) {
       && ['zero-native-offset', 'recorded-heart-offset', 'qualified-waist-reference'].includes(idle.waistReference)));
 }
 
+function measuredShakeSequence(result) {
+  const {angle_degrees: angle, cycles, steps, endpoints} = result;
+  if (result.operation !== 'head_motion_sequence' || result.posture_controller !== 'native-mc-body-pose-head'
+    || result.transport !== 'McBodyPose.turn_head' || result.automatic_retry_sent !== false
+    || !Number.isFinite(angle) || angle === 0 || Math.abs(angle) > 20
+    || !Number.isInteger(cycles) || cycles < 1 || cycles > 10) return false;
+  const expected = [];
+  for (let cycle = 0; cycle < cycles; cycle++) {
+    if (cycle) expected.push(['balance_checkpoint', 0]);
+    expected.push(['head_yaw', angle], ['head_yaw', -angle], ['head_yaw', 0]);
+  }
+  if (!Array.isArray(steps) || !Array.isArray(endpoints)
+    || steps.length !== expected.length || endpoints.length !== expected.length) return false;
+  return expected.every(([kind, target], index) => {
+    const step = steps[index], point = endpoints[index];
+    return step?.kind === kind && step.target_degrees === target && point?.target_degrees === target
+      && Number.isFinite(point.measured_degrees) && Math.abs(point.measured_degrees - target) <= .75
+      && Number.isFinite(point.required_settling_seconds) && point.required_settling_seconds >= 1
+      && Number.isFinite(point.settled_seconds) && point.settled_seconds >= point.required_settling_seconds;
+  }) && result.measured_final_degrees === endpoints.at(-1).measured_degrees;
+}
+
 function scopedNativeCommandVerified(command) {
   if (!command || typeof command !== 'object') return false;
   const r = command.result;
   if (command.status !== 'completed' || command.error != null || !r || r.dry_run !== false
-    || r.operation !== command.name || r.fault || r.accepted === false) return false;
-  if (command.name === 'heart') {
-    const hand = command.args?.hand === 'stand' ? 'both' : command.args?.hand ?? 'both';
+    || r.fault || r.accepted === false) return false;
+  if (r.operation !== command.name && !(command.name === 'shake_head' && measuredShakeSequence(r))) return false;
+  if (Object.hasOwn(nativePresets, command.name)) {
+    const preset = nativePresets[command.name];
+    const hand = bilateralHeart(command) ? 'both' : command.args?.hand;
+    const area = preset.fixed_area ?? ({left:1, right:2, both:3})[hand];
     if (r.succeeded !== true || r.task_state !== 1 || !Number.isInteger(r.task_id) || r.task_id < 0
       || r.required_posture !== 'STAND_DEFAULT' || r.posture_before !== 'STAND_DEFAULT' || r.posture_after !== 'STAND_DEFAULT'
-      || !['left', 'right', 'both'].includes(hand) || r.hand !== hand || r.motion_id !== 1007
-      || r.control_area !== ({left: 1, right: 2, both: 3})[hand]) return false;
+      || (preset.fixed_area === undefined ? !(['left','right'].includes(hand) || bilateralHeart(command)) : hand !== undefined)
+      || r.hand !== hand || r.motion_id !== preset.motion_id || r.control_area !== area) return false;
     if (r.task_id > 0) return true;
     const observation = r.native_observation;
     const states = observation?.player_states;
@@ -109,10 +161,16 @@ function scopedNativeHandoffVerified(value) {
     || (value.restore_verified != null && value.restore_verified !== false) || value.hold_observation_error != null
     || !Array.isArray(value.commands) || value.commands.length === 0 || value.command_count !== value.commands.length
     || value.completed_count !== value.command_count || !value.commands.every(scopedNativeCommandVerified)) return false;
-  const needsHeart = value.commands.some(command => command.name === 'heart');
+  const general = value.handoff_mode === 'native-preset-head';
+  if (!general && value.commands.some(c => !['heart','turn_head','shake_head'].includes(c.name))) return false;
+  const needsHeart = value.commands.some(general ? bilateralHeart : c => c.name === 'heart');
   const first = value.owner_binding;
   const last = value.final_owner_binding;
   if (!scopedNativeOwner(first, needsHeart) || !scopedNativeOwner(last, needsHeart)) return false;
+  if (general && (!value.commands.some(c => Object.hasOwn(nativePresets,c.name) && !bilateralHeart(c))
+      || !presetProfileVerified(first) || !presetProfileVerified(last)
+      || first.nativePresetStartProfile !== last.nativePresetStartProfile
+      || first.nativePresetBootId !== last.nativePresetBootId || first.nativePresetMcNode !== last.nativePresetMcNode)) return false;
   const identityFields = needsHeart ? ['inputSource', 'bootId', 'mcNode', 'installedBuild', 'waistReference'] : ['inputSource'];
   if (!identityFields.every(key => {
     const identity = first.nativeIdleObservation[key];
@@ -153,6 +211,10 @@ export function createMasterSessionDeployment(config, session, item, attemptId) 
 export function masterLaunchBlocker(sessions, id, item, nowMs = Date.now()) {
   if (!Number.isFinite(Date.parse(item.end)) || nowMs >= Date.parse(item.end)) return 'Master booked session has expired';
   if (!Number.isFinite(Date.parse(item.start)) || nowMs < Date.parse(item.start)) return 'Master booked session has not started';
+  return masterPreviousSessionBlocker(sessions, id, item, nowMs);
+}
+
+export function masterPreviousSessionBlocker(sessions, id, item, nowMs) {
   for (const [otherId, other] of Object.entries(sessions)) {
     if (String(otherId) === String(id) || other.executionModel !== 'master' || !other.executionAttemptId) continue;
     if (['running', 'publishing'].includes(other.status)) return `Master session ${otherId} is still running`;
@@ -209,7 +271,7 @@ export function parseMasterExecutionResult(text, expected) {
           && binding.requestId == null && binding.publisherPid == null)) {
         throw new Error('Master native hold handoff requires verified full restoration and released ownership');
       }
-    } else if (value.handoff_mode === 'native-heart-head') {
+    } else if (scopedModes.has(value.handoff_mode)) {
       if (!scopedNativeHandoffVerified(value)) {
         throw new Error('Master scoped native handoff lacks verified Heart/head completion and native ownership');
       }
@@ -226,7 +288,14 @@ export function parseMasterExecutionResult(text, expected) {
       throw new Error('Master handoff requires a recognized verified hold or native-standing mode');
     }
   }
-  return { ...result, attempt_id: value.attempt_id, booked_end: value.booked_end,
+  // The adapter start includes pre-dispatch checks. Keep the actual SDK call
+  // timestamp too, so a slow check is distinguishable from a slow movement.
+  const commands = result.commands.map((command, index) => {
+    const sdkStart = value.commands[index].sdk_call_started_at;
+    return typeof sdkStart === 'string' && Number.isFinite(Date.parse(sdkStart))
+      ? {...command, sdk_call_started_at:sdkStart} : command;
+  });
+  return { ...result, commands, attempt_id: value.attempt_id, booked_end: value.booked_end,
     handoff_ready: value.handoff_ready, owner_hold_preserved: value.owner_hold_preserved,
     owner_hold_verified: value.owner_hold_verified === true,
     owner_release_verified: value.owner_release_verified === true,

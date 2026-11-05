@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MasterReadinessChecks } from './master-readiness-check.mjs';
-import { masterBookingAdmission } from './master-booking-admission.mjs';
+import { masterBookingAdmission, masterFirstCommandNotBefore } from './master-booking-admission.mjs';
 
 function booking(t) {
   const runtimeDir=mkdtempSync(join(tmpdir(),'master-admission-'));
@@ -47,4 +47,56 @@ test('another Master owner blocks the next check, and a different account cannot
   assert.match(f.run().reason,/still running/);
   delete f.ops.sessions[150]; f.session.email='different@example.test';
   assert.match(f.run().reason,/booking changed/); assert.deepEqual(f.ops.calls,[]);
+});
+
+test('pre-slot preparation is read-only and the same fresh evidence is consumed only after opening', async t=>{
+  const f=booking(t);
+  const start=Date.now()+15000;
+  f.item.start=f.session.scheduled_start=new Date(start).toISOString();
+  let now=start-15000;
+  let done;
+  const ready=new Promise(resolve=>{done=resolve;});
+  const options={...f.ops,now:()=>now,masterChecks:new MasterReadinessChecks({now:()=>now,onReady:done})};
+  const prepare=()=>masterBookingAdmission(f.session,f.item,{...options,prepareOnly:true});
+  const launch=()=>masterBookingAdmission(f.session,f.item,options);
+  assert.equal(prepare().status,'waiting');
+  assert.equal(options.calls.length,1);
+  now=start-2000;
+  await ready;
+  assert.equal(prepare().status,'waiting');
+  now=start;
+  assert.equal(launch().status,'ready');
+  assert.equal(options.calls.length,1);
+  assert.equal(launch().status,'waiting');
+  assert.equal(options.calls.length,2);
+});
+
+test('Master first command uses booked stream availability and never extends its booking', ()=>{
+  const start=Date.parse('2026-11-05T21:50:00Z');
+  const item={start:new Date(start).toISOString(),end:new Date(start+60000).toISOString(),
+    streamStatus:'publishing',masterViewerStreamStartedAt:new Date(start-60000).toISOString()};
+  assert.throws(()=>masterFirstCommandNotBefore(item,start-1),/open booking/);
+  assert.equal(Date.parse(masterFirstCommandNotBefore(item,start)),start+20000);
+  assert.equal(Date.parse(masterFirstCommandNotBefore(item,start+45000)),start+20000);
+  item.masterViewerStreamStartedAt=new Date(start+10000).toISOString();
+  assert.equal(Date.parse(masterFirstCommandNotBefore(item,start+18000)),start+30000);
+  assert.throws(()=>masterFirstCommandNotBefore(item,start+9999),/publishing stream/);
+  item.end=new Date(start+30000).toISOString();
+  assert.throws(()=>masterFirstCommandNotBefore(item,start+11000),/booking ends/);
+});
+
+test('Master calibrates preflight cost early but yields to an earlier staged Master booking', async t=>{
+  const f=booking(t);
+  const now=Date.now();
+  f.item.start=f.session.scheduled_start=new Date(now+85000).toISOString();
+  const prepare=()=>masterBookingAdmission(f.session,f.item,{...f.ops,prepareOnly:true,now:()=>now});
+  f.ops.sessions[199]={executionModel:'master',status:'staged',start:new Date(now+20000).toISOString(),
+    end:new Date(now+80000).toISOString()};
+  assert.equal(prepare().status,'waiting');
+  assert.equal(f.ops.calls.length,0);
+  // A different physical model has no claim on the Master's read-only channel.
+  f.ops.sessions[199].executionModel='navi';
+  assert.equal(prepare().status,'waiting');
+  assert.equal(f.ops.calls.length,1);
+  await f.ready;
 });

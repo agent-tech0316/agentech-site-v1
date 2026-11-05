@@ -3,6 +3,7 @@
 // stand-ins. The bridge polling loop and OBS are never loaded.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
+import {EventEmitter} from 'node:events';
 import {createHash} from 'node:crypto';
 import {existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -45,13 +46,19 @@ master.preflight=lambda plan,deployment,*,session_end: (seen.append((plan,deploy
 sys.argv=['master','--check-ready','--plan','bound-plan','--deployment','bound-config']
 with redirect_stdout(StringIO()): master.main()
 assert seen==[('bound-plan','bound-config',None)], 'Master runner ignored preflight binding'
+seen.clear()
+master.execute_plan=lambda plan,deployment,result_file,**kwargs: (seen.append((plan,deployment,kwargs['first_command_not_before'])) or {'outcome':'completed','handoff_ready':True})
+target='2026-11-05T21:50:20Z'
+sys.argv=['master','--plan','bound-plan','--deployment','bound-config','--result-file','bound-result','--first-command-not-before',target]
+with redirect_stdout(StringIO()): master.main()
+assert seen==[('bound-plan','bound-config',target)], 'Master runner ignored first-command deadline'
 aegis=runner('trusted-robot-runner.py'); seen.clear()
 aegis.execute=lambda plan,*,results_path,final_result_path: seen.append((str(plan),str(final_result_path)))
 sys.argv=['aegis','bound-plan','--final-result','bound-receipt']; aegis.main()
 assert seen==[('bound-plan','bound-receipt')], 'Aegis runner ignored receipt binding'
 `;
-function declaration(source,name) {
-  const start=source.indexOf('async function '+name+'(');
+function declaration(source,name,async=true) {
+  const start=source.indexOf((async?'async ':'')+'function '+name+'(');
   assert.ok(start>=0,'Missing bridge launch entry point');
   const end=source.indexOf('\n}',start);
   assert.ok(end>start,'Unrecognized bridge launch function');
@@ -70,7 +77,7 @@ async function simulateRoutes(root, scratch) {
     assert.match(source,new RegExp('import\\s*\\{[^}]*\\b'+fn+'\\b[^}]*\\}\\s*from\\s*["\']\\./'+name.replaceAll('.','\\.')+'["\']'),
       'Bridge must import the reviewed '+fn+' adapter');
   }
-  const {masterBookingAdmission}=await load('master-booking-admission.mjs');
+  const {masterBookingAdmission,masterFirstCommandNotBefore}=await load('master-booking-admission.mjs');
   const {checkNaviBookedReadiness}=await load('navi-booking-admission.mjs');
   const {MasterReadinessChecks}=await load('master-readiness-check.mjs');
   const {naviLaunchBlocker}=await load('navi-session-handoff.mjs');
@@ -78,7 +85,7 @@ async function simulateRoutes(root, scratch) {
     const match=source.match(new RegExp('const '+name+' = join\\(here, ["\']([^"\']+)["\']\\);'));
     assert.ok(match,'Bridge runner declaration missing: '+name); return file(match[1]);
   };
-  const launchCode=declaration(source,'launch');
+  const launchCode=declaration(source,'checkMasterBooking',false)+'\n('+declaration(source,'launch')+')(session)';
   const routes={};
   for (const model of ['master','navi','aegis']) {
     const runtimeDir=join(scratch,'smoke-'+model);mkdirSync(runtimeDir);
@@ -89,16 +96,23 @@ async function simulateRoutes(root, scratch) {
       commands:[{name:model==='master'?'turn_head':model==='navi'?'stand':'status',args:{}}]}));
     const localPlan=join(runtimeDir,'session-1.plan.json');writeFileSync(localPlan,plan);
     const masterDeploymentFile=join(runtimeDir,'master.json');writeFileSync(masterDeploymentFile,JSON.stringify({enabled:true}));
-    const item={start,end,status:'staged',executionModel:model,executionSubmissionId:7,accountEmail:session.email,
+    const item={start,end,status:'staged',streamStatus:'publishing',masterViewerStreamStartedAt:start,
+      executionModel:model,executionSubmissionId:7,accountEmail:session.email,
       executionPlanSha256:hash(plan),executionSourceSha256:hash('fixture'),localPlan,remotePlan:'remote-plan',remoteExecutionResult:'result'};
     const launched=[],checks=[],adapters=[],claims=[];
-    const context={state:{sessions:{1:item}},runtimeDir,localPython:'fixture-python',robotPython:'fixture-python',
+    const context={state:{sessions:{1:item}},runtimeDir,localPython:'fixture-python',robotPython:'fixture-python',masterFirstCommandNotBefore,
       masterDeploymentFile,claimableStatuses:['confirmed'],masterChecks:new MasterReadinessChecks(),naviLaunchBlocker,
       masterBookingAdmission:(...args)=>{adapters.push('master');return masterBookingAdmission(...args);},
       checkNaviBookedReadiness:(...args)=>{adapters.push('navi');return checkNaviBookedReadiness(...args);},
       readFileSync,existsSync,join,trustedMasterRunner:runner('trustedMasterRunner'),trustedNaviRunner:runner('trustedNaviRunner'),
-      runAsync:async (_exe,args)=>{checks.push(Array.from(args));return {stdout:JSON.stringify({ready:true,robot_model:'master',
-        robot_commands_sent:false,plan_sha256:item.executionPlanSha256})};},
+      runAsync:(_exe,args)=>{
+        checks.push(Array.from(args));
+        const child = new EventEmitter();
+        const result = Promise.resolve({stdout:JSON.stringify({ready:true,robot_model:'master',
+          robot_commands_sent:false,plan_sha256:item.executionPlanSha256})});
+        queueMicrotask(()=>child.emit('close',0));
+        return Object.assign(result,{child});
+      },
       run:(exe,args)=>{if(exe==='ssh'){const last=args.at(-1);if(last.includes('nohup'))launched.push(last);return '123';}
         checks.push(Array.from(args));return '';},
       masterEnvironment:()=>({}),naviEnvironment:()=>({}),sshArgs:()=>[],robot:'fixture@invalid',remoteDir:'/fixture',
@@ -106,10 +120,10 @@ async function simulateRoutes(root, scratch) {
       createNaviSessionOwner:()=>({attempt_id:'fixture-navi',owner_file:'owner',result_file:'result'}),
       spawn:(_exe,args)=>{launched.push(Array.from(args));return {pid:123,on(){},unref(){}};},
       console:{error(){},log(){}},session};
-    const dispatch=runInNewContext('('+launchCode+')(session)',context,{timeout:2000});
+    const dispatch=runInNewContext(launchCode,context,{timeout:2000});
     await dispatch;
     if(model==='master'&&!launched.length){await new Promise(resolve=>setImmediate(resolve));
-      await runInNewContext('('+launchCode+')(session)',context,{timeout:2000});}
+      await runInNewContext(launchCode,context,{timeout:2000});}
     assert.equal(launched.length,1,model+' launch failed: '+(item.launchBlockedReason??'no runner'));
     assert.equal(claims.length,1,model+' claim count');
     if(model==='aegis'){
@@ -125,6 +139,8 @@ async function simulateRoutes(root, scratch) {
       } else {
         assert.deepEqual(checks[0].slice(1,4),['--check-ready','--plan',localPlan]);
         assert.deepEqual(launched[0].slice(1,3),['--plan',localPlan]);
+        assert.equal(launched[0][launched[0].indexOf('--first-command-not-before')+1],
+          new Date(Date.parse(start)+20000).toISOString());
       }
     }
     routes[model]=model==='aegis'?'trusted-robot-runner.py':'trusted-'+model+'-runner.py';

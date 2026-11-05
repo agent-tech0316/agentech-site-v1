@@ -10,7 +10,7 @@ import OBSWebSocket from "obs-websocket-js";
 import { checkNaviBookedReadiness } from "./navi-booking-admission.mjs";
 import { createGatewayCloudRequest } from "./robot-cloud-request.mjs";
 import { masterReceiptNeedsReload, parseMasterExecutionResult, assertMasterExecutableSubmission } from "./master-session-gateway.mjs";
-import { masterBookingAdmission } from "./master-booking-admission.mjs";
+import { masterBookingAdmission, masterFirstCommandNotBefore } from "./master-booking-admission.mjs";
 import {
   naviLaunchBlocker, parseNaviCleanupResult, loadGatewayState, saveGatewayState,
   selectNaviResetBaseline, reconcileNaviCleanupOutcome, parseNaviProgramResult,
@@ -192,9 +192,13 @@ async function reviewedSubmission(session) {
 }
 
 async function startObs() {
+  let startedNow = false;
   await ensureStreamWithRecovery({
     getStatus: () => obsCall("GetStreamStatus"),
-    startStream: () => obsCall("StartStream"),
+    startStream: () => {
+      startedNow = true;
+      return obsCall("StartStream");
+    },
     recover: async () => {
       const wscript = join(process.env.SystemRoot || "C:\\Windows", "System32", "wscript.exe");
       const result = spawnSync(wscript, ["//B", "//Nologo", obsHiddenLauncher, "repair-nvenc"], {
@@ -214,6 +218,7 @@ async function startObs() {
   });
   const verified = await obsCall("GetStreamStatus");
   if (!verified.outputActive) throw new Error("OBS did not enter the streaming state");
+  return { startedNow, reconnecting: verified.outputReconnecting === true };
 }
 
 async function stopObs() {
@@ -297,11 +302,20 @@ function stage(session, submission) {
 
 async function ensureSessionStream(id, item, nowMs) {
   try {
-    await startObs();
+    const stream = await startObs();
     const firstStart = item.streamStatus !== "publishing";
     const wasAvailableDuringSession = item.streamAvailableDuringSession === true;
+    const confirmedAt = new Date().toISOString();
+    let masterStreamChanged = false;
+    if (item.executionModel === "master") {
+      if (stream.reconnecting) throw new Error("Master stream is reconnecting");
+      if (firstStart || stream.startedNow || !item.masterViewerStreamStartedAt) {
+        item.masterViewerStreamStartedAt = confirmedAt;
+        masterStreamChanged = true;
+      }
+    }
     item.streamStatus = "publishing";
-    item.streamStartedAt ??= new Date().toISOString();
+    item.streamStartedAt ??= confirmedAt;
     delete item.streamError;
     if (nowMs >= Date.parse(item.start) && nowMs < Date.parse(item.end)) {
       item.streamAvailableDuringSession = true;
@@ -309,7 +323,7 @@ async function ensureSessionStream(id, item, nowMs) {
     }
     const becameAvailableDuringSession = !wasAvailableDuringSession
       && item.streamAvailableDuringSession === true;
-    if (firstStart || becameAvailableDuringSession) saveState();
+    if (firstStart || becameAvailableDuringSession || masterStreamChanged) saveState();
     return true;
   } catch (error) {
     item.streamStatus = "failed";
@@ -336,19 +350,59 @@ async function claimSession(session) {
   return claimed?.length === 1;
 }
 
+function checkMasterBooking(session,item,prepareOnly=false) {
+  return masterBookingAdmission(session,item,{
+    prepareOnly,
+    sessions:state.sessions, runtimeDir, deploymentFile:masterDeploymentFile, claimableStatuses, masterChecks,
+    runCheck:async ({planPath,deploymentPath,timeoutMs,signal}) => {
+      const attempt = item.masterPreparedAttemptId;
+      const began = Date.now();
+      const processResult = runAsync(localPython,[trustedMasterRunner,"--check-ready","--plan",planPath,
+        "--deployment",deploymentPath],{env:masterEnvironment(),timeout:timeoutMs,signal,windowsHide:true,maxBuffer:1024*1024});
+      // execFile may reject on abort before the read-only Python process has exited.
+      const closed = new Promise(resolve => processResult.child.once("close",resolve));
+      let outcome = "failed";
+      try {
+        const { stdout } = await processResult;
+        const result = JSON.parse(stdout);
+        outcome = result.ready === true ? "ready" : "refused";
+        return result;
+      } finally {
+        await closed;
+        if (item.masterPreparedAttemptId === attempt) {
+          const finished = Date.now();
+          const timing = { attempt, startedAt:new Date(began).toISOString(), finishedAt:new Date(finished).toISOString(),
+            durationMs:finished-began, outcome:signal.aborted ? "cancelled" : outcome };
+          if (item.masterReadinessFirstProbe?.attempt !== attempt) {
+            item.masterReadinessFirstProbe = timing;
+            item.masterReadinessProbeCount = 0;
+          }
+          item.masterReadinessLastProbe = timing;
+          item.masterReadinessProbeCount = (item.masterReadinessProbeCount ?? 0) + 1;
+          // Normal state saves retain the timing. The log also records probes
+          // for an attempt that is later cancelled before a claim.
+          console.log(`[robot-stream] Master readiness #${session.id}: ${JSON.stringify(timing)}`);
+        }
+      }
+    }
+  });
+}
+
 async function launch(session) {
   const item = state.sessions[session.id];
   let masterReadyUntil = null;
+  let masterNotBefore = null;
   if (!Number.isFinite(Date.parse(item.end)) || Date.now() >= Date.parse(item.end)) return;
   if (item.executionModel === "master") {
-    const admission = masterBookingAdmission(session,item,{
-      sessions:state.sessions, runtimeDir, deploymentFile:masterDeploymentFile, claimableStatuses, masterChecks,
-      runCheck:async ({planPath,deploymentPath,timeoutMs,signal}) => {
-        const {stdout} = await runAsync(localPython,[trustedMasterRunner,"--check-ready","--plan",planPath,
-          "--deployment",deploymentPath],{env:masterEnvironment(),timeout:timeoutMs,signal,windowsHide:true,maxBuffer:1024*1024});
-        return JSON.parse(stdout);
+    try { masterNotBefore = masterFirstCommandNotBefore(item); }
+    catch (error) {
+      if (item.launchBlockedReason !== error.message) {
+        item.launchBlockedReason = error.message;
+        saveState();
       }
-    });
+      return;
+    }
+    const admission = checkMasterBooking(session,item);
     if (admission.status === "blocked" && item.launchBlockedReason !== admission.reason) {
       item.launchBlockedReason = admission.reason;
       saveState();
@@ -389,7 +443,7 @@ async function launch(session) {
     return;
   }
   const masterReadinessLost = masterReadyUntil !== null &&
-    (Date.now() >= masterReadyUntil || existsSync(item.masterCancelFile));
+    (Date.now() < Date.parse(item.start) || Date.now() >= masterReadyUntil || existsSync(item.masterCancelFile));
   if (Date.now() >= Date.parse(item.end) || masterReadinessLost) {
     item.claimedWithoutLaunch = true;
     if (masterReadinessLost) {
@@ -406,6 +460,7 @@ async function launch(session) {
   if (item.executionModel === "master") {
     // Persist the attempt before spawn. A crash must not authorize a replay.
     item.executionAttemptId = item.masterPreparedAttemptId;
+    item.masterFirstCommandNotBefore = masterNotBefore;
     item.masterHandoffReady = false;
     item.localExecutionResult = join(runtimeDir, `session-${session.id}.${item.executionAttemptId}.master-result.json`);
     item.status = "running";
@@ -414,7 +469,8 @@ async function launch(session) {
     try {
       const child = spawn(localPython, [trustedMasterRunner, "--plan", item.localPlan,
         "--deployment", item.masterSessionDeployment, "--result-file", item.localExecutionResult,
-        "--session-end", item.end, "--cancel-file", item.masterCancelFile], {
+        "--session-end", item.end, "--first-command-not-before", masterNotBefore,
+        "--cancel-file", item.masterCancelFile], {
         detached: true, windowsHide: true, stdio: ["ignore", logFd, logFd], env: masterEnvironment(),
       });
       child.on("error", error => console.error(`[robot-stream] Master runner spawn failed: ${error.message}`));
@@ -904,6 +960,10 @@ async function tick() {
       const item = state.sessions[session.id];
       const launchNow = Date.now();
       if (launchNow >= Date.parse(item.end)) continue;
+      if (item.executionModel === "master" && item.status === "staged") {
+        // Prepare only. OBS and the fresh in-window claim still gate launch.
+        checkMasterBooking(session,item,true);
+      }
       const streamReady = await ensureSessionStream(session.id, item, launchNow);
       if (streamReady && item.status === "staged" && Date.now() < Date.parse(item.end)
           && Date.now() >= Date.parse(session.scheduled_start)) await launch(session);

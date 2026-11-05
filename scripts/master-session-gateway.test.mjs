@@ -100,6 +100,23 @@ function receipt() {
 }
 const expected = { sessionId: 42, submissionId: 7, sourceSha256: hash, planSha256: hash, attemptId: 'attempt-42', bookedEnd: end };
 
+test('an interrupted head call keeps the SDK timestamp and partial progress without completion credit', () => {
+  const value = receipt();
+  const error = {type:'RuntimeError', message:'Native head acknowledgment timed out', command:'shake_head', command_index:1};
+  const partial = {phase:'head-sequence-interrupted', sequence_completed:false, measured_endpoint_verified:false,
+    motion_publication_count:20, first_motion_publication_utc:'2026-10-23T01:00:26.125Z',
+    completed_endpoints:[{target_degrees:0,measured_degrees:0.01}], automatic_retry_sent:false};
+  Object.assign(value,{outcome:'failed',completed_count:0,error,handoff_ready:false,owner_hold_verified:false});
+  Object.assign(value.commands[0],{name:'shake_head',status:'failed',result:partial,error,
+    sdk_call_started_at:'2026-10-23T01:00:25.608Z'});
+  const parsed = parseMasterExecutionResult(JSON.stringify(value), expected);
+  assert.equal(parsed.outcome,'failed');
+  assert.equal(parsed.completed_count,0);
+  assert.equal(parsed.commands[0].sdk_call_started_at,value.commands[0].sdk_call_started_at);
+  assert.deepEqual(parsed.commands[0].result,partial);
+  assert.equal(parsed.handoff_ready,false);
+});
+
 test('Master receipts preserve execution versus handoff and reject foreign attempts', () => {
   const result = parseMasterExecutionResult(JSON.stringify(receipt()), expected);
   assert.equal(result.outcome, 'completed');
@@ -217,6 +234,28 @@ function scopedReceipt(names) {
     owner_binding:{...owner,observed_at:start},final_owner_binding:{...structuredClone(owner),observed_at:'2026-10-23T01:02:00Z'},
     command_count:commands.length,completed_count:commands.length,commands};
 }
+
+test('session 102 native shake endpoints identify two completed cycles in the gateway parser', () => {
+  const result = JSON.parse(readFileSync(new URL('./fixtures/master-shake-session-102.json', import.meta.url), 'utf8'));
+  const receipt = scopedReceipt(['heart','shake_head']);
+  const shake = receipt.commands[1];
+  shake.result = result;
+  shake.args.cycles = 2;
+  assert.equal(parseMasterExecutionResult(JSON.stringify(receipt), expected).handoff_ready, true);
+  for (const change of [
+    command => command.result.endpoints.pop(),
+    command => command.result.endpoints[0].settled_seconds = .5,
+    command => command.result.endpoints[0].measured_degrees = false,
+    command => command.result.measured_final_degrees = 4,
+    command => command.result.angle_degrees = -5,
+    command => command.args.cycles = 1,
+    command => command.name = 'turn_head',
+  ]) {
+    const changed = structuredClone(receipt);
+    change(changed.commands[1]);
+    assert.throws(() => parseMasterExecutionResult(JSON.stringify(changed), expected));
+  }
+});
 
 test('scoped native handoff accepts Heart and head-only evidence without claiming arm-gain restoration', () => {
   for (const names of [['heart'], ['turn_head'], ['shake_head'], ['turn_head','heart','shake_head']]) {

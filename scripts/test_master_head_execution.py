@@ -193,6 +193,25 @@ class HeadAdapterTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             runner.require_completed('shake_head', completed_head())
 
+    def test_session_102_shake_binds_every_measured_endpoint_to_the_requested_cycles(self):
+        result = json.loads((SCRIPTS/'fixtures/master-shake-session-102.json').read_text())
+        args = {'angle_degrees': 5, 'cycles': 2}
+        runner.require_completed('shake_head', result)
+        runner.require_native_sequence_result('shake_head', args, result, None)
+        for changes in [
+            {'endpoints': result['endpoints'][:-1]},
+            {'endpoints': [dict(result['endpoints'][0], settled_seconds=.5), *result['endpoints'][1:]]},
+            {'endpoints': [dict(result['endpoints'][0], measured_degrees=False), *result['endpoints'][1:]]},
+            {'measured_final_degrees': 4}, {'angle_degrees': -5}, {'cycles': True},
+            {'automatic_retry_sent': True}, {'operation': 'turn_head'},
+        ]:
+            with self.subTest(changes=changes), self.assertRaises(RuntimeError):
+                runner.require_completed('shake_head', {**result, **changes})
+        with self.assertRaises(RuntimeError):
+            runner.require_completed('turn_head', result)
+        with self.assertRaises(RuntimeError):
+            runner.require_native_sequence_result('shake_head', {**args, 'cycles': 1}, result, None)
+
     def test_completion_requires_measured_native_standing_evidence(self):
         result = completed_head()
         runner.require_completed('turn_head', result)
