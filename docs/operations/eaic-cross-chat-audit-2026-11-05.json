@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "date_pacific": "2026-11-05",
+  "scope": "Cross-chat review of EAIC, SDK, gateway, media and retained physical results. This audit sends no motion, creates no booking, and performs no gateway or robot activation.",
+  "reviewed_chats": [
+    "Add Master arm motions to EAIC",
+    "Fix EAIC heart and head shake",
+    "Update Master SDK paths",
+    "Check return-to-home camera zoom"
+  ],
+  "versions": {
+    "website_base": "fc988180e9b375a93bbd63cfbe870951b58c8e36",
+    "sdk_main": "adbdd8c5f053c32d1ebeca60d33b4d647957120d",
+    "selected_master_sdk": "c91dac918ea48d2b1aa4fad2af07b5945989b88f",
+    "installed_gateway_source": "60c32d9056bf1aca1f2fe5207e24c3076a8fd027",
+    "installed_manifest_hashes_verified": true,
+    "website_base_production": "READY"
+  },
+  "checks": [
+    {
+      "request": "Account View opens the selected successful submission",
+      "result": "PASS",
+      "evidence": "Live Chrome: older review agentech-20261105204320-q6kvo7 loads six commands including return_to_home; newer review agentech-20261105220323-4sc9uc loads its five commands. Legacy redirect preserves the ID."
+    },
+    {
+      "request": "Website builds and tests",
+      "result": "PASS",
+      "evidence": "Full npm test: 350 Node tests and 103 Python tests; explicit Master gateway suite: 90 Python and 78 Node tests; typecheck and production build pass. Worktree audit requires MASTER_SDK_ROOT and MASTER_SDK_PYTHON to select the actual SDK checkout."
+    },
+    {
+      "request": "All three robots use separate gateways",
+      "result": "PASS_OFFLINE",
+      "evidence": "Actual dispatch function smoke test routes Master to trusted-master-runner.py, Navi to trusted-navi-runner.py, and Aegis to trusted-robot-runner.py. Exactly one booking bridge process observed. No cross-model restart or installation performed."
+    },
+    {
+      "request": "Explicit bilateral raw hand-guide entry before adjustments",
+      "result": "PASS_OFFLINE",
+      "evidence": "Missing entry, adjustment before entry and adjustment after restore are rejected; the explicit entry sequence passes. Native presets do not require this raw entry."
+    },
+    {
+      "request": "All Master supported functions connected; Movement A optional",
+      "result": "PASS_CONTRACT",
+      "evidence": "53 distinct scheduled methods exactly match the execution allowlist. Includes bilateral arms, waist, Movement A/B, restore, head, golf and 16 native presets. Software support is distinct from current native readiness."
+    },
+    {
+      "request": "Preset support including Heart",
+      "result": "HISTORICAL_PHYSICAL_PASS",
+      "evidence": "SDK ledger records 16 standing preset methods / 25 variants on November 4. EAIC #104 Heart completed. Complete visual coverage of all 25 was not retained."
+    },
+    {
+      "request": "Head turn/shake successful with honest EAIC results",
+      "result": "PARTIAL",
+      "evidence": "#102 result-name mismatch was repaired and replayed with measured endpoints. #104 completed Heart but stopped during shake cycle two. be8aa80 fixes feedback-receipt timing and retains incomplete evidence; newest code not activated or physically rerun."
+    },
+    {
+      "request": "Shoulder/elbow 20 degrees per second; wrist 10",
+      "result": "IMPLEMENTED",
+      "evidence": "Defaults verified in shoulder, elbow and wrist SDK constants. Native waist, absolute poses, saved presets and restore retain separate timing contracts."
+    },
+    {
+      "request": "All upper-body timing and full restore improved",
+      "result": "IMPLEMENTED_OFFLINE_LIVE_PENDING",
+      "evidence": "Finite connection reuse and retained neutral support cover shoulders, elbows and wrists and full restore. Latest full restore hardware benchmark remains 22.938 seconds on the earlier version; no new all-joint timing claim."
+    },
+    {
+      "request": "Preserve all raw adjustments on upgraded Master firmware",
+      "result": "OPEN_NATIVE_DEPENDENCY",
+      "evidence": "Other chat's captured v1.0.10 runtime lacks initialized manipulation subscriber and runner. Native MC was not stopped. Compatibility files are staged; live entry and all upper-body adjustments are not yet restored on this firmware."
+    },
+    {
+      "request": "No hidden SDK failures",
+      "result": "OPEN",
+      "evidence": "Clean SDK main full Master suite reproduced 19 failures. Seventeen fixture cases repaired and published, preserving 67 assertion/raises nodes. Two oscillation cases remain; prior independent probe found a related stopping-follower domain escape rejected by its guard.",
+      "sdk_audit": "https://github.com/agent-tech0316/agentech_sdk/blob/main/docs/master/evidence/2026-11-05-cross-chat-audit.json"
+    },
+    {
+      "request": "Navi five-command program through EAIC; no home or Camo",
+      "result": "PHYSICAL_COMPLETED",
+      "evidence": "#103 recorded 5/5 completed: stand, forward, frontflip, sideflip left, turn. Inter-command gaps 3-13 ms. Turn measured -44.141419 degrees for requested -45; forward distance was not measured."
+    },
+    {
+      "request": "Navi end-of-slot cleanup",
+      "result": "FAILED_RETAINED",
+      "evidence": "#103 cleanup made three bounded attempts; connection timed out during initial battery read before stop/damping. Earlier five-command completion remains completed. No final post-expiry pose claim."
+    },
+    {
+      "request": "Persistent saved home across Navi reboot",
+      "result": "IMPLEMENTED_WITH_OPEN_QUALIFICATION",
+      "evidence": "Saved home is retained. Automatic boot-yaw recovery needs accepted one-time procedure qualification for the current robot/cell/calibration. No current boot-binding or qualification sidecar observed. Not a daily recalibration requirement."
+    },
+    {
+      "request": "OBS/LiveKit viewing and lag",
+      "result": "STREAM_WORKED_LATENCY_NOT_FULLY_MEASURED",
+      "evidence": "Streams observed in #103 and #104. Persisted OBS configuration: 1280x720, 30 fps, NVENC H264, CBR 3500 kbps, one-second keyframe, p3, ultra-low-latency tuning, no lookahead/B-frames/multipass. This is not a glass-to-glass latency measurement."
+    },
+    {
+      "request": "Latest SDK selected in EAIC",
+      "result": "PUBLISHED_NOT_FULLY_ACTIVATED",
+      "evidence": "Website production is READY at fc98818. PC SDK still selects c91dac9. The installed gateway is intact but differs from main in five Master preparation/execution files, after line-ending normalization. Other chat explicitly ended with local-only work after power-off."
+    },
+    {
+      "request": "Future tests both arms then waist then combined, default speed and full restore",
+      "result": "PREPARED_NOT_RUN",
+      "evidence": "Twelve programs retained in the October 28 test pack. Each explicitly enters bilateral guidance and finishes with full restore. Custom speed and effort remain separate pending EAIC physical tests."
+    },
+    {
+      "request": "Clean local computer and push relevant work",
+      "result": "SCOPED_COMPLETE",
+      "evidence": "Previous turn removed 959.5 MiB of ignored caches and recycled its isolated test checkout. Both publication checkouts preserve unrelated working-tree changes in other locations. This audit publishes only reviewed fixture repairs, a stale bow-support message correction and audit evidence."
+    }
+  ],
+  "changes_in_this_audit": [
+    "Correct Code Certification copy: bow is supported, not excluded.",
+    "Publish three previously local SDK fixture repairs without changing production controllers or existing assertions.",
+    "Record unresolved requirements instead of claiming everything is complete."
+  ],
+  "all_requirements_complete": false
+}
