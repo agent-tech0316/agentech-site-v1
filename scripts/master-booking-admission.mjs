@@ -5,7 +5,7 @@ import { masterUnresolvedSessions } from './master-native-handoff.mjs';
 import { masterLaunchBlocker, masterPreviousSessionBlocker, masterRecoveryForStagedPlan, createMasterSessionDeployment } from './master-session-gateway.mjs';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
-const PREP_LEAD_MS = 20000;
+const PREP_LEAD_MS = 90000;
 const VIEWER_LEAD_MS = 20000;
 
 export function masterFirstCommandNotBefore(item, nowMs = Date.now()) {
@@ -35,9 +35,14 @@ export function masterBookingAdmission(session, item, { sessions, runtimeDir, de
     if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs || nowMs >= endMs) {
       return blocked('Master booked session has expired or is invalid');
     }
-    if (prepareOnly && nowMs < startMs-PREP_LEAD_MS) {
-      masterChecks.discard(id);
-      return {status:'waiting'};
+    if (prepareOnly && nowMs < startMs) {
+      const earlierMaster = Object.entries(sessions).some(([otherId, other]) => otherId !== id
+        && other.executionModel === 'master' && other.status === 'staged' && Date.parse(other.end) > nowMs
+        && (Date.parse(other.start) < startMs || (Date.parse(other.start) === startMs && otherId < id)));
+      if (nowMs < startMs - PREP_LEAD_MS || earlierMaster) {
+        masterChecks.discard(id);
+        return {status:'waiting'};
+      }
     }
     if (!deploymentFile) throw new Error('AGENTECH_MASTER_DEPLOYMENT_FILE is not configured');
     config = JSON.parse(readFileSync(deploymentFile,'utf8'));

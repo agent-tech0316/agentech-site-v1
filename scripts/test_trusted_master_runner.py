@@ -175,6 +175,30 @@ class TrustedMasterRunnerTests(unittest.TestCase):
         self.adapter.stop.assert_not_called()
         self.adapter.restore.assert_not_called()
 
+    def test_interrupted_shake_keeps_partial_evidence_without_crediting_the_call(self):
+        self.replace_commands([{'name':'shake_head','args':{'cycles':2,'angle_degrees':5}}])
+        fault = RuntimeError('Native head acknowledgment timed out; no retry sent')
+        fault.head_motion_progress = {
+            'sequence_completed':False, 'automatic_retry_sent':False,
+            'first_motion_publication_utc':'2026-11-05T22:25:38Z', 'motion_publication_count':20,
+            'completed_endpoints':[{'target_degrees':0, 'measured_degrees':0.01}],
+            'failed_step':{'index':6,'kind':'head_yaw','target_degrees':-5},
+            'acknowledgment':{'reason':'timeout','expected_count':-3,'observed_count':-4},
+        }
+        self.adapter.execute.side_effect = fault
+        receipt = self.run_plan()
+        self.assertEqual((receipt['outcome'],receipt['completed_count'],receipt['handoff_ready']),('failed',0,False))
+        step = receipt['commands'][0]
+        self.assertEqual(step['status'],'failed')
+        self.assertEqual(step['result']['phase'],'head-sequence-interrupted')
+        self.assertFalse(step['result']['sequence_completed'])
+        self.assertFalse(step['result']['measured_endpoint_verified'])
+        self.assertEqual(step['result']['completed_endpoints'], fault.head_motion_progress['completed_endpoints'])
+        self.assertEqual(step['result']['first_motion_publication_utc'],'2026-11-05T22:25:38Z')
+        self.assertEqual(step['error']['message'],str(fault))
+        self.adapter.execute.assert_called_once()
+        self.adapter.stop.assert_not_called()
+
     def test_scoped_handoff_refuses_replaced_owner_and_does_not_claim_restoration(self):
         from test_master_head_execution import completed_head
         self.replace_commands([{'name':'turn_head', 'args':{}}])

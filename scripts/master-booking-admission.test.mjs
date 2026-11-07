@@ -84,3 +84,19 @@ test('Master first command uses booked stream availability and never extends its
   item.end=new Date(start+30000).toISOString();
   assert.throws(()=>masterFirstCommandNotBefore(item,start+11000),/booking ends/);
 });
+
+test('Master calibrates preflight cost early but yields to an earlier staged Master booking', async t=>{
+  const f=booking(t);
+  const now=Date.now();
+  f.item.start=f.session.scheduled_start=new Date(now+85000).toISOString();
+  const prepare=()=>masterBookingAdmission(f.session,f.item,{...f.ops,prepareOnly:true,now:()=>now});
+  f.ops.sessions[199]={executionModel:'master',status:'staged',start:new Date(now+20000).toISOString(),
+    end:new Date(now+80000).toISOString()};
+  assert.equal(prepare().status,'waiting');
+  assert.equal(f.ops.calls.length,0);
+  // A different physical model has no claim on the Master's read-only channel.
+  f.ops.sessions[199].executionModel='navi';
+  assert.equal(prepare().status,'waiting');
+  assert.equal(f.ops.calls.length,1);
+  await f.ready;
+});

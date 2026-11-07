@@ -3,6 +3,7 @@
 // stand-ins. The bridge polling loop and OBS are never loaded.
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
+import {EventEmitter} from 'node:events';
 import {createHash} from 'node:crypto';
 import {existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -104,8 +105,14 @@ async function simulateRoutes(root, scratch) {
       masterBookingAdmission:(...args)=>{adapters.push('master');return masterBookingAdmission(...args);},
       checkNaviBookedReadiness:(...args)=>{adapters.push('navi');return checkNaviBookedReadiness(...args);},
       readFileSync,existsSync,join,trustedMasterRunner:runner('trustedMasterRunner'),trustedNaviRunner:runner('trustedNaviRunner'),
-      runAsync:async (_exe,args)=>{checks.push(Array.from(args));return {stdout:JSON.stringify({ready:true,robot_model:'master',
-        robot_commands_sent:false,plan_sha256:item.executionPlanSha256})};},
+      runAsync:(_exe,args)=>{
+        checks.push(Array.from(args));
+        const child = new EventEmitter();
+        const result = Promise.resolve({stdout:JSON.stringify({ready:true,robot_model:'master',
+          robot_commands_sent:false,plan_sha256:item.executionPlanSha256})});
+        queueMicrotask(()=>child.emit('close',0));
+        return Object.assign(result,{child});
+      },
       run:(exe,args)=>{if(exe==='ssh'){const last=args.at(-1);if(last.includes('nohup'))launched.push(last);return '123';}
         checks.push(Array.from(args));return '';},
       masterEnvironment:()=>({}),naviEnvironment:()=>({}),sshArgs:()=>[],robot:'fixture@invalid',remoteDir:'/fixture',

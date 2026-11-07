@@ -288,7 +288,14 @@ export function parseMasterExecutionResult(text, expected) {
       throw new Error('Master handoff requires a recognized verified hold or native-standing mode');
     }
   }
-  return { ...result, attempt_id: value.attempt_id, booked_end: value.booked_end,
+  // The adapter start includes pre-dispatch checks. Keep the actual SDK call
+  // timestamp too, so a slow check is distinguishable from a slow movement.
+  const commands = result.commands.map((command, index) => {
+    const sdkStart = value.commands[index].sdk_call_started_at;
+    return typeof sdkStart === 'string' && Number.isFinite(Date.parse(sdkStart))
+      ? {...command, sdk_call_started_at:sdkStart} : command;
+  });
+  return { ...result, commands, attempt_id: value.attempt_id, booked_end: value.booked_end,
     handoff_ready: value.handoff_ready, owner_hold_preserved: value.owner_hold_preserved,
     owner_hold_verified: value.owner_hold_verified === true,
     owner_release_verified: value.owner_release_verified === true,

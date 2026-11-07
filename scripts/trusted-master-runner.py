@@ -75,6 +75,25 @@ def wait_until(target, admitted, now, sleep):
         sleep(min(remaining, 0.1))
 
 
+def interrupted_head_result(error):
+    """Keep measured progress from an interrupted SDK call separate from completion."""
+    progress = getattr(error, 'head_motion_progress', None)
+    if not isinstance(progress, dict) or progress.get('sequence_completed') is not False:
+        return None
+    keys = ('sequence_completed', 'automatic_retry_sent', 'first_motion_publication_utc',
+            'last_motion_publication_utc', 'motion_publication_count', 'total_publication_count',
+            'first_measured_yaw_change_utc', 'first_measured_yaw_change_degrees',
+            'completed_endpoints', 'completed_endpoint_count', 'failed_step', 'acknowledgment',
+            'measured_last_degrees', 'publication_outcome_unknown', 'final_ownership_error')
+    result = {key:progress[key] for key in keys if key in progress}
+    try:
+        if len(json.dumps(result, allow_nan=False)) > 32768:
+            return None
+    except (TypeError, ValueError):
+        return None
+    return {**result, 'phase':'head-sequence-interrupted', 'measured_endpoint_verified':False}
+
+
 def _read_json(path):
     raw = Path(path).read_bytes()
     if len(raw) > 1024 * 1024:
@@ -868,6 +887,8 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
     except Exception as error:
         failure = {'type': type(error).__name__, 'message': str(error)}
         if active is not None:
+            if active['name'] in ('turn_head', 'shake_head') and active['result'] is None:
+                active['result'] = interrupted_head_result(error)
             failure.update(command=active['name'], command_index=active['command_index'])
             if active['line'] is not None: failure['line'] = active['line']
             active['error'] = failure

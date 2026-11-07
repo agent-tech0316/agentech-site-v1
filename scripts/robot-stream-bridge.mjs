@@ -352,13 +352,39 @@ async function claimSession(session) {
 
 function checkMasterBooking(session,item,prepareOnly=false) {
   return masterBookingAdmission(session,item,{
-      prepareOnly,
-      sessions:state.sessions, runtimeDir, deploymentFile:masterDeploymentFile, claimableStatuses, masterChecks,
-      runCheck:async ({planPath,deploymentPath,timeoutMs,signal}) => {
-        const {stdout} = await runAsync(localPython,[trustedMasterRunner,"--check-ready","--plan",planPath,
-          "--deployment",deploymentPath],{env:masterEnvironment(),timeout:timeoutMs,signal,windowsHide:true,maxBuffer:1024*1024});
-        return JSON.parse(stdout);
+    prepareOnly,
+    sessions:state.sessions, runtimeDir, deploymentFile:masterDeploymentFile, claimableStatuses, masterChecks,
+    runCheck:async ({planPath,deploymentPath,timeoutMs,signal}) => {
+      const attempt = item.masterPreparedAttemptId;
+      const began = Date.now();
+      const processResult = runAsync(localPython,[trustedMasterRunner,"--check-ready","--plan",planPath,
+        "--deployment",deploymentPath],{env:masterEnvironment(),timeout:timeoutMs,signal,windowsHide:true,maxBuffer:1024*1024});
+      // execFile may reject on abort before the read-only Python process has exited.
+      const closed = new Promise(resolve => processResult.child.once("close",resolve));
+      let outcome = "failed";
+      try {
+        const { stdout } = await processResult;
+        const result = JSON.parse(stdout);
+        outcome = result.ready === true ? "ready" : "refused";
+        return result;
+      } finally {
+        await closed;
+        if (item.masterPreparedAttemptId === attempt) {
+          const finished = Date.now();
+          const timing = { attempt, startedAt:new Date(began).toISOString(), finishedAt:new Date(finished).toISOString(),
+            durationMs:finished-began, outcome:signal.aborted ? "cancelled" : outcome };
+          if (item.masterReadinessFirstProbe?.attempt !== attempt) {
+            item.masterReadinessFirstProbe = timing;
+            item.masterReadinessProbeCount = 0;
+          }
+          item.masterReadinessLastProbe = timing;
+          item.masterReadinessProbeCount = (item.masterReadinessProbeCount ?? 0) + 1;
+          // Normal state saves retain the timing. The log also records probes
+          // for an attempt that is later cancelled before a claim.
+          console.log(`[robot-stream] Master readiness #${session.id}: ${JSON.stringify(timing)}`);
+        }
       }
+    }
   });
 }
 

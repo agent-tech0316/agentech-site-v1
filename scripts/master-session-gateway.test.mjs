@@ -100,6 +100,23 @@ function receipt() {
 }
 const expected = { sessionId: 42, submissionId: 7, sourceSha256: hash, planSha256: hash, attemptId: 'attempt-42', bookedEnd: end };
 
+test('an interrupted head call keeps the SDK timestamp and partial progress without completion credit', () => {
+  const value = receipt();
+  const error = {type:'RuntimeError', message:'Native head acknowledgment timed out', command:'shake_head', command_index:1};
+  const partial = {phase:'head-sequence-interrupted', sequence_completed:false, measured_endpoint_verified:false,
+    motion_publication_count:20, first_motion_publication_utc:'2026-10-23T01:00:26.125Z',
+    completed_endpoints:[{target_degrees:0,measured_degrees:0.01}], automatic_retry_sent:false};
+  Object.assign(value,{outcome:'failed',completed_count:0,error,handoff_ready:false,owner_hold_verified:false});
+  Object.assign(value.commands[0],{name:'shake_head',status:'failed',result:partial,error,
+    sdk_call_started_at:'2026-10-23T01:00:25.608Z'});
+  const parsed = parseMasterExecutionResult(JSON.stringify(value), expected);
+  assert.equal(parsed.outcome,'failed');
+  assert.equal(parsed.completed_count,0);
+  assert.equal(parsed.commands[0].sdk_call_started_at,value.commands[0].sdk_call_started_at);
+  assert.deepEqual(parsed.commands[0].result,partial);
+  assert.equal(parsed.handoff_ready,false);
+});
+
 test('Master receipts preserve execution versus handoff and reject foreign attempts', () => {
   const result = parseMasterExecutionResult(JSON.stringify(receipt()), expected);
   assert.equal(result.outcome, 'completed');
