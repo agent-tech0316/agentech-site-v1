@@ -252,7 +252,26 @@ type AdminAiUsageData = {
 
 type AccessProfileType = "developer" | "student" | "teacher" | "talent";
 type DashboardTab = "profile" | "courses" | "balance" | "code" | "robot" | "invoices" | "billing" | "settings";
+function BodyOperatorReady({sessionId}: {sessionId:number}) {
+  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false);
+  async function confirm() {
+    setPending(true);
+    try {
+      const response = await fetch("/api/robot-slot/body-ready", {method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({sessionId,operatorReady:true})});
+      const result = await response.json();
+      setMessage(response.ok ? "Operator ready. The gateway will check Master and the stream before playback." : result.error);
+    } catch { setMessage("Confirmation unavailable. Try again during the booking."); }
+    finally { setPending(false); }
+  }
+  return <div className="mt-3"><p className="text-sm">At the slot, confirm that you are beside Master, the full-body movement area is clear, and you have the physical stop.</p>
+    <button type="button" disabled={pending} onClick={confirm} className="mt-2 rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white">I’m ready at Master</button>
+    <p role="status" className="mt-1 text-sm">{message}</p></div>;
+}
+
 type AccountDashboardProps = {
+  nativeAssetId?: string;
   mode?: "account" | "robot-scheduling";
 };
 
@@ -965,7 +984,7 @@ function generateRobotSlotCandidates(durationMinutes: number, unlimitedHours = f
   return slots;
 }
 
-export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
+export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDashboardProps) {
   const router = useRouter();
   const focusedRobotScheduling = mode === "robot-scheduling";
   const [email, setEmail] = useState("");
@@ -1623,7 +1642,8 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
         scheduledStart: Number.isNaN(scheduledDate.getTime()) ? robotSlotStart : scheduledDate.toISOString(),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         durationMinutes: robotSlotDurationMinutes,
-        robotModel: latestApprovedRobotModel ?? robotSlotModel,
+        nativeAssetId,
+        robotModel: nativeAssetId ? "Master" : latestApprovedRobotModel ?? robotSlotModel,
         requestedRunType: "custom_code",
         notes: robotSlotNotes
       })
@@ -1656,7 +1676,7 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
 
   if (!email) {
     const signInReturnPath = focusedRobotScheduling
-      ? getEaicHubTaskPath("schedule-time")
+      ? getEaicHubTaskPath("schedule-time") + (nativeAssetId ? "?nativeAssetId="+encodeURIComponent(nativeAssetId) : "")
       : "/account";
 
     return (
@@ -1706,13 +1726,13 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
   const robotSlotCreditCost = isInternalCompanyAccount || !robotSlotDurationValid ? 0 : getRobotViewingCreditCost(selectedRobotSlotDuration);
   const selectedRobotSlot = robotSlotOptions.find((slot) => slot.value === robotSlotStart);
   const latestApprovedCodeSubmission = (data.codeSubmissions ?? []).find((submission) => submission.id === data.account?.developer_latest_code_submission_id);
-  const latestApprovedRobotModel = normalizeAgentechRobotModel(latestApprovedCodeSubmission?.robot_model);
+  const latestApprovedRobotModel = nativeAssetId ? "Master" : normalizeAgentechRobotModel(latestApprovedCodeSubmission?.robot_model);
   const codeSubmissionById = new Map((data.codeSubmissions ?? []).map((submission) => [submission.id, submission]));
   const developerCodeReviewPassed = data.account?.developer_physical_safety_status === "passed" && data.account?.developer_ai_security_status === "passed" && latestApprovedCodeSubmission?.physical_safety_status === "passed" && latestApprovedCodeSubmission.ai_security_status === "passed";
   const internalCreditBypass = isInternalCompanyAccount;
-  const customCodeLocked = !developerCodeReviewPassed;
+  const customCodeLocked = !nativeAssetId && !developerCodeReviewPassed;
   const robotSlotCreditLocked = !internalCreditBypass && creditBalance < robotSlotCreditCost;
-  const robotSlotUnavailable = loadingRobotSlots || !robotSlotDurationValid || !selectedRobotSlot || selectedRobotSlot.disabled || robotSlotCreditLocked || customCodeLocked;
+  const robotSlotUnavailable = loadingRobotSlots || (Boolean(nativeAssetId) && Number(robotSlotDurationMinutes) < 2) || !robotSlotDurationValid || !selectedRobotSlot || selectedRobotSlot.disabled || robotSlotCreditLocked || customCodeLocked;
   const selectedDashboardProfile = data.accessProfiles?.find((profile) => profile.id === selectedDashboardProfileId) ?? null;
   const selectedDashboardProfileType = selectedDashboardProfile?.profile_type ?? null;
   const visibleDashboardTabs = focusedRobotScheduling
@@ -3019,9 +3039,9 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
               </p>
             </div>
             <div className={`rounded-2xl px-4 py-3 text-sm font-semibold ${developerCodeReviewPassed ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-700"}`}>
-              <p>{developerCodeReviewPassed ? "Live code approved" : "Live code locked"}</p>
+              <p>{nativeAssetId ? "Happy Dance with bundled audio" : developerCodeReviewPassed ? "Live code approved" : "Live code locked"}</p>
               <p className="mt-1 text-xs opacity-80">
-                {developerCodeReviewPassed
+                {nativeAssetId ? `ZIP receipt ${nativeAssetId}` : developerCodeReviewPassed
                   ? "Latest code package passed both gates."
                   : "Run Step 3 Physical Hardware Check and Step 4 Software Check first."}
               </p>
@@ -3049,10 +3069,10 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
                 <div className="block">
                   <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">Run Type</span>
                   <div className="mt-2 w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
-                    Approved custom code live test
+                    {nativeAssetId ? "Master · Happy Dance with bundled audio" : "Approved custom code live test"}
                   </div>
                   <span className="mt-2 block text-sm text-slate-600">
-                    {developerCodeReviewPassed
+                    {nativeAssetId ? "Playback uses the audio.wav bundled with this motion." : developerCodeReviewPassed
                       ? "This session will use your latest approved submission."
                       : "Scheduling requires a passed physical safety gate and AI security scan."}
                   </span>
@@ -3080,7 +3100,7 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
                     type="number"
                     value={robotSlotDurationMinutes}
                     onChange={(event) => setRobotSlotDurationMinutes(event.target.value)}
-                    min={isInternalCompanyAccount ? 1 : externalRobotViewingMinimumMinutes}
+                    min={Math.max(nativeAssetId ? 2 : 1, isInternalCompanyAccount ? 1 : externalRobotViewingMinimumMinutes)}
                     max={isInternalCompanyAccount ? undefined : externalRobotViewingMaximumMinutes}
                     step="1"
                     className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none focus:border-[#2f70c8] focus:ring-4 focus:ring-[#dbeafe]"
@@ -3108,13 +3128,13 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
                     ))}
                   </select>
                   <span className="mt-2 block text-sm text-slate-600">
-                    {latestApprovedRobotModel
+                    {nativeAssetId ? "Select at least two minutes for the viewing countdown and dance." : latestApprovedRobotModel
                       ? `Locked to the ${latestApprovedRobotModel} model used by the latest approved code check.`
                       : "Submit and approve code for Aegies or Navi before scheduling."}
                   </span>
                 </label>
                 <p className={`rounded-xl border px-4 py-3 text-sm font-semibold ${developerCodeReviewPassed ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                  {developerCodeReviewPassed
+                  {nativeAssetId ? "When your slot opens, confirm your presence in the booking below." : developerCodeReviewPassed
                     ? "This slot will use the latest Supabase-approved custom code package."
                     : "Custom live-code testing is locked until both approval checks pass."}
                 </p>
@@ -3182,6 +3202,9 @@ export function AccountDashboard({ mode = "account" }: AccountDashboardProps) {
                           <p className="mt-1 text-xs text-slate-500">Run: {formatInvoiceStatus(session.approved_run_type || "preset_demo")}</p>
                         </div>
                       </div>
+                      {session.code_submission_id?.startsWith("master-body-") && ["approved","confirmed","scheduled","requested","pending"].includes(session.session_status) && (
+                        <BodyOperatorReady sessionId={Number(session.id)} />
+                      )}
                       {isCustomCodeSession ? (
                         <details className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                           <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-[#2f70c8]">

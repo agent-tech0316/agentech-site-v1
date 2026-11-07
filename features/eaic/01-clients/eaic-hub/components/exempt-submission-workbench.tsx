@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dance from "@/scripts/master-happy-dance.json";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { robotModelOptions, type AgentechRobotModel } from "@/lib/agentech-robot-model";
 import { getEaicHubTaskPath } from "../contracts/eaic-hub";
@@ -107,6 +108,8 @@ export function ExemptSubmissionWorkbench({initialCode,initialModel,initialFile,
           const signed=await post("/api/eaic-account-assets",{action:"download",key:file.key});
           const link=document.createElement("a"); link.href=signed.url; link.download=file.name;link.click();
         })}>{file.name}</button>
+        {file.kind === "Package" && file.receipt?.sha256 === dance.zip && file.receipt.native_motion_name === dance.motion &&
+          <Link className="my-2 block font-semibold underline" href={getEaicHubTaskPath("schedule-time")+"?nativeAssetId="+file.receipt.id}>Schedule Happy Dance with audio</Link>}
         {file.receipt ? <details className="mt-1 text-xs">
           <summary>Approved · Submission receipt</summary>
           <p className="my-1 break-all">ID: {file.receipt.id}</p>

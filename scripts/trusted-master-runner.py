@@ -147,6 +147,10 @@ def load_bound_plan(plan_path, config, session_end=None):
     commands = plan.get('commands')
     if not isinstance(commands, list) or not 1 <= len(commands) <= MAX_COMMANDS:
         raise ValueError(f'Master plan must contain 1 through {MAX_COMMANDS} commands')
+    if config.get("native_body_asset_id") is not None or str(plan["submission_id"]).startswith("master-body-"):
+        import master_native_body
+        master_native_body.validate(config, plan)
+        return plan, start, end
     for command in commands:
         if not isinstance(command, dict) or set(command) - {'name', 'args', 'line', 'source_args', 'save_result_as'}:
             raise ValueError('invalid Master command record')
@@ -691,6 +695,9 @@ def validate_plan_admission(adapter, commands):
 def preflight(plan_path, deployment_path, *, session_end=None, adapter_factory=SDKAdapter):
     config = load_deployment(deployment_path)
     plan, _, _ = load_bound_plan(plan_path, config, session_end)
+    if config.get("native_body_asset_id"):
+        import master_native_body
+        return master_native_body.preflight(config)
     adapter = adapter_factory(config)
     with ExitStack() as connections:
         session_factory = getattr(type(adapter), 'plan_connection_session', None)
@@ -702,7 +709,7 @@ def preflight(plan_path, deployment_path, *, session_end=None, adapter_factory=S
 
 
 def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, cancel_file=None,
-                 first_command_not_before=None, adapter_factory=SDKAdapter, now=time.time, sleep=time.sleep):
+                 first_command_not_before=None, body_operator_confirmed_at=None, adapter_factory=SDKAdapter, now=time.time, sleep=time.sleep):
     config = load_deployment(deployment_path)
     plan, start, end = load_bound_plan(plan_path, config, session_end)
     receipt = dict(schema_version=1, robot_model='master', outcome='failed',
@@ -739,6 +746,16 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
             if not start + 20 <= target < end:
                 raise ValueError('Master preparation deadline must allow 20 seconds of viewing inside the booked slot')
             receipt['first_command_not_before'] = first_command_not_before
+        if config.get("native_body_asset_id"):
+            import master_native_body
+            if first_command_not_before is None or body_operator_confirmed_at is None:
+                raise ValueError("Native dance requires the viewer countdown and confirmed on-site operator")
+            with master_lease(lease):
+                master_native_body.execute(config, receipt, open_dispatch, admitted, _timestamp(body_operator_confirmed_at), end, now, _iso)
+            receipt["finished_at"] = _iso(now())
+            receipt["overrun_seconds"] = max(0,now()-end)
+            _atomic_json(result_file, receipt)
+            return receipt
         with master_lease(lease), ExitStack() as connections:
             adapter = adapter_factory(config)
             adapter.admission_check = admitted
@@ -907,6 +924,7 @@ def main():
     parser.add_argument('--result-file')
     parser.add_argument('--session-end')
     parser.add_argument('--first-command-not-before')
+    parser.add_argument('--body-operator-confirmed-at')
     parser.add_argument('--cancel-file')
     parser.add_argument('--check-ready', action='store_true')
     args = parser.parse_args()
@@ -919,7 +937,8 @@ def main():
     if not args.first_command_not_before:
         parser.error('--first-command-not-before is required for a booked Master run')
     receipt = execute_plan(args.plan, args.deployment, args.result_file,
-        session_end=args.session_end, cancel_file=args.cancel_file, first_command_not_before=args.first_command_not_before)
+        session_end=args.session_end, cancel_file=args.cancel_file, first_command_not_before=args.first_command_not_before,
+        body_operator_confirmed_at=args.body_operator_confirmed_at)
     print(json.dumps({'outcome': receipt['outcome'], 'handoff_ready': receipt['handoff_ready']}))
     return 0 if receipt['outcome'] == 'completed' else 1
 

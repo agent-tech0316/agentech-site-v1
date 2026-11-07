@@ -1,5 +1,6 @@
 import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
+import {parseBodySubmission,createBodyPlan,bodyOperatorConfirmation} from "./master-native-body.mjs";
 import { MasterReadinessChecks } from "./master-readiness-check.mjs";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
@@ -170,7 +171,7 @@ async function reviewedSubmission(session) {
     // Compatibility for website deployments created before booking-time pinning:
     // choose only the newest fully reviewed submission that already existed when the booking was made.
     const cutoff = encodeURIComponent(session.created_at);
-    const fallbackQuery = `email=eq.${encodeURIComponent(session.email)}&created_at=lte.${cutoff}&physical_safety_status=eq.passed&ai_security_status=eq.passed&select=id,code,robot_model,run_mode,ai_security_model&order=created_at.desc&limit=1`;
+    const fallbackQuery = `email=eq.${encodeURIComponent(session.email)}&created_at=lte.${cutoff}&id=not.like.master-body-*&physical_safety_status=eq.passed&ai_security_status=eq.passed&select=id,code,robot_model,run_mode,ai_security_model&order=created_at.desc&limit=1`;
     const candidates = await request("agentech_code_submissions", fallbackQuery);
     if (candidates.length !== 1) throw new Error("custom session has no eligible reviewed submission to pin");
     if (robotModel(session.robot_model) === "master") assertMasterExecutableSubmission(candidates[0]);
@@ -188,6 +189,9 @@ async function reviewedSubmission(session) {
   if (rows.length !== 1) throw new Error("pinned submission no longer passes both reviews");
   if (robotModel(rows[0].robot_model) !== robotModel(session.robot_model)) throw new Error("session robot model does not match its reviewed submission");
   if (robotModel(session.robot_model) === "master") assertMasterExecutableSubmission(rows[0]);
+  const assetId = parseBodySubmission(rows[0]);
+  if (assetId && !await request("rpc/agentech_happy_dance_asset", "", {method:"POST",body:{p_email:session.email,p_asset:assetId}}))
+    throw new Error("The signed account no longer has this approved Master package");
   return rows[0];
 }
 
@@ -239,7 +243,9 @@ function stage(session, submission) {
   const sourcePath = join(runtimeDir, `${prefix}.reviewed.py`);
   const planPath = join(runtimeDir, `${prefix}.plan.json`);
   writeReviewedSource(sourcePath, submission.code);
-  if (selectedModel === "navi" || selectedModel === "master") run(localPython, [compiler, sourcePath, submission.id, selectedModel, planPath]);
+  const bodyAssetId = selectedModel === "master" && parseBodySubmission(submission);
+  if (bodyAssetId) writeReviewedSource(planPath, JSON.stringify(createBodyPlan(submission)));
+  else if (selectedModel === "navi" || selectedModel === "master") run(localPython, [compiler, sourcePath, submission.id, selectedModel, planPath]);
   else run(localPython, [compiler, sourcePath, submission.id, planPath]);
   const planBytes = readFileSync(planPath);
   const plan = JSON.parse(planBytes.toString("utf8"));
@@ -275,6 +281,7 @@ function stage(session, submission) {
     executionResultPersisted: false,
     executionStatus: "pending",
     executionSubmissionId: submission.id,
+    ...(bodyAssetId ? {bodyAssetId} : {}),
     executionSourceSha256: plan.source_sha256,
     executionPlanSha256: createHash("sha256").update(planBytes).digest("hex"),
     remoteExecutionResult: selectedModel === "aegis"
@@ -336,6 +343,10 @@ async function ensureSessionStream(id, item, nowMs) {
 }
 
 async function claimSession(session) {
+  const item = state.sessions[session.id];
+  if (item.bodyAssetId) return (await request("rpc/agentech_claim_body_booking","",{method:"POST",body:{
+    p_email:session.email,p_session:session.id,p_asset:item.bodyAssetId,p_start:item.start,p_end:item.end,
+    p_confirmed:item.bodyOperatorConfirmedAt}})) === true;
   const statuses = claimableStatuses.join(",");
   const model = state.sessions[session.id]?.executionModel;
   const binding = ["navi", "master"].includes(model)
@@ -402,6 +413,15 @@ async function launch(session) {
       }
       return;
     }
+    if (item.bodyAssetId) {
+      item.bodyOperatorConfirmedAt = await bodyOperatorConfirmation(request,session,item.bodyAssetId,masterNotBefore);
+      const remaining = Date.parse(item.end) - Math.max(Date.now(),Date.parse(masterNotBefore));
+      if (!item.bodyOperatorConfirmedAt || remaining < 80000) {
+        const reason = remaining < 80000 ? "Insufficient booking time for full Happy Dance playback" : "Waiting for the on-site operator at Master";
+        if (item.launchBlockedReason !== reason) { item.launchBlockedReason = reason; saveState(); }
+        return;
+      }
+    }
     const admission = checkMasterBooking(session,item);
     if (admission.status === "blocked" && item.launchBlockedReason !== admission.reason) {
       item.launchBlockedReason = admission.reason;
@@ -437,6 +457,16 @@ async function launch(session) {
   }
   if (Date.now() >= Date.parse(item.end)) return;
   if (!(await claimSession(session))) {
+    if (item.bodyAssetId) {
+      // Another click can refresh confirmed_at between read and atomic claim.
+      // Only a fresh, still open booking may try the claim on a later poll.
+      const [current] = await request("agentech_robot_sessions", "id=eq."+encodeURIComponent(session.id)+"&select=session_status");
+      if (current && claimableStatuses.includes(normalized(current.session_status))) {
+        item.launchBlockedReason = "Native package or operator confirmation changed before claim";
+        saveState();
+        return;
+      }
+    }
     item.status = "skipped";
     saveState();
     console.log(`[robot-stream] session ${session.id} was claimed by another gateway; skipping.`);
@@ -470,7 +500,7 @@ async function launch(session) {
       const child = spawn(localPython, [trustedMasterRunner, "--plan", item.localPlan,
         "--deployment", item.masterSessionDeployment, "--result-file", item.localExecutionResult,
         "--session-end", item.end, "--first-command-not-before", masterNotBefore,
-        "--cancel-file", item.masterCancelFile], {
+        "--cancel-file", item.masterCancelFile, ...(item.bodyAssetId ? ["--body-operator-confirmed-at",item.bodyOperatorConfirmedAt] : [])], {
         detached: true, windowsHide: true, stdio: ["ignore", logFd, logFd], env: masterEnvironment(),
       });
       child.on("error", error => console.error(`[robot-stream] Master runner spawn failed: ${error.message}`));

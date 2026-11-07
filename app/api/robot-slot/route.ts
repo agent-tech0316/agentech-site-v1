@@ -26,7 +26,10 @@ import {
   robotViewingCreditsPerMinute
 } from "@/lib/robot-slot-pricing";
 
+import { supabaseRequest } from "@/lib/supabase-server";
+
 type RobotSlotPayload = {
+  nativeAssetId?: string;
   email?: string;
   profileId?: number | string;
   scheduledStart?: string;
@@ -228,7 +231,7 @@ export async function GET(request: Request) {
 export async function POST(request: NextRequest) {
   const payload = (await request.json().catch(() => null)) as RobotSlotPayload | null;
   const email = normalizeEmail(payload?.email);
-  const signedInEmail = await getServerAccountEmail(request);
+  const signedInEmail = await getServerAccountEmail(request, {requireSignedSession:payload?.nativeAssetId !== undefined});
   const profileId = toProfileId(payload?.profileId);
   const scheduledStartRaw = clean(payload?.scheduledStart);
   const requestedScheduledStart = new Date(scheduledStartRaw);
@@ -312,8 +315,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "That profile does not belong to this account." }, { status: 403 });
   }
 
-  const codeSubmission = account.developer_latest_code_submission_id
-    ? await getCodeSubmissionRecord(account.developer_latest_code_submission_id, email)
+  const nativeAssetId = payload?.nativeAssetId;
+  let submissionId = account.developer_latest_code_submission_id;
+  if (nativeAssetId !== undefined) {
+    if (robotModel !== "Master" || durationMinutes < 2 || typeof nativeAssetId !== "string" ||
+        !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(nativeAssetId)) {
+      return NextResponse.json({error:"Choose a Master Happy Dance package and a slot of at least two minutes."},{status:400});
+    }
+    submissionId = await supabaseRequest<string|null>("rpc/agentech_pin_happy_dance", {
+      method:"POST",body:{p_email:email,p_asset:nativeAssetId}
+    });
+    if (!submissionId) return NextResponse.json({error:"This account has no eligible Happy Dance ZIP with that receipt."},{status:403});
+  }
+  const codeSubmission = submissionId
+    ? await getCodeSubmissionRecord(submissionId, email)
     : null;
 
   if (
@@ -326,7 +341,10 @@ export async function POST(request: NextRequest) {
       { status: 403 }
     );
   }
-  const exemptSubmission = codeSubmission.ai_security_model === fullReviewExemption;
+  if (!nativeAssetId && submissionId?.startsWith("master-body-")) {
+    return NextResponse.json({error:"Select the Happy Dance ZIP receipt to book it."},{status:409});
+  }
+  const exemptSubmission = Boolean(nativeAssetId) || codeSubmission.ai_security_model === fullReviewExemption;
   if (exemptSubmission && !(await hasFullReviewExemption(email))) {
     return NextResponse.json({ error: "The account exemption for this program is no longer active." }, { status: 403 });
   }
@@ -345,7 +363,7 @@ export async function POST(request: NextRequest) {
     if (blocker) return NextResponse.json({ error: blocker.error, errorCode: blocker.errorCode }, { status: blocker.status });
   }
 
-  const presetDemo = approvedCustomCodeLabel;
+  const presetDemo = nativeAssetId ? "Happy Dance with bundled audio" : approvedCustomCodeLabel;
   const scheduledEnd = addMinutes(scheduledStart, durationMinutes);
   const scheduledEndParts = getTimeParts(scheduledEnd, timeZone);
   if (!internalCompanyAccount && scheduledEndParts.hour * 60 + scheduledEndParts.minute > 17 * 60) {

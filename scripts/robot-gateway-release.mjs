@@ -13,7 +13,8 @@ const scopes = {
     'robot-stream-process.ps1','restart-robot-stream-bridge.ps1'],
   master:['trusted-master-runner.py','master-command-contract.json','master_gateway_spec.py','master-session-gateway.mjs',
     'master-native-handoff.mjs','verify-master-native-handoff.py','master_native_gesture_readiness.py','master-readiness-check.mjs',
-    'master-movement-a-adapter.py','master-booking-admission.mjs'],
+    'master-movement-a-adapter.py','master-booking-admission.mjs','master-native-body.mjs','master-happy-dance.json',
+    'master_native_body.py','master_body_observer.py'],
   navi:['trusted-navi-runner.py','navi_gateway_spec.py','navi-session-handoff.mjs','navi-booking-admission.mjs'],
   aegis:['trusted-robot-runner.py','aegis_gateway_spec.py','aegis-device-results.py'],
 };
@@ -55,7 +56,8 @@ function validatePins(manifest, options) {
     check(prior.sourceCommit === manifest.baselineCommit, 'Installed release predecessor changed');
     for (const name of compatibilityPaths) {
       const bytes = regular(gateway,name,true);
-      check((bytes ? digest(bytes) : null) === prior.compatibility?.[name], 'Installed lineage drift: '+name);
+      const added = !Object.hasOwn(prior.compatibility, name) && !bytes && manifest.files[name]?.before === null;
+      check(added || (bytes ? digest(bytes) : null) === prior.compatibility[name], 'Installed lineage drift: '+name);
     }
   }
   const next = new Map();

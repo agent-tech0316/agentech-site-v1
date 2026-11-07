@@ -28,6 +28,8 @@ function presetProfileVerified(binding) {
   }));
 }
 
+import {verifyBodyReceipt} from './master-native-body.mjs';
+
 export const MASTER_GATEWAY_PROTOCOL = 'master-arm-session-v1';
 
 export function masterReceiptNeedsReload(item) {
@@ -205,6 +207,7 @@ export function createMasterSessionDeployment(config, session, item, attemptId) 
     session_id: String(session.id), submission_id: item.executionSubmissionId,
     source_sha256: item.executionSourceSha256, plan_sha256: item.executionPlanSha256,
     attempt_id: attemptId, scheduled_start: session.scheduled_start, scheduled_end: session.scheduled_end,
+    ...(item.bodyAssetId ? {native_body_asset_id:item.bodyAssetId} : {}),
     ...(item.masterRecoveryOwner ? { recovery_owner_binding: item.masterRecoveryOwner } : {}) };
 }
 
@@ -238,7 +241,10 @@ export function parseMasterExecutionResult(text, expected) {
   if (value.outcome === 'completed' && value.owner_hold_preserved && value.owner_hold_verified !== true) {
     throw new Error('Master completion requires final owner hold verification');
   }
-  if (value.handoff_ready) {
+  const nativeBody = String(expected.submissionId).startsWith('master-body-');
+  if ((value.handoff_mode === 'native-body-playback' || (nativeBody && (value.outcome === 'completed' || value.handoff_ready)))
+      && (!nativeBody || !verifyBodyReceipt(value))) throw new Error('Missing measured Happy Dance playback and native standing evidence');
+  if (value.handoff_ready && !nativeBody) {
     const first = value.owner_binding;
     const last = value.final_owner_binding;
     if (value.handoff_mode === 'retained-hold') {
