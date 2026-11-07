@@ -4,9 +4,37 @@ import { createBodyPlan, parseBodySubmission, verifyBodyReceipt } from './master
 import { createGatewayCloudRequest } from './robot-cloud-request.mjs';
 import { parseMasterExecutionResult } from './master-session-gateway.mjs';
 import { readFileSync } from 'node:fs';
+import { PGlite } from '@electric-sql/pglite';
 const spec = JSON.parse(readFileSync(new URL('./master-happy-dance.json', import.meta.url)));
 const assetId = 'b7f76821-a087-404e-a2ac-dfd7fe260aff';
 const row = {id:'master-body-'+assetId, code:spec.source, robot_model:'Master', run_mode:spec.mode, ai_security_model:spec.mode};
+test('booking accepts the identified original ZIP on an older receipt and rejects a changed archive', async t => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(`
+    create role anon; create role authenticated; create role service_role bypassrls;
+    create table public.agentech_accounts(email text primary key);
+    create table public.agentech_robot_sessions(id bigint primary key);
+  `);
+  for (const name of ['20261107212500_eaic_account_review_exemptions','20261107213459_eaic_account_asset_submissions',
+    '20261107225233_master_happy_dance_booking','20261107231637_match_legacy_happy_dance_receipt']) {
+    await db.exec(readFileSync(new URL('../supabase/migrations/'+name+'.sql',import.meta.url),'utf8'));
+  }
+  const owner = 'package-owner@example.test', other = 'other-owner@example.test';
+  await db.query('insert into public.agentech_accounts (email) values ($1),($2)',[owner,other]);
+  await db.query('insert into public.agentech_code_review_exemptions (email) values ($1),($2)',[owner,other]);
+  await db.query(`insert into public.agentech_account_asset_submissions
+    (id,email,object_key,file_name,robot_model,asset_kind,byte_size,sha256,native_motion_name)
+    values ($1,$2,'original','renamed.zip','Master','Package',5164116,$3,null)`,[assetId,owner,spec.zip]);
+  const eligible = async email => (await db.query(
+    'select public.agentech_happy_dance_asset($1,$2) as eligible',[email,assetId])).rows[0].eligible;
+  assert.equal(await eligible(owner),true);
+  assert.equal(await eligible(other),false);
+  await db.query('update public.agentech_account_asset_submissions set native_motion_name=$1',[spec.motion]);
+  assert.equal(await eligible(owner),true);
+  await db.query('update public.agentech_account_asset_submissions set sha256=$1',['0'.repeat(64)]);
+  assert.equal(await eligible(owner),false);
+});
 test('only the server-issued package submission produces one native command', () => {
   assert.equal(parseBodySubmission(row),assetId);
   assert.throws(()=>parseBodySubmission({...row,ai_security_model:'account-certification-exemption'}));

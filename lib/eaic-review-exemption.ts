@@ -3,6 +3,7 @@ import { supabaseRequest } from "@/lib/supabase-server";
 import type { AgentechRobotModel } from "@/lib/agentech-robot-model";
 import { AssetContentError, inspectAssetContent, maxAssetBytes, type AssetContentManifest } from "@/lib/eaic-asset-content";
 import { readAssetManifest, saveAssetManifest } from "@/lib/eaic-asset-manifests";
+import happyDance from "../scripts/master-happy-dance.json";
 
 export const fullReviewExemption = "account-certification-exemption";
 export const assetBucket = "eaic-account-assets";
@@ -55,7 +56,7 @@ export async function assetReceipts(email:string, ids:string[]) {
   return Promise.all(rows.map(async row=>{
     const saved=await readAssetManifest(assetPrefix(email),row.id,row.sha256);
     return {...row,content_manifest:saved?.content_manifest??null,
-      native_motion_name:saved?.native_motion_name??row.native_motion_name};
+      native_motion_name:row.native_motion_name??saved?.native_motion_name??null};
   }));
 }
 
@@ -83,9 +84,9 @@ export async function recordAsset(email:string,key:string,stored:Response) {
   const content_manifest=inspectAssetContent(data,assetKind(key)!,assetDisplayName(key));
   // Identify the known motion from its policy bytes, including renamed or
   // repacked ZIPs. Filenames and README instructions are never authority.
-  const happyDance = content_manifest.movement?.sha256 === "010d6a2c912d0f507b9e9236e5fcad082bcd7b53595182ec7d9e6da9c3de04bb";
-  if (happyDance && robotModel!=="Master") throw new AssetContentError("This movement policy targets Master Ultra. Select Master for this package.");
-  const native_motion_name=happyDance?"linkcraft_resource_onnx_ffkuaile_0.0.1":null;
+  const matchesDancePolicy = content_manifest.movement?.sha256 === happyDance.policy;
+  if (matchesDancePolicy && robotModel!=="Master") throw new AssetContentError("This movement policy targets Master Ultra. Select Master for this package.");
+  const native_motion_name=matchesDancePolicy ? happyDance.motion : null;
   const [prior]=await assetReceipts(email,[id]);
   if (prior && prior.sha256!==sha256) throw new AssetContentError("Uploaded bytes differ from the saved submission. Upload a new file version.");
   await saveAssetManifest(assetPrefix(email),{assetId:id,archiveSha256:sha256,content_manifest,native_motion_name});

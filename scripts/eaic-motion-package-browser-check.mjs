@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFileSync, mkdirSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { inspectAssetContent } from "../lib/eaic-asset-content.ts";
 const require = createRequire(import.meta.url);
@@ -19,8 +19,20 @@ try {
   for (const theme of ["light", "dark"]) {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const errors = [];
+    const receiptId = randomUUID();
+    const email = "dance-fixture@agent-tech.ai";
     page.on("pageerror", error => errors.push(error.message));
-    await page.addInitScript(theme => localStorage.setItem("agentech-theme", theme), theme);
+    await page.addInitScript(({theme,email}) => {
+      localStorage.setItem("agentech-theme", theme);
+      localStorage.setItem("agentechAccountEmail", email);
+    },{theme,email});
+    await page.route("**/api/account?*", route => route.fulfill({json:{
+      account:{email,first_name:"Dance",last_name:"Fixture"},
+      accessProfiles:[{id:1,username:"fixture",profile_type:"developer"}],
+      featureAccess:{hasProfiles:true,accountOnly:false,lockedFeatures:[]},robotSessions:[]
+    }}));
+    await page.route("**/api/account/code-submissions", route => route.fulfill({json:{submissions:[]}}));
+    await page.route("**/api/robot-slot*", route => route.fulfill({json: {ok:true,bookedSlots:[]}}));
     let files = [], transferCount = 0;
     await page.route("**/api/agentech-code-submit*", route => route.fulfill({ json: {
       ok: true, fullReviewExempt: true, internalAccount: true, creditsRequired: 0,
@@ -35,13 +47,14 @@ try {
         return route.fulfill({ json: { url: origin + "/api/qa-package-upload", key: "fixture-key", kind: "Package" } });
       }
       assert.equal(body.action, "submit");
-      const receipt = { id: "fixture-receipt", sha256: createHash("sha256").update(bytes).digest("hex"),
+      const receipt = { id: receiptId, sha256: createHash("sha256").update(bytes).digest("hex"),
         byte_size: bytes.length, native_motion_name: "linkcraft_resource_onnx_ffkuaile_0.0.1", content_manifest };
       files = [{ key: "fixture-key", name: "ultra_example_kuaile.zip", kind: "Package", bytes: bytes.length, receipt }];
       return route.fulfill({ json: { receipt } });
     });
     await page.route("**/api/qa-package-upload", route => {
       assert.equal(route.request().method(), "PUT"); transferCount++;
+      assert.ok(bytes.equals(route.request().postDataBuffer()), "The original ZIP must reach the upload endpoint intact");
       return route.fulfill({ status: 200, json: { ok: true } });
     });
     await page.goto(origin + "/agentech-products/eaic-hub/software-check");
@@ -66,8 +79,22 @@ try {
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
     if (output) await page.locator("[data-asset-contents]").screenshot({ path: path.join(output, `eaic-package-${theme}-mobile.png`) });
+    const schedule = page.getByRole("link", { name:"Schedule Happy Dance with audio", exact:true });
+    const bookingPath = "/agentech-products/eaic-hub/schedule-time?nativeAssetId="+receiptId;
+    assert.equal(await schedule.getAttribute("href"), bookingPath);
+    await schedule.click();
+    await page.waitForURL(origin+bookingPath);
+    await page.getByRole("heading",{name:"New Slot Request"}).waitFor();
+    const robot = page.getByLabel("Robot Model",{exact:false});
+    assert.equal(await robot.inputValue(), "Master");
+    const request = page.waitForRequest(r => new URL(r.url()).pathname === "/api/robot-slot" && r.method() === "POST");
+    await page.getByRole("button", {name:"Request Robot Slot"}).click();
+    const booking = (await request).postDataJSON();
+    assert.equal(booking.nativeAssetId, receiptId);
+    assert.equal(booking.robotModel, "Master");
+    assert.equal(booking.email, email);
     assert.deepEqual(errors, []);
-    console.log(`${theme}: original ZIP uploaded once; movement/audio shown; pairing restored after reload; mobile has no overflow; no page errors`);
+    console.log(`${theme}: original ZIP uploaded once, automatic policy/WAV pairing persisted, Master booking selected the same receipt`);
     await page.close();
   }
 } finally { await browser.close(); }
