@@ -11,6 +11,7 @@ import {
   spendAccountCredits
 } from "@/lib/account-records";
 import { getServerAccountEmail } from "@/lib/server-account-session";
+import { fullReviewExemption, hasFullReviewExemption } from "@/lib/eaic-review-exemption";
 import { normalizeAgentechRobotModel } from "@/lib/agentech-robot-model";
 import { isAgentechCompanyEmail } from "@/lib/company-accounts";
 import { masterBookingBlocker } from "@/lib/master-booking-policy";
@@ -325,6 +326,10 @@ export async function POST(request: NextRequest) {
       { status: 403 }
     );
   }
+  const exemptSubmission = codeSubmission.ai_security_model === fullReviewExemption;
+  if (exemptSubmission && !(await hasFullReviewExemption(email))) {
+    return NextResponse.json({ error: "The account exemption for this program is no longer active." }, { status: 403 });
+  }
   if (normalizeAgentechRobotModel(codeSubmission.robot_model) !== robotModel) {
     return NextResponse.json(
       { error: `Your latest approved code was checked for ${normalizeAgentechRobotModel(codeSubmission.robot_model) ?? "a different robot"}. Select that model or submit and approve new ${robotModel} code.` },
@@ -336,7 +341,7 @@ export async function POST(request: NextRequest) {
     if (codeSubmission.run_mode === MASTER_LIVE_TEST_LABEL) {
       return NextResponse.json({ error: "A camera-only Master audit cannot authorize robot execution. Certify a normal Master program before booking.", errorCode: "MASTER_VIEW_ONLY_AUDIT" }, { status: 403 });
     }
-    const blocker = masterBookingBlocker(codeSubmission.code, process.env);
+    const blocker = masterBookingBlocker(codeSubmission.code, process.env, exemptSubmission);
     if (blocker) return NextResponse.json({ error: blocker.error, errorCode: blocker.errorCode }, { status: blocker.status });
   }
 

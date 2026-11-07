@@ -22,6 +22,7 @@ import { hasMasterLiveTestAccess } from "@/lib/master-live-test-access";
 import { hasPaidSoftwareReviewExemption, isValidAccountIdentifier } from "@/lib/prototype-auth";
 import { getReturnToHomeAccess, RETURN_TO_HOME_FEATURE_CODE } from "@/lib/premium-features";
 import { getServerAccountEmail } from "@/lib/server-account-session";
+import { fullReviewExemption, hasFullReviewExemption, saveExemptProgram } from "@/lib/eaic-review-exemption";
 
 type SubmissionPayload = {
   developerName?: string;
@@ -179,6 +180,8 @@ export async function GET(request: NextRequest) {
       internalAccount,
       creditsRequired: internalAccount || hasPaidSoftwareReviewExemption(email) ? 0 : getAiReviewCreditCost(),
       softwareReviewExempt: hasPaidSoftwareReviewExemption(email),
+      fullReviewExempt: await hasFullReviewExemption(email),
+      currentSubmissionId: account.developer_latest_code_submission_id,
       creditCost: getAiReviewCreditCost(),
       masterLiveTestAccess: hasMasterLiveTestAccess(email),
       latestSubmission: submission
@@ -191,7 +194,9 @@ export async function GET(request: NextRequest) {
             uploadedFileName: submission.uploaded_file_name,
             commands: submission.commands,
             physicalSafetyStatus: submission.physical_safety_status,
-            ...masterReviewEvidence(submission.robot_model),
+            ...(submission.ai_security_model === fullReviewExemption
+              ? { approvalBasis: fullReviewExemption }
+              : masterReviewEvidence(submission.robot_model)),
             aiSecurityStatus: submission.ai_security_status,
             creditsCharged: submission.credits_charged,
             createdAt: submission.created_at
@@ -215,7 +220,8 @@ export async function POST(request: NextRequest) {
     const developerName = cleanText(payload.developerName, isLocalPreview ? "Local preview" : "Agentech developer") || "Agentech developer";
     const robotModel = normalizeAgentechRobotModel(payload.robotModel ?? "Aegies");
     const runMode = cleanText(payload.runMode, "Software check");
-    const code = cleanText(payload.code);
+    const rawCode = typeof payload.code === "string" ? payload.code : "";
+    const code = cleanText(rawCode);
     const uploadedFileName = cleanText(payload.uploadedFileName);
     const reviewStage = cleanText(payload.reviewStage, "physical");
     const submissionId = cleanText(payload.submissionId);
@@ -229,6 +235,33 @@ export async function POST(request: NextRequest) {
 
     if (!isAllowedRunMode(runMode)) {
       return NextResponse.json({ error: "Choose a valid review mode.", errorCode: "INVALID_RUN_MODE" }, { status: 400 });
+    }
+
+    if (usesReturnToHome && !isLocalPreview && isValidAccountIdentifier(email)) {
+      const premiumAccess = await getReturnToHomeAccess(email);
+      if (!premiumAccess.allowed) {
+        return NextResponse.json(
+          {
+            error: "Agentech.return_to_home() requires an active monthly subscription or a one-time feature unlock.",
+            errorCode: "PREMIUM_FEATURE_REQUIRED",
+            featureCode: RETURN_TO_HOME_FEATURE_CODE,
+            purchasePath: "/agentech-products/eaic-hub/agentech-library"
+          },
+          { status: 402 }
+        );
+      }
+    }
+
+    if (!isLocalPreview && isValidAccountIdentifier(email) && (reviewStage === "physical" || reviewStage === "account_exempt")) {
+      if (await hasFullReviewExemption(email)) {
+        if (!code) return NextResponse.json({ error: "Enter or upload a program first." }, { status: 400 });
+        const id = await saveExemptProgram(email, robotModel, rawCode, commands, uploadedFileName, developerName);
+        return NextResponse.json({ id, status: "approved_by_account_exemption", approvalBasis: fullReviewExemption,
+          physicalSafetyStatus: "passed", aiSecurityStatus: "passed", creditsCharged: 0 });
+      }
+      if (reviewStage === "account_exempt") {
+        return NextResponse.json({ error: "Account exemption required." }, { status: 403 });
+      }
     }
 
     if (!code || !commands.length) {
@@ -256,20 +289,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (usesReturnToHome && !isLocalPreview) {
-      const premiumAccess = await getReturnToHomeAccess(email);
-      if (!premiumAccess.allowed) {
-        return NextResponse.json(
-          {
-            error: "Agentech.return_to_home() requires an active monthly subscription or a one-time feature unlock.",
-            errorCode: "PREMIUM_FEATURE_REQUIRED",
-            featureCode: RETURN_TO_HOME_FEATURE_CODE,
-            purchasePath: "/agentech-products/eaic-hub/agentech-library"
-          },
-          { status: 402 }
-        );
-      }
-    }
     const movementSafety = evaluateAgentechMovementSafety(code, robotModel);
 
     if (isLocalPreview) {

@@ -337,7 +337,8 @@ test("normal booking preserves account review and billing gates before creating 
   const route = readFileSync(new URL("../app/api/robot-slot/route.ts", import.meta.url), "utf8");
   assert.match(route, /codeSubmission\.physical_safety_status !== "passed"/);
   assert.match(route, /codeSubmission\.ai_security_status !== "passed"/);
-  assert.match(route, /masterBookingBlocker\(codeSubmission\.code, process\.env\)/);
+  assert.match(route, /masterBookingBlocker\(codeSubmission\.code, process\.env, exemptSubmission\)/);
+  assert.match(route, /exemptSubmission && !\(await hasFullReviewExemption\(email\)\)/);
   assert.ok(route.indexOf("masterBookingBlocker(codeSubmission.code") < route.indexOf("creditSpend = await spendAccountCredits"));
   assert.match(route, /codeSubmissionId: codeSubmission\.id/);
 });

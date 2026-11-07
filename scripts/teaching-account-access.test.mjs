@@ -78,7 +78,11 @@ test('paid AI review exemption is restricted to the explicit owner and existing 
 });
 const codeSubmit=await import('../app/api/agentech-code-submit/route.ts');
 
-test('missing commands asks for editor code without asking for an upload',async()=>{
+test('missing commands asks for editor code without asking for an upload',async t=>{
+ t.mock.method(globalThis,'fetch',async url=>{
+  assert.ok(new URL(url).pathname.endsWith('/agentech_code_review_exemptions'));
+  return Response.json([]);
+ });
  const res=await codeSubmit.POST(new NextRequest('https://site.invalid/api/agentech-code-submit',{method:'POST',headers:{authorization:`Bearer ${createSignedAccountSession('skyrockettest001')}`,'Content-Type':'application/json'},body:JSON.stringify({code:'from agentech import Agentech',robotModel:'Navi',reviewStage:'physical'})}));
  assert.equal(res.status,400);
  const body=await res.json();

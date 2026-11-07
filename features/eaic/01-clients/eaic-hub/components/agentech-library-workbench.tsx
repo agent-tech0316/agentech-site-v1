@@ -37,6 +37,7 @@ import { masterJointTorqueReference } from "@/features/eaic/01-clients/eaic-hub/
 import { evaluateAgentechMovementSafety, type AgentechMovementSafety } from "@/lib/agentech-motion-safety";
 import { normalizeAgentechRobotModel, robotModelOptions, type AgentechRobotModel } from "@/features/eaic/02-unified-api/resources-runs/agentech-robot-model";
 import { LiveRobotCamera } from "@/features/eaic/05-delivery/live-results/components/live-robot-camera";
+import { ExemptSubmissionWorkbench } from "./exempt-submission-workbench";
 import { MasterMotorMap } from "@/features/eaic/01-clients/eaic-hub/components/master-motor-map";
 import { MasterJointMotionGuide } from "@/features/eaic/01-clients/eaic-hub/components/master-joint-motion-guide";
 import { MasterHeartbeat } from "@/features/eaic/01-clients/eaic-hub/components/master-heartbeat";
@@ -1206,7 +1207,7 @@ const taskFeatureNotes: Record<AgentechLibraryTaskSlug, string> = {
   "watch-live-run": "Live Stream opens only during an approved scheduled robot slot after the required checks pass."
 };
 
-function TaskDetailHeader({ task }: { task: NonNullable<ReturnType<typeof getAgentechLibraryTask>> }) {
+function TaskDetailHeader({ task, directSubmission = false }: { task: NonNullable<ReturnType<typeof getAgentechLibraryTask>>; directSubmission?: boolean }) {
   return (
     <section className="border-b border-black/8 bg-[#f5f4f1]">
       <div className="mx-auto max-w-7xl px-6 py-8 lg:px-8 lg:py-10">
@@ -1241,7 +1242,7 @@ function TaskDetailHeader({ task }: { task: NonNullable<ReturnType<typeof getAge
           <div>
             <p className="font-interface text-xs font-semibold uppercase tracking-[0.18em] text-[#1a73e8]">Command Library Task</p>
             <h1 className="font-display mt-2 text-4xl font-semibold tracking-tight text-[#111111] md:text-5xl">{task.title}</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-[#5f6368]">{taskFeatureNotes[task.slug]}</p>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-[#5f6368]">{directSubmission ? "Save a program for scheduling or upload a file to your account." : taskFeatureNotes[task.slug]}</p>
           </div>
         </div>
       </div>
@@ -2502,6 +2503,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
   const [isLoadingReviewGate, setIsLoadingReviewGate] = useState(task === "software-check");
   const [isInternalCompanyAccount, setIsInternalCompanyAccount] = useState(false);
   const [isSoftwareReviewExempt, setIsSoftwareReviewExempt] = useState(false);
+  const [fullReviewExempt, setFullReviewExempt] = useState(false);
   const [masterLiveTestAccess, setMasterLiveTestAccess] = useState(false);
   const [masterLiveTestSelected, setMasterLiveTestSelected] = useState(false);
   const [masterLiveTestExpiresAt, setMasterLiveTestExpiresAt] = useState("");
@@ -2627,6 +2629,8 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
           error?: string;
           internalAccount?: boolean;
           softwareReviewExempt?: boolean;
+          fullReviewExempt?: boolean;
+          currentSubmissionId?: string | null;
           localPreview?: boolean;
           masterLiveTestAccess?: boolean;
           latestSubmission?: {
@@ -2646,12 +2650,26 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
 
         setIsInternalCompanyAccount(payload.internalAccount === true);
         setIsSoftwareReviewExempt(payload.softwareReviewExempt === true);
+        setFullReviewExempt(response.ok && payload.fullReviewExempt === true);
         setMasterLiveTestAccess(payload.masterLiveTestAccess === true);
         if (!response.ok) {
           if (response.status === 401) setReviewNeedsSignIn(true);
           throw new Error(payload.error ?? "Unable to load the latest Physical Hardware Check.");
         }
         setReviewNeedsSignIn(false);
+        if (payload.fullReviewExempt && !(submissionQuery.id && payload.latestSubmission?.id.startsWith("master-live-test-"))) {
+          const latest = payload.latestSubmission;
+          if (draft && draftModel && draftId) {
+            clearReviewDraft(window.sessionStorage,draftId);
+            setCanScheduleRobotSlot(false);
+          } else if (latest && !latest.id.startsWith("master-live-test-")) {
+            setRobotModel(normalizeAgentechRobotModel(latest.robotModel) ?? "Aegies");
+            setCode(latest.code);
+            setUploadedFileName(latest.uploadedFileName ?? "");
+            setCanScheduleRobotSlot(latest.id === payload.currentSubmissionId && latest.aiSecurityStatus === "passed" && latest.physicalSafetyStatus === "passed");
+          }
+          return;
+        }
         if (draft && draftModel && draftId) {
           clearReviewDraft(window.sessionStorage, draftId);
           if (!submissionQuery.id || payload.latestSubmission?.id !== submissionQuery.id ||
@@ -3409,7 +3427,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
           display: none !important;
         }
       `}</style>
-      {selectedTask ? <TaskDetailHeader task={selectedTask} /> : null}
+      {selectedTask ? <TaskDetailHeader task={selectedTask} directSubmission={showFocusedReview && fullReviewExempt && !masterLiveTestSelected}/> : null}
       {showHero ? (
       <section className="border-b border-[#2a3440] bg-[#101418]">
         <div className="mx-auto grid max-w-7xl gap-8 px-6 py-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-8">
@@ -3493,7 +3511,11 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
       {showFocusedStartCoding ? <FocusedStartCodingSection /> : null}
       {showFocusedBrowseFunctions ? <FocusedBrowseFunctionsSection /> : null}
       {showFocusedLiveRun ? <FocusedLiveRunSection /> : null}
-      {showFocusedReview ? (
+      {showFocusedReview && fullReviewExempt && !masterLiveTestSelected && !isLoadingReviewGate ? (
+        <ExemptSubmissionWorkbench key={submissionQuery.id || "current"} initialCode={code} initialModel={robotModel}
+          initialFile={uploadedFileName} schedulable={canScheduleRobotSlot}
+          onViewOnly={masterLiveTestAccess ? ()=>changeCodeCheckingRobotModel("Master Live Test") : undefined}/>
+      ) : showFocusedReview ? (
         <section className="bg-[#f5f4f1] px-4 py-10 sm:px-6 lg:px-8">
           <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div className="flex h-full flex-col overflow-hidden rounded-[22px] border border-black/8 bg-white/70 shadow-[0_28px_80px_rgba(17,17,17,0.08)]">
@@ -3853,7 +3875,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
           </div>
         </section>
       ) : null}
-      {showFocusedReview && hardwareResult && !masterLiveTestSelected ? <HardwareResultPanel result={hardwareResult} /> : null}
+      {showFocusedReview && hardwareResult && !masterLiveTestSelected && !fullReviewExempt ? <HardwareResultPanel result={hardwareResult} /> : null}
 
       {showWorkbench ? (
       <main id="code-workbench" className="mx-auto grid w-full max-w-7xl scroll-mt-6 gap-0 overflow-hidden border-x border-[#2a3440] lg:grid-cols-[230px_minmax(0,1fr)]">
