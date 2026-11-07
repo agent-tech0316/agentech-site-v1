@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { supabaseRequest } from "@/lib/supabase-server";
 import type { AgentechRobotModel } from "@/lib/agentech-robot-model";
+import { AssetContentError, inspectAssetContent, maxAssetBytes, type AssetContentManifest } from "@/lib/eaic-asset-content";
+import { readAssetManifest, saveAssetManifest } from "@/lib/eaic-asset-manifests";
 
 export const fullReviewExemption = "account-certification-exemption";
 export const assetBucket = "eaic-account-assets";
@@ -41,20 +43,27 @@ export function assetDisplayName(key: string) {
 }
 
 export const assetKeyPattern = /^([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})--(Aegies|Navi|Master)--[A-Za-z0-9_-]+\.(zip|onnx|wav)$/;
-export type AssetReceipt = {id:string; sha256:string; byte_size:number; native_motion_name:string|null; approval_basis:string};
+export type AssetReceipt = {id:string; sha256:string; byte_size:number; native_motion_name:string|null; approval_basis:string; content_manifest:AssetContentManifest|null};
+// Keep the existing production database contract. Pairing metadata lives in
+// private Storage, keyed by the receipt identity and exact archive digest.
 const receiptColumns = "id,sha256,byte_size,native_motion_name,approval_basis";
 export async function assetReceipts(email:string, ids:string[]) {
   if (!ids.length) return [];
-  return supabaseRequest<AssetReceipt[]>("agentech_account_asset_submissions", {
+  const rows=await supabaseRequest<Omit<AssetReceipt,"content_manifest">[]>("agentech_account_asset_submissions", {
     query:`email=eq.${encodeURIComponent(email)}&id=in.(${ids.join(",")})&select=${receiptColumns}`
   });
+  return Promise.all(rows.map(async row=>{
+    const saved=await readAssetManifest(assetPrefix(email),row.id,row.sha256);
+    return {...row,content_manifest:saved?.content_manifest??null,
+      native_motion_name:saved?.native_motion_name??row.native_motion_name};
+  }));
 }
 
 export async function recordAsset(email:string,key:string,stored:Response) {
   const match = assetKeyPattern.exec(key);
   if (!match || !stored.ok || !stored.body) throw new Error("The uploaded file is unavailable.");
   const [,id,robotModel] = match;
-  const hash = createHash("sha256");
+  const chunks:Buffer[]=[];
   let bytes=0;
   const reader=stored.body.getReader();
   try {
@@ -62,19 +71,31 @@ export async function recordAsset(email:string,key:string,stored:Response) {
       const part=await reader.read();
       if (part.done) break;
       bytes+=part.value.byteLength;
-      hash.update(part.value);
+      if (bytes>maxAssetBytes) {
+        await reader.cancel();
+        throw new AssetContentError("File exceeds the 64 MiB upload limit.");
+      }
+      chunks.push(Buffer.from(part.value));
     }
   } finally {reader.releaseLock();}
-  const sha256=hash.digest("hex");
-  // Exact archive and standalone policy from the verified Master Happy Dance run.
-  const happyDance = robotModel === "Master" && (
-    (assetKind(key) === "Package" && sha256 === "9096c47b127490112a23074e50623f472f2602a562ed3e87bf65a2e6ab2107db") ||
-    (assetKind(key) === "Motion" && sha256 === "010d6a2c912d0f507b9e9236e5fcad082bcd7b53595182ec7d9e6da9c3de04bb"));
-  await supabaseRequest("agentech_account_asset_submissions",{method:"POST",query:"on_conflict=id",
-    prefer:"resolution=ignore-duplicates,return=minimal", body:{id,email,object_key:assetPrefix(email)+"/"+key,
-      file_name:assetDisplayName(key),robot_model:robotModel,asset_kind:assetKind(key),byte_size:bytes,sha256,
-      native_motion_name:happyDance?"linkcraft_resource_onnx_ffkuaile_0.0.1":null}});
+  const data=Buffer.concat(chunks,bytes);
+  const sha256=createHash("sha256").update(data).digest("hex");
+  const content_manifest=inspectAssetContent(data,assetKind(key)!,assetDisplayName(key));
+  // Identify the known motion from its policy bytes, including renamed or
+  // repacked ZIPs. Filenames and README instructions are never authority.
+  const happyDance = content_manifest.movement?.sha256 === "010d6a2c912d0f507b9e9236e5fcad082bcd7b53595182ec7d9e6da9c3de04bb";
+  if (happyDance && robotModel!=="Master") throw new AssetContentError("This movement policy targets Master Ultra. Select Master for this package.");
+  const native_motion_name=happyDance?"linkcraft_resource_onnx_ffkuaile_0.0.1":null;
+  const [prior]=await assetReceipts(email,[id]);
+  if (prior && prior.sha256!==sha256) throw new AssetContentError("Uploaded bytes differ from the saved submission. Upload a new file version.");
+  await saveAssetManifest(assetPrefix(email),{assetId:id,archiveSha256:sha256,content_manifest,native_motion_name});
+  if (!prior) {
+    await supabaseRequest("agentech_account_asset_submissions",{method:"POST",query:"on_conflict=id",
+      prefer:"resolution=ignore-duplicates,return=minimal", body:{id,email,object_key:assetPrefix(email)+"/"+key,
+        file_name:assetDisplayName(key),robot_model:robotModel,asset_kind:assetKind(key),byte_size:bytes,sha256,
+        native_motion_name}});
+  }
   const [receipt]=await assetReceipts(email,[id]);
-  if (!receipt || receipt.sha256!==sha256) throw new Error("File receipt could not be confirmed.");
+  if (!receipt || receipt.sha256!==sha256 || !receipt.content_manifest) throw new Error("File receipt could not be confirmed.");
   return receipt;
 }

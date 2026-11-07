@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { assetBucket, assetDisplayName, assetKeyPattern, assetKind, assetPrefix, assetReceipts, hasFullReviewExemption, newAssetName, recordAsset } from "@/lib/eaic-review-exemption";
 import { normalizeAgentechRobotModel } from "@/lib/agentech-robot-model";
 import { getServerAccountEmail } from "@/lib/server-account-session";
+import { AssetContentError } from "@/lib/eaic-asset-content";
 
 export const maxDuration = 300;
 
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     if (body.action === "submit" && typeof body.key === "string" && assetKeyPattern.test(body.key)) {
       const [prior]=await assetReceipts(email,[body.key.slice(0,36)]);
-      if (prior) return NextResponse.json({receipt:prior});
+      if (prior?.content_manifest) return NextResponse.json({receipt:prior});
       const auth=process.env.SUPABASE_SERVICE_ROLE_KEY!;
       const stored=await fetch(storageBase()+`/object/authenticated/${assetBucket}/${prefix}/${encodeURIComponent(body.key)}`,{
         headers:{apikey:auth,authorization:`Bearer ${auth}`},cache:"no-store",signal:AbortSignal.timeout(260000)});
@@ -71,7 +72,8 @@ export async function POST(request: NextRequest) {
     if (!key) return NextResponse.json({error:"Choose a .zip package, .onnx motion, or .wav audio file."},{status:400});
     const {url} = await storage(`/object/upload/sign/${assetBucket}/${prefix}/${encodeURIComponent(key)}`,{});
     return NextResponse.json({url:storageBase()+url,key,kind:assetKind(key)});
-  } catch {
+  } catch (error) {
+    if (error instanceof AssetContentError) return NextResponse.json({error:error.message},{status:400});
     return NextResponse.json({error:"Could not prepare your file transfer."},{status:503});
   }
 }

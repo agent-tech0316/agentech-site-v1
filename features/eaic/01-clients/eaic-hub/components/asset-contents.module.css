@@ -1,0 +1,19 @@
+.contents {
+  background: #ffffff;
+  border-color: #d8d3ca;
+}
+
+.contents,
+.contents :is(dt, dd, p) {
+  color: #202124 !important;
+}
+
+:global(:root[data-theme="dark"]) .contents {
+  background: #18212b;
+  border-color: #516174;
+}
+
+:global(:root[data-theme="dark"]) .contents,
+:global(:root[data-theme="dark"]) .contents :is(dt, dd, p) {
+  color: #eaf2fd !important;
+}

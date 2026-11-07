@@ -5,8 +5,10 @@ import dance from "@/scripts/master-happy-dance.json";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { robotModelOptions, type AgentechRobotModel } from "@/lib/agentech-robot-model";
 import { getEaicHubTaskPath } from "../contracts/eaic-hub";
+import type { AssetContentManifest } from "@/lib/eaic-asset-content";
+import styles from "./asset-contents.module.css";
 
-type Receipt = {id:string; sha256:string; native_motion_name:string|null};
+type Receipt = {id:string; sha256:string; native_motion_name:string|null; content_manifest:AssetContentManifest|null};
 type Asset = { key: string; name: string; kind: string; bytes?: number; receipt:Receipt|null };
 type Props = {
   initialCode: string; initialModel: AgentechRobotModel; initialFile: string;
@@ -58,6 +60,7 @@ export function ExemptSubmissionWorkbench({initialCode,initialModel,initialFile,
     setSaved(true); setMessage("Program saved. Both submission gates are approved by account exemption.");
   }
   async function upload(file: File) {
+    if (file.size>64*1024*1024) throw new Error("Choose a file smaller than 64 MiB.");
     const signed = await post("/api/eaic-account-assets",{action:"upload",name:file.name,robotModel:model});
     const response = await fetch(signed.url,{method:"PUT",body:file,headers:{"Content-Type":"application/octet-stream"}});
     if (!response.ok) {
@@ -65,8 +68,11 @@ export function ExemptSubmissionWorkbench({initialCode,initialModel,initialFile,
       throw new Error(detail?.message || "Upload failed. Please retry.");
     }
     try {
-      await post("/api/eaic-account-assets",{action:"submit",key:signed.key});
-      setMessage(`${signed.kind} submitted and approved: ${file.name}`);
+      const {receipt} = await post("/api/eaic-account-assets",{action:"submit",key:signed.key}) as {receipt:Receipt};
+      const contents=receipt.content_manifest;
+      setMessage(contents?.movement && contents.audio
+        ? `${file.name}: movement policy and audio identified and paired. Submission saved.`
+        : `${signed.kind} submitted and approved: ${file.name}`);
     } finally { await loadFiles(); }
   }
   return <section aria-label="Account-exempt submissions" className="mx-auto grid max-w-6xl gap-5 px-4 py-8 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -98,8 +104,9 @@ export function ExemptSubmissionWorkbench({initialCode,initialModel,initialFile,
     </div>
     <div className={panel}>
       <h2 className="text-xl font-semibold">File submissions</h2>
+      <p data-asset-zip-help className="mt-2 text-sm leading-6">Upload a ZIP and EAIC identifies the ONNX movement policy and WAV audio, then keeps them paired. Include one policy and up to one audio track.</p>
       <label className="my-3 block text-sm">Submit a ZIP package, ONNX motion, or WAV audio file for {model}
-        <input disabled={busy} type="file" accept=".zip,.onnx,.wav" className="mt-2 block w-full"
+        <input aria-label="Upload movement and audio package" disabled={busy} type="file" accept=".zip,.onnx,.wav" className="mt-2 block w-full"
           onChange={e=>{const file=e.currentTarget.files?.[0];e.currentTarget.value="";if(file) void act(()=>upload(file));}}/>
       </label>
       <ul className="divide-y divide-current/15">{files.map(file=><li key={file.key} className="py-2">
@@ -110,17 +117,35 @@ export function ExemptSubmissionWorkbench({initialCode,initialModel,initialFile,
         })}>{file.name}</button>
         {file.kind === "Package" && file.receipt?.sha256 === dance.zip && file.receipt.native_motion_name === dance.motion &&
           <Link className="my-2 block font-semibold underline" href={getEaicHubTaskPath("schedule-time")+"?nativeAssetId="+file.receipt.id}>Schedule Happy Dance with audio</Link>}
+        {file.receipt?.content_manifest && <AssetContents manifest={file.receipt.content_manifest}/>}
         {file.receipt ? <details className="mt-1 text-xs">
           <summary>Approved · Submission receipt</summary>
           <p className="my-1 break-all">ID: {file.receipt.id}</p>
           {file.receipt.native_motion_name && <p className="my-1 break-all">Master motion: {file.receipt.native_motion_name}</p>}
           <p className="break-all font-mono">SHA-256: {file.receipt.sha256}</p>
-        </details> : <button disabled={busy} className="ml-2 underline" onClick={()=>void act(async()=>{
+        </details> : null}
+        {file.receipt && !file.receipt.content_manifest && <p className="mt-1 text-xs">Contents have not been identified yet.</p>}
+        {!file.receipt?.content_manifest && <button disabled={busy} className="ml-2 underline" onClick={()=>void act(async()=>{
           await post("/api/eaic-account-assets",{action:"submit",key:file.key}); await loadFiles();
-        })}>Finish submission</button>}
+        })}>{file.receipt ? "Identify contents" : "Finish submission"}</button>}
       </li>)}</ul>
       {nextOffset !== null && <button className="mt-2 underline" disabled={busy} onClick={()=>void act(()=>loadFiles(nextOffset))}>More files</button>}
     </div>
     <p className="text-sm lg:col-span-2" role="status">{busy ? "Working…" : message}</p>
   </section>;
+}
+
+function AssetContents({manifest}:{manifest:AssetContentManifest}) {
+  return <div data-asset-contents className={`${styles.contents} my-3 rounded-xl border p-3 text-sm`}>
+    <dl className="space-y-3">
+      {manifest.movement && <div><dt className="font-semibold">Movement · ONNX</dt>
+        <dd className="break-all">{manifest.movement.path}</dd></div>}
+      {manifest.audio && <div><dt className="font-semibold">Audio · WAV</dt>
+        <dd className="break-all">{manifest.audio.path}</dd>
+        <dd className="text-xs">{manifest.audio.durationSeconds.toFixed(1)} s · {manifest.audio.sampleRateHz.toLocaleString()} Hz · {manifest.audio.channels === 1 ? "Mono" : `${manifest.audio.channels} channels`}</dd></div>}
+    </dl>
+    <p className="mt-3 text-xs">{manifest.playback.mode === "movement_with_audio" ? "Movement and audio paired in this package."
+      : manifest.movement ? "Movement only · no audio included." : "Audio only · no movement included."}</p>
+    <p className="mt-2 text-xs opacity-75">File identification does not verify playback on the robot.</p>
+  </div>;
 }
