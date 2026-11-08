@@ -1,6 +1,7 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
-import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync, realpathSync } from 'node:fs';
-import { join, sep } from 'node:path';
+import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs';
+import { basename, join, resolve, sep } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { parseMasterExecutionResult, scopedNativeOwner } from './master-session-gateway.mjs';
 
 const commands = JSON.parse(readFileSync(new URL('./master-command-contract.json', import.meta.url), 'utf8')).commands;
@@ -205,9 +206,65 @@ export function loadMasterNativeHandoffs(sessions, runtimeDir, config, nowMs = D
   return proofs;
 }
 
+const cancelledMessage = 'Master session cancelled; no further command admitted';
+const cancelError = {type:'RuntimeError',message:cancelledMessage};
+
+function cancelledBeforeBodyDispatch(id,previous,root,config,now) {
+  const result=previous.executionResult, attempt=previous.executionAttemptId;
+  if (previous.executionModel!=='master' || previous.status!=='finished' || previous.executionStatus!=='failed'
+      || previous.masterHandoffReady!==false || previous.executionResultPersisted!==true || previous.claimedWithoutLaunch || previous.masterRecoveryOwner
+      || previous.endCleanupStatus==='running' || !/^\d+$/.test(id) || !uuid.test(attempt) || previous.masterPreparedAttemptId!==attempt
+      || !uuid.test(previous.bodyAssetId) || previous.executionSubmissionId!=='master-body-'+previous.bodyAssetId
+      || result?.outcome!=='failed' || !isDeepStrictEqual(result.error,cancelError)) return false;
+  // The historical PID may remain in a finished row. Reconcile its exact terminal
+  // receipt with the published result and the attempt's actual cancellation file.
+  try {
+    const directory=realpathSync(root), prefix=join(directory,`session-${id}.${attempt}`);
+    const files={masterSessionDeployment:prefix+'.master.json',localExecutionResult:prefix+'.master-result.json',
+      masterCancelFile:prefix+'.cancel',localPlan:join(directory,`session-${id}.plan.json`)};
+    for (const [key,path] of Object.entries(files)) {
+      if (typeof previous[key]!=='string' || resolve(previous[key])!==resolve(root,basename(path)) || realpathSync(path)!==path) return false;
+    }
+    const origin=JSON.parse(boundedFile(directory,files.masterSessionDeployment,1024*1024));
+    const asset=previous.bodyAssetId,source=hash(dance.source),args={motion_name:dance.motion,audio_path:''};
+    const planBytes=boundedFile(directory,files.localPlan,1024*1024),planHash=hash(planBytes);
+    const expectedPlan={version:2,robot_model:'master',asset_id:asset,submission_id:previous.executionSubmissionId,source_sha256:source,
+      commands:[{name:'play_body',args,line:1}]};
+    if (origin.schema_version!==1 || origin.protocol!=='master-arm-session-v1' || origin.enabled!==true || origin.robot_model!=='master'
+        || origin.session_id!==id || origin.attempt_id!==attempt || origin.submission_id!==previous.executionSubmissionId
+        || origin.native_body_asset_id!==asset || origin.native_body_start_policy!=='signed_booking' || origin.recovery_owner_binding
+        || origin.source_sha256!==source || previous.executionSourceSha256!==source || origin.plan_sha256!==planHash || previous.executionPlanSha256!==planHash
+        || origin.scheduled_start!==previous.start || origin.scheduled_end!==previous.end || !isDeepStrictEqual(JSON.parse(planBytes),expectedPlan)
+        || !config?.host || masterTargetDigest(origin)!==masterTargetDigest(config)
+        || ['relay_url','lease_file','standing_deployment'].some(k=>!isDeepStrictEqual(origin[k]??null,config[k]??null))) return false;
+    const bytes=boundedFile(directory,files.localExecutionResult,16*1024*1024).toString('utf8');
+    const raw=JSON.parse(bytes), command=raw.commands?.[0];
+    const parsed=parseMasterExecutionResult(bytes,{sessionId:id,attemptId:attempt,submissionId:origin.submission_id,
+      sourceSha256:source,planSha256:planHash,bookedEnd:previous.end});
+    // Only the failed body runner's pre-dispatch shape is eligible. Unknown execution
+    // fields, request evidence, and every owner-binding or cleanup phase stay unresolved.
+    const fields=['schema_version','robot_model','outcome','session_id','submission_id','source_sha256','plan_sha256','attempt_id','booked_end',
+      'command_count','completed_count','commands','error','started_at','finished_at','handoff_ready','owner_hold_preserved','owner_hold_verified',
+      'handoff_blocker','first_command_not_before','body_start_authority','overrun_seconds'];
+    if (!isDeepStrictEqual(result,parsed) || raw.body_start_authority!=='signed_booking' || raw.command_count!==1 || raw.completed_count!==0
+        || raw.commands.length!==1 || raw.handoff_ready!==false || raw.owner_hold_preserved!==false || raw.owner_hold_verified!==false || raw.overrun_seconds!==0
+        || !Object.keys(raw).every(k=>fields.includes(k)) || !isDeepStrictEqual(raw.error,cancelError) || command?.status!=='failed'
+        || !isDeepStrictEqual(command,{command_index:1,line:1,name:'play_body',args,source_args:args,status:'failed',started_at:command.started_at,
+          duration_ms:command.duration_ms,result:{},error:cancelError})) return false;
+    const start=Date.parse(previous.start),end=Date.parse(previous.end),published=Date.parse(previous.masterViewerStreamStartedAt);
+    const earliest=Math.max(start,published)+20000,claim=Date.parse(previous.bodyBookingClaimedAt),began=Date.parse(raw.started_at);
+    const prepared=Date.parse(command.started_at),finish=Date.parse(raw.finished_at);
+    if (!boundedFile(directory,files.masterCancelFile,4096).toString('utf8').trim()) return false;
+    const cancelled=Math.floor(statSync(files.masterCancelFile).mtimeMs);
+    return start<=claim && published<=claim && claim<=began && began<=prepared && prepared<=cancelled && cancelled<=finish && finish<earliest
+      && earliest===Date.parse(raw.first_command_not_before) && earliest===Date.parse(previous.masterFirstCommandNotBefore) && earliest<end && end<=now;
+  } catch { return false; }
+}
+
 export function masterUnresolvedSessions(sessions, runtimeDir, config, now = Date.now()) {
   const proofs = loadMasterNativeHandoffs(sessions, runtimeDir, config, now);
-  return Object.fromEntries(Object.entries(sessions).filter(([id]) => !Object.hasOwn(proofs, id)));
+  return Object.fromEntries(Object.entries(sessions).filter(([id,item]) =>
+    !Object.hasOwn(proofs,id) && !cancelledBeforeBodyDispatch(id,item,runtimeDir,config,now)));
 }
 
 // A successful subprocess is never itself admission: the next gateway poll

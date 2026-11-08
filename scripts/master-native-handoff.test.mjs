@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash,createHmac } from 'node:crypto';
-import { mkdtempSync,mkdirSync,writeFileSync,rmSync,readFileSync } from 'node:fs';
+import { mkdtempSync,mkdirSync,writeFileSync,rmSync,readFileSync,utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { masterUnresolvedSessions,masterTargetDigest,nativeHandoffPath,verifyNativeHandoff } from './master-native-handoff.mjs';
+import { parseMasterExecutionResult } from './master-session-gateway.mjs';
 
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const domain='EAIC/Master/native-control-handoff/v1';
@@ -98,7 +99,7 @@ function bodyAttempt() {
   const proof={schema_version:1,kind:'native-control-handoff',robot_model:'master',read_only:true,robot_commands_sent:false,failed_outcome_preserved:true,
     previous_session_id:id,previous_attempt_id:common.attempt_id,submission_id:common.submission_id,source_sha256:common.source_sha256,plan_sha256:common.plan_sha256,
     sdk_api_sha256:config.sdk_api_sha256,target_sha256:masterTargetDigest(config),observed_at:at(-2000),body_package:pkg,native_binding_before:window(1),native_binding:window(2)};
-  return {proof,receipt,check(){ const receiptBytes=Buffer.from(JSON.stringify(receipt)); proof.failed_result_sha256=sha(receiptBytes);
+  return {proof,receipt,plan,config,previous,check(){ const receiptBytes=Buffer.from(JSON.stringify(receipt)); proof.failed_result_sha256=sha(receiptBytes);
     return verifyNativeHandoff(proof,{id,previous,config,receiptBytes,planBytes,nowMs:now}); }};
 }
 
@@ -111,5 +112,38 @@ test('a failed accepted body request is discharged only by two independently mea
     p=>{p.native_binding.frames.chest.count=1;},p=>{p.body_package.audio_sha256='0'.repeat(64);},
     (p,r)=>{r.commands[0].result.serial='wrong';},(p,r)=>{delete r.commands[0].result.play_response;}]) {
     const bad=bodyAttempt(); change(bad.proof,bad.receipt); assert.throws(()=>bad.check(),/native handoff/i);
+  }
+});
+
+test('a proven signed-booking cancellation before viewer countdown closes only that unplayed attempt',t=>{
+  const root=mkdtempSync(join(tmpdir(),'cancelled-master-')); t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const now=Date.now(),at=n=>new Date(now+n).toISOString(),start=at(-100000),end=at(-30000),finish=at(-84000),gate=at(-80000);
+  const {receipt:r,plan,config,previous}=bodyAttempt(); const attempt='ac718d3b-ec82-447a-8c7c-374af7221ee0';
+  const path=join(root,'session-107.'+attempt),planPath=join(root,'session-107.plan.json');
+  const marker=path+'.cancel',manifest=path+'.master.json',raw=path+'.master-result.json';
+  const error={type:'RuntimeError',message:'Master session cancelled; no further command admitted'};
+  Object.assign(r,{session_id:'107',attempt_id:attempt,booked_end:end,started_at:at(-99700),finished_at:finish,body_start_authority:'signed_booking',
+    first_command_not_before:gate,error,overrun_seconds:0}); delete r.owner_binding;
+  Object.assign(r.commands[0],{result:{},error,started_at:at(-99600),duration_ms:15600});delete r.commands[0].sdk_call_started_at;
+  Object.assign(previous,{executionAttemptId:attempt,masterPreparedAttemptId:attempt,start,end,bodyAssetId:plan.asset_id,bodyBookingClaimedAt:at(-99800),
+    masterViewerStreamStartedAt:at(-120000),masterFirstCommandNotBefore:gate,masterCancelFile:marker,masterSessionDeployment:manifest,
+    executionResultPersisted:true,localExecutionResult:raw,localPlan:planPath});
+  const origin={...config,enabled:true,schema_version:1,protocol:'master-arm-session-v1',robot_model:'master',session_id:'107',attempt_id:attempt,
+    scheduled_start:start,scheduled_end:end,source_sha256:r.source_sha256,plan_sha256:r.plan_sha256,submission_id:r.submission_id,native_body_asset_id:plan.asset_id,
+    native_body_start_policy:'signed_booking'};
+  const write=(filename,value)=>writeFileSync(filename,JSON.stringify(value));
+  const run=(change=()=>{})=>{
+    const data=structuredClone({r,plan,previous,origin});data.markTime=at(-84100);
+    data.previous.executionResult=parseMasterExecutionResult(JSON.stringify(r),{sessionId:'107',attemptId:attempt,submissionId:r.submission_id,
+      sourceSha256:r.source_sha256,planSha256:r.plan_sha256,bookedEnd:end});
+    change(data);write(manifest,data.origin);write(raw,data.r);write(planPath,data.plan);writeFileSync(marker,'hold');utimesSync(marker,new Date(data.markTime),new Date(data.markTime));
+    return Object.keys(masterUnresolvedSessions({'107':data.previous,'108':{executionModel:'master',status:'staged'}},root,config,now));
+  };
+  assert.deepEqual(run(),['108']);
+  for (const change of [x=>{x.r.commands[0].sdk_call_started_at=x.r.started_at;},x=>{x.r.commands[0].result.request_attempted=true;},
+    x=>{x.r.owner_binding={};},x=>{x.previous.masterViewerStreamStartedAt=at(-95000);},x=>{x.r.finished_at=gate;},x=>{x.markTime=at(-70000);},
+    x=>{x.previous.executionResult.commands[0].result.play_response='Play success';},x=>{x.previous.claimedWithoutLaunch=true;},
+    x=>{x.origin.host='different';},x=>{x.r.error.message='native request timed out';},x=>{x.plan.commands[0].args.audio_path='changed';}]) {
+    assert.deepEqual(run(change),['107','108']);
   }
 });
