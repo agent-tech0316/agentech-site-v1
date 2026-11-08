@@ -1,6 +1,14 @@
 # VORLD development
 
-VORLD is Agentech's Electron desktop app for AI chat, robot controls, cameras, and headband connections. This guide covers the Windows source for version 0.46.0, Build 52.
+VORLD is Agentech's Electron desktop app for AI chat, robot controls, cameras, and headband connections. This guide covers the Windows source for version 0.69.0, Build 80.
+
+## Current SDK
+
+Build 80 bundles the current Agentech package at GitHub commit `d214459558b0e71929c7d536c3ed535fdbac6efc`. The SDK Library has 265 callable entries (118 Master, 147 Navi) and 65 reference entries with explicit limitations. There are no parameter differences or missing methods in the audited robot interfaces. Aegis remains reference-only because VORLD has no Aegis connection adapter. Native Navi joint execution requires a separately configured native controller owner.
+
+Master and Navi `read()` / `report()` are included. Navi PDF export works without installing extra Python packages. Saved evidence remains distinct from live telemetry and physical qualification.
+
+The release includes a command audit, verification results and installer SHA-256 checksums. The installer was extracted and its 330 pinned SDK files and offline reporting functions were verified. No live robot motion was run for this software release.
 
 ## Install the app
 
@@ -43,7 +51,7 @@ These checks do not prove a live robot or camera works. Verify the changed featu
 
 ## Build the Windows installer
 
-The current source snapshot contains build paths from Agentech's build computer. On another computer, update these fields in `package.json` first:
+The source uses relative build paths. Supply the matching Windows runtime bundles, and check these fields in `package.json`:
 
 - `build.directories.output`: choose a local output folder, such as `dist`.
 - `build.electronDist`: point to your matching Windows Electron distribution (normally `node_modules/electron/dist`).
