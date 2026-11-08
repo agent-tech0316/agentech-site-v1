@@ -60,7 +60,7 @@ export function MasterJointMotionGuide() {
                   aria-pressed={active}
                   className={`min-h-16 border p-3 text-left transition ${active ? "border-[#1a73e8]/45 bg-[#eaf2fd] shadow-[inset_3px_0_0_#1a73e8]" : "border-[#d8d3ca] bg-[#fbfaf7] hover:border-[#1a73e8]/45 hover:bg-white"}`}
                 >
-                  <span className={`block text-[9px] font-semibold uppercase tracking-[0.14em] ${active ? "text-[#1a73e8]" : "text-[#7a746c]"}`}>{demo.group}</span>
+                  <span className={`block text-[9px] font-semibold uppercase tracking-[0.14em] ${active ? "text-[#1a73e8]" : "text-[color:var(--color-text-muted)]"}`}>{demo.group}</span>
                   <span className="mt-1 block text-xs font-semibold text-[#171717]">{demo.axis}</span>
                   <span className="mt-0.5 block text-[10px] text-[#62615d]">{demo.motion}</span>
                 </button>
@@ -95,7 +95,7 @@ export function MasterJointMotionGuide() {
               aria-label={`MuJoCo simulation of Master ${selected.group.toLowerCase()} ${selected.axis.toLowerCase()} motion`}
             />
           </div>
-          <div className="mt-3 flex flex-wrap justify-between gap-2 text-[10px] uppercase tracking-[0.12em] text-[#7a746c]">
+          <div className="mt-3 flex flex-wrap justify-between gap-2 text-[10px] uppercase tracking-[0.12em] text-[color:var(--color-text-muted)]">
             <span>Official AgiBot X2 MuJoCo model</span>
             <span>Looped axis preview</span>
           </div>

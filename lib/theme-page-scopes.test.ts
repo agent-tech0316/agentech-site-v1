@@ -237,6 +237,44 @@ test("EAIC workflow light accents keep their hues while meeting AA contrast on w
   );
 });
 
+test("the EAIC developer access gate uses the task canvas, card and readable actions", async () => {
+  const gate = await readWorkspaceFile("features/eaic/01-clients/eaic-hub/components/agentech-library-access-gate.tsx");
+  assert.ok(gate.includes("eaic-task-theme") && gate.includes("bg-[#f5f4f1]"), "the gate must use the theme-aware task canvas");
+  assert.ok(gate.includes("<EaicTaskCard>"), "all gate states must share the View SDK card");
+  assert.ok(gate.includes("var(--color-title)") && gate.includes("var(--color-canvas)"), "gate actions must invert with the selected theme");
+  assert.ok(!gate.includes("body:has("), "the gate should style its own surface");
+});
+
+test("EAIC label colors follow their rendered backgrounds", async () => {
+  const [css, landing, guide, workbench, home] = await Promise.all([
+    readWorkspaceFile("app/globals.css"),
+    readWorkspaceFile("app/agentech-products/eaic/eaic-public.css"),
+    readWorkspaceFile("features/eaic/01-clients/eaic-hub/components/master-joint-motion-guide.tsx"),
+    readWorkspaceFile("features/eaic/01-clients/eaic-hub/components/agentech-library-workbench.tsx"),
+    readWorkspaceFile("features/eaic/01-clients/eaic-hub/components/agentech-library-home.tsx"),
+  ]);
+  assert.ok(/\.eaic-public-hero-note\s*\{[^}]*color:\s*var\(--eaic-muted\)/.test(landing), "landing hero note must track the theme");
+  assert.ok(css.includes(':root[data-theme="light"] .eaic-task-theme [class~="text-[#1a73e8]"]'), "task labels need a readable blue on warm or tinted surfaces");
+  assert.ok(/:root\[data-theme="light"\] \.eaic-engineering-theme \[class\*="text-\[#80d8f4\]"\]\s*\{\s*color: var\(--color-accent-strong\)/.test(css), "Hub labels must use the stronger blue");
+  assert.ok(css.includes("color-mix(in srgb, var(--workflow-accent) 90%, #111111)"), "workflow text must stay readable over accent-tinted and warm backgrounds");
+  assert.ok(css.includes(':root[data-theme="light"] .eaic-task-theme [data-code-review-locked-badge]'), "the locked badge must use a readable light-theme foreground");
+  assert.ok(home.includes("text-[color:var(--color-text-muted)]"), "small Hub footer text must follow the site palette");
+  assert.ok(guide.includes("text-[color:var(--color-text-muted)]"), "motion guide captions must track both themes");
+  assert.ok(workbench.includes("text-[color:var(--color-warning)]"), "the safety heading needs a theme-aware warning color");
+});
+
+test("saved certification results pair success, warning and failure ink with dark surfaces", async () => {
+  const [css, workbench] = await Promise.all([
+    readWorkspaceFile("app/globals.css"),
+    readWorkspaceFile("features/eaic/01-clients/eaic-hub/components/agentech-library-workbench.tsx"),
+  ]);
+  assert.equal((workbench.match(/<section data-code-review-surface/g) ?? []).length, 2,
+    "the review stages and the restored checklist must share the state palette");
+  for (const color of ["bg-[#e8f7f3]", "bg-[#fff1f1]", "bg-[#fff8df]", "text-[#006a5c]", "text-[#a51f1f]", "text-[#8f1f1f]", "text-[#9a6700]"]) {
+    assert.ok(css.includes(`:root[data-theme="dark"] [data-code-review-surface] [class~="${color}"]`), `dark review palette must translate ${color}`);
+  }
+});
+
 test("page-level actions and navigation interactions share a twelve-pixel radius", async () => {
   const [home, educationTabs, talents, header, css] = await Promise.all([
     readWorkspaceFile("features/eaic/01-clients/eaic-hub/components/agentech-library-home.tsx"),

@@ -206,7 +206,7 @@ export function AgentechLibraryHome() {
           </div>
         </section>
 
-        <div className="mt-8 flex flex-col gap-3 border-t border-[#173245] pt-6 text-[10px] uppercase tracking-[0.17em] text-[#5f7185] sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-8 flex flex-col gap-3 border-t border-[#173245] pt-6 text-[10px] uppercase tracking-[0.17em] text-[color:var(--color-text-muted)] sm:flex-row sm:items-center sm:justify-between">
           <p className="font-technical">{aegisFunctions.length} Aegis reference cards · Navi and Master SDK included</p>
           <p>EAIC / Agentech developer systems</p>
         </div>

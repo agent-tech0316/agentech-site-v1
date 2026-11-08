@@ -5,10 +5,13 @@ import test from "node:test";
 const workbenchPath = "features/eaic/01-clients/eaic-hub/components/agentech-library-workbench.tsx";
 const onboardingPath = "features/eaic/01-clients/eaic-hub/components/view-sdk-onboarding.tsx";
 
+const workbenchSource = fs.readFileSync(workbenchPath, "utf8").replaceAll("\r\n", "\n");
+const onboardingSource = fs.readFileSync(onboardingPath, "utf8").replaceAll("\r\n", "\n");
+
 function copyControlSource() {
-  const source = fs.readFileSync(workbenchPath, "utf8");
+  const source = workbenchSource;
   const start = source.indexOf("function CopyCodeButton(");
-  const end = source.indexOf("\n\nfunction MasterSimulationPreviewPanel", start);
+  const end = source.indexOf("\nfunction ", start + 1);
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
   return source.slice(start, end);
@@ -33,7 +36,7 @@ test("copy control preserves the existing 44px target and success/error live mes
 });
 
 test("coordinator starts neutral, hydrates once, and never records evidence from mount or selectedRobot changes", () => {
-  const source = fs.readFileSync(onboardingPath, "utf8");
+  const source = onboardingSource;
   assert.match(source, /useState\(false\)/);
   assert.match(source, /loadViewSdkOnboardingState\(storageRef\.current\)/);
   assert.equal(source.match(/loadViewSdkOnboardingState\(/g)?.length, 1);
@@ -47,7 +50,7 @@ test("coordinator starts neutral, hydrates once, and never records evidence from
 });
 
 test("controller dispatch computes and persists the next reducer state synchronously", () => {
-  const source = fs.readFileSync(onboardingPath, "utf8");
+  const source = onboardingSource;
   assert.match(source, /stateRef\s*=\s*useRef/);
   assert.match(source, /const nextState = reduceViewSdkOnboarding\(stateRef\.current, action\)/);
   assert.match(source, /stateRef\.current = nextState/);
@@ -56,7 +59,7 @@ test("controller dispatch computes and persists the next reducer state synchrono
 });
 
 test("coordinator owns no URL parser, fetch, premium, simulator, analytics, cookie, or session fallback", () => {
-  const source = fs.readFileSync(onboardingPath, "utf8");
+  const source = onboardingSource;
   for (const forbidden of [
     /useSearchParams/,
     /fetch\s*\(/,
@@ -74,7 +77,7 @@ test("coordinator owns no URL parser, fetch, premium, simulator, analytics, cook
 });
 
 test("surface exposes the four named steps, neutral hydration, one current step, and truthful progress", () => {
-  const source = fs.readFileSync(onboardingPath, "utf8");
+  const source = onboardingSource;
   for (const label of ["Choose Robot", "Explore Commands", "Set Up SDK", "Next Action"]) {
     assert.match(source, new RegExp(label));
   }
@@ -91,7 +94,7 @@ test("surface exposes the four named steps, neutral hydration, one current step,
 });
 
 test("setup status requires review and copy as two visible subchecks", () => {
-  const source = fs.readFileSync(onboardingPath, "utf8");
+  const source = onboardingSource;
   assert.match(source, /Instructions reviewed/);
   assert.match(source, /Setup code copied/);
   assert.match(source, /setupReviewed/);
@@ -101,7 +104,7 @@ test("setup status requires review and copy as two visible subchecks", () => {
 });
 
 test("next prompt contains only the three allowlisted real links and truthful helper text", () => {
-  const source = fs.readFileSync(onboardingPath, "utf8");
+  const source = onboardingSource;
   assert.equal(source.match(/<Link\b/g)?.length, 3);
   assert.match(source, /getEaicHubTaskPath\("software-check"\)/);
   assert.match(source, /getEaicHubTaskPath\("start-coding"\)/);
@@ -115,7 +118,7 @@ test("next prompt contains only the three allowlisted real links and truthful he
 });
 
 test("checklist navigation changes presentation only", () => {
-  const source = fs.readFileSync(onboardingPath, "utf8");
+  const source = onboardingSource;
   const start = source.indexOf("const selectStep = useCallback");
   const end = source.indexOf("\n\n  const skipTour", start);
   assert.notEqual(start, -1);
@@ -128,7 +131,7 @@ test("checklist navigation changes presentation only", () => {
 });
 
 test("coach is non-modal and leaves the target operable", () => {
-  const source = fs.readFileSync(onboardingPath, "utf8");
+  const source = onboardingSource;
   assert.match(source, /role="dialog"/);
   assert.match(source, /aria-labelledby="view-sdk-coach-heading"/);
   assert.match(source, /aria-describedby="view-sdk-coach-description"/);
@@ -140,7 +143,7 @@ test("coach is non-modal and leaves the target operable", () => {
 });
 
 test("coach controls preserve evidence and expose Finish only on Step 4", () => {
-  const source = fs.readFileSync(onboardingPath, "utf8");
+  const source = onboardingSource;
   assert.match(source, /disabled=\{selectedStep === "choose"\}/);
   assert.match(source, /selectedStep !== "next"[\s\S]*?>\s*Next\s*</);
   assert.match(source, /selectedStep === "next"[\s\S]*?onClick=\{finishTour\}[\s\S]*?>\s*Finish\s*</);
@@ -152,7 +155,7 @@ test("coach controls preserve evidence and expose Finish only on Step 4", () => 
 });
 
 test("coach focus and Escape are scoped", () => {
-  const source = fs.readFileSync(onboardingPath, "utf8");
+  const source = onboardingSource;
   assert.match(source, /focusHeadingAfterRenderRef/);
   assert.match(source, /headingRef\.current\?\.focus\(\)/);
   assert.match(source, /stepControlRefs\.current\.get\(selectedStep\)\?\.focus\(\)/);
@@ -164,7 +167,7 @@ test("coach focus and Escape are scoped", () => {
 });
 
 test("placement recomputes only while open and honors viewport modes", () => {
-  const source = fs.readFileSync(onboardingPath, "utf8");
+  const source = onboardingSource;
   assert.match(source, /if \(!coachOpen\) return/);
   assert.match(source, /getBoundingClientRect\(\)/);
   assert.match(source, /viewportWidth >= 1024/);
@@ -184,7 +187,7 @@ test("placement recomputes only while open and honors viewport modes", () => {
 });
 
 test("Workbench mounts one coordinator only inside the allowed View SDK section", () => {
-  const source = fs.readFileSync(workbenchPath, "utf8");
+  const source = workbenchSource;
   const focusedStart = source.indexOf("function FocusedBrowseFunctionsSection()");
   const focusedEnd = source.indexOf("\nfunction HardwareSimulationMedia", focusedStart);
   const focused = source.slice(focusedStart, focusedEnd);
@@ -197,7 +200,7 @@ test("Workbench mounts one coordinator only inside the allowed View SDK section"
 });
 
 test("explicit same-robot activation records Choose without an extra history push", () => {
-  const source = fs.readFileSync(workbenchPath, "utf8");
+  const source = workbenchSource;
   const start = source.indexOf("function selectRobot(robot: SdkRobot)");
   const end = source.indexOf("\n  }", start) + 4;
   const selection = source.slice(start, end);
@@ -210,7 +213,7 @@ test("explicit same-robot activation records Choose without an extra history pus
 });
 
 test("setup review and copy evidence belong only to the selected setup panel", () => {
-  const source = fs.readFileSync(workbenchPath, "utf8");
+  const source = workbenchSource;
   assert.match(source, /data-sdk-setup-panel=\{selectedRobot\}/);
   assert.match(source, /data-sdk-setup-review=\{selectedRobot\}/);
   assert.match(source, /aria-label="I reviewed these setup instructions"/);
@@ -221,8 +224,8 @@ test("setup review and copy evidence belong only to the selected setup panel", (
 });
 
 test("only approved links report Next Action", () => {
-  const workbench = fs.readFileSync(workbenchPath, "utf8");
-  const onboarding = fs.readFileSync(onboardingPath, "utf8");
+  const workbench = workbenchSource;
+  const onboarding = onboardingSource;
   assert.match(workbench, /href=\{getEaicHubTaskPath\("software-check"\)\}[\s\S]*?recordNextAction\(selectedRobot, "software-check"\)/);
   assert.equal((workbench + onboarding).match(/recordNextAction\(/g)?.length, 5);
   for (const destination of ["software-check", "start-coding", "hub"]) {
@@ -231,8 +234,8 @@ test("only approved links report Next Action", () => {
 });
 
 test("all four anchors use typed React refs, not DOM queries", () => {
-  const workbench = fs.readFileSync(workbenchPath, "utf8");
-  const onboarding = fs.readFileSync(onboardingPath, "utf8");
+  const workbench = workbenchSource;
+  const onboarding = onboardingSource;
   assert.match(workbench, /chooseRobotAnchorRef/);
   assert.match(workbench, /setupAnchorRef/);
   assert.match(workbench, /exploreAnchorRef/);
@@ -263,7 +266,7 @@ test("Navi reports Common Task and row opens but not URL hydration, close, or cl
 });
 
 test("Aegis and Master report native user-opened function details but never categories", () => {
-  const source = fs.readFileSync(workbenchPath, "utf8");
+  const source = workbenchSource;
   assert.match(source, /functionDetailIntentRef/);
   assert.match(source, /event\.isTrusted/);
   assert.match(source, /functionDetailIntentRef\.current\.add\(item\.name\)/);

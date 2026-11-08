@@ -7,6 +7,7 @@ const workbench = readFileSync(new URL("../features/eaic/01-clients/eaic-hub/com
 
 test("the booking page shows on-site check-in only when the signed booking does not authorize the start", () => {
   const dashboard = readFileSync(new URL("../components/account-dashboard.tsx", import.meta.url), "utf8");
+  assert.ok(!dashboard.includes("confirm your presence in the booking below"), "the pre-booking form must not require check-in for every Happy Dance request");
   assert.match(dashboard, /session\.body_booking_starts_automatically\s*!==\s*true[\s\S]{0,230}<BodyOperatorReady/);
 });
 

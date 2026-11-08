@@ -108,7 +108,7 @@ export function MasterDirectCameraWall({ selection }: { selection: MasterViewSel
 
   return (
     <div className="mt-4">
-      <p className="mb-2 text-xs text-[#bfdbfe]" role="status">{status}</p>
+      <p className="mb-2 text-xs text-[var(--color-text-secondary)]" role="status">{status}</p>
       <div className={`grid gap-3 ${selection.mode === "wall" ? "sm:grid-cols-2" : "grid-cols-1"}`}>
         {views.map((view) => {
           const camera = MASTER_LIVE_CAMERAS.find(({ id }) => id === view.cameraId)!;

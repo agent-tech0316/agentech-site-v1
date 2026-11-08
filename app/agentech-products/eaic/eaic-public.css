@@ -123,7 +123,7 @@
 
 .eaic-public-hero-note {
   margin: 1.35rem 0 0;
-  color: #718496;
+  color: var(--eaic-muted);
   font-family: var(--font-sans), sans-serif;
   font-size: 0.67rem;
   letter-spacing: 0.04em;
@@ -196,7 +196,7 @@
 .eaic-public-code-line code { font-family: var(--font-mono), monospace; font-size: 0.75rem; line-height: 1.65; }
 .eaic-public-code-parameters { overflow-wrap: anywhere; }
 [data-eaic-code-input] { min-width: 0; max-width: 100%; padding: 0.25rem; border: 0; border-bottom: 2px solid var(--eaic-accent); border-radius: 2px; background: color-mix(in srgb, var(--eaic-accent) 10%, var(--eaic-panel)); color: var(--eaic-accent-strong); font-family: var(--font-mono), monospace; font-size: 1rem; line-height: 1.4; }
-[data-eaic-code-input]::placeholder { color: var(--eaic-muted); opacity: 0.65; }
+[data-eaic-code-input]::placeholder { color: var(--eaic-muted); opacity: 1; }
 .eaic-public-code-run { display: inline-flex; align-items: center; gap: 0.5rem; min-width: 44px; min-height: 44px; padding: 0.65rem; border: 1px solid var(--eaic-line); border-radius: 8px; background: transparent; color: var(--eaic-accent-strong); font-family: var(--font-sans), sans-serif; font-size: 0.75rem; cursor: pointer; }
 .eaic-public-code-run svg { width: 16px; height: 16px; }
 .eaic-public-code-run:hover { border-color: var(--eaic-accent); }

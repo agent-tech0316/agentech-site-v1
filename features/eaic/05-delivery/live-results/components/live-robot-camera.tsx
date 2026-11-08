@@ -23,6 +23,7 @@ import {
 } from "@/lib/master-livekit-track-state";
 import { MasterLiveCameraControls } from "./master-live-camera-controls";
 import { MasterLivekitCameraGrid } from "./master-livekit-camera-grid";
+import styles from "./live-camera.module.css";
 
 type LiveRobotCameraProps = {
   roomName: string;
@@ -539,7 +540,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
     <div ref={containerRef}>
     <audio ref={audioRef} autoPlay />
     {danceOutcome && (
-      <p role="status" className="mb-3 rounded border border-white bg-black px-4 py-2 text-sm font-semibold text-white">
+      <p role="status" data-outcome={danceOutcome} className={`${styles.notice} mb-3 px-4 py-3 text-sm font-semibold`}>
         {danceOutcome === "completed" ? "Happy Dance completed · music played" : "Happy Dance failed"}
       </p>
     )}
@@ -547,12 +548,12 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
       <div role="group" aria-label="Master camera source" className="mb-3 flex flex-wrap gap-2">
         <button type="button" aria-pressed={masterCameraSource === "external"}
           onClick={() => setMasterCameraSource("external")}
-          className="rounded border border-[#93c5fd] bg-[#101d2e] px-4 py-2 text-sm text-[#dbeafe] aria-pressed:bg-[#1a73e8] aria-pressed:text-white">
+          className={styles.control}>
           External camera
         </button>
         <button type="button" aria-pressed={masterCameraSource === "robot"}
           onClick={() => setMasterCameraSource("robot")}
-          className="rounded border border-[#93c5fd] bg-[#101d2e] px-4 py-2 text-sm text-[#dbeafe] aria-pressed:bg-[#1a73e8] aria-pressed:text-white">
+          className={styles.control}>
           Robot cameras
         </button>
         {masterCameraSource === "external" && sound !== "unavailable" && (
@@ -567,7 +568,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
               try { await audio.play(); setSound("playing"); }
               catch { setSound("muted"); }
             }
-          }} className="rounded border border-[#93c5fd] bg-[#101d2e] px-4 py-2 text-sm text-[#dbeafe]">
+          }} className={styles.control}>
             {sound === "playing" ? "Mute camera audio" : "Play camera audio"}
           </button>
         )}
@@ -580,15 +581,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
         onSelectionChange={changeMasterSelection}
       />
     ) : null}
-    <div className={`mb-3 border px-4 py-3 text-sm leading-6 ${
-      isMasterCameraSession
-        ? "border-[#31506a] bg-[#101d2e] text-[#dbeafe]"
-        : isNaviSession
-        ? "border-[#31506a] bg-[#101d2e] text-[#dbeafe]"
-        : showLiveCapturePreview
-          ? "border-[#31583a] bg-[#102015] text-[#dfffe0]"
-          : "border-[#2a3440] bg-[#0d1117] text-[#aeb8c2]"
-    }`}>
+    <div data-active={hasActiveSession} className={`${styles.notice} mb-3 px-4 py-3 text-sm leading-6`}>
       {isMasterCameraSession
         ? "Master robot cameras: choose the camera wall or an individual camera."
         : isMasterSession
@@ -596,24 +589,24 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
         : isNaviSession
         ? "Navi live session: live video only. Navi does not support Agentech.capture_image(), so no capture preview is shown."
         : showLiveCapturePreview
-          ? "Aegies live session: display-mode captures appear beside the live stream and remain saved in the archive below."
-          : "No active robot session. Saved Aegies captures remain available in the archive below."}
+          ? "Aegis live session: display-mode captures appear beside the live stream and remain saved in the archive below."
+          : "No active robot session. Saved Aegis captures remain available in the archive below."}
     </div>
     <div className={showLiveCapturePreview ? "grid gap-3 lg:grid-cols-2" : "grid gap-3"}>
-      <div className={isMasterCameraSession ? "relative min-h-64 w-full bg-black" : "relative aspect-video min-h-64 w-full bg-black"}>
+      <div className={`${styles.stage} relative min-h-64 w-full overflow-hidden rounded-2xl`} data-active={hasActiveSession} data-external={!isMasterCameraSession}>
         {isMasterCameraSession ? (
           <MasterLivekitCameraGrid selection={masterSelection} tracksByName={masterTracksByName} />
         ) : (
           <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
         )}
       {status === "Live robot camera connected." ? null : (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/75 px-6 text-center text-sm leading-6 text-[#aeb8c2]">
+        <div data-idle={!hasActiveSession} className={`${styles.overlay} absolute inset-0 flex flex-col items-center justify-center gap-4 px-5 text-center text-sm leading-6`}>
           <span aria-live="polite">{status}</span>
           <button
             type="button"
             onClick={startViewing}
             disabled={!livekitUrl || !hasActiveSession || isViewing}
-            className="border border-[#8fdc8f] bg-[#17351f] px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#dfffe0] transition hover:bg-[#8fdc8f] hover:text-[#08100a] disabled:cursor-not-allowed disabled:border-[#2a3440] disabled:bg-[#10151c] disabled:text-[#7f8c99]"
+            className={`${styles.control} ${styles.start}`}
           >
             {hasActiveSession ? "Start Live View" : "Waiting for Scheduled Time"}
           </button>
@@ -623,23 +616,23 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
         <button
           type="button"
           onClick={stopViewing}
-          className="absolute bottom-3 right-3 border border-[#93c5fd] bg-[#101d2e]/90 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#dbeafe] transition hover:bg-[#93c5fd] hover:text-[#07111f]"
+          className={`${styles.control} absolute bottom-3 right-3`}
         >
           Stop Live View
         </button>
         ) : null}
       </div>
       {showLiveCapturePreview ? (
-      <div className="relative aspect-video min-h-64 overflow-hidden border border-[#2a3440] bg-[#080b0f]">
+      <div className={`${styles.panel} relative aspect-video min-h-64 overflow-hidden`}>
         {captureUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={captureUrl} alt="Latest image captured by Agentech.capture_image()" className="h-full w-full object-contain" />
+          <img src={captureUrl} alt="Latest image captured by Agentech.capture_image()" className="h-full w-full bg-black object-contain" />
         ) : (
           <div className="grid h-full place-items-center px-6 text-center">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8fdc8f]">Captured Image</p>
-              <p className="mt-3 text-sm leading-6 text-[#aeb8c2]">
-                Run <span className="font-mono text-white">Agentech.capture_image()</span> in the website code runner. The supervised runner stores the image safely and displays it here.
+              <p className="text-sm font-semibold text-[var(--color-title)]">Captured Image</p>
+              <p className="mt-3 text-sm leading-6">
+                Run <span className="font-mono text-[var(--color-code-text)]">Agentech.capture_image()</span> in the website code runner. The supervised runner stores the image safely and displays it here.
               </p>
             </div>
           </div>
@@ -653,26 +646,26 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
       ) : null}
     </div>
     {captureHistory.length ? (
-      <section className="mt-3 border border-[#2a3440] bg-[#080b0f] p-4">
-        <div className="flex items-center justify-between gap-4">
+      <section aria-labelledby="eaic-capture-archive-title" className={`${styles.panel} mt-4 p-4`}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8fdc8f]">Saved Aegies Captures</p>
-            <p className="mt-1 text-xs text-[#aeb8c2]">These images stay available after an Aegies stream ends and remain downloadable during Navi sessions.</p>
+            <h3 id="eaic-capture-archive-title" className="text-lg font-semibold text-[var(--color-title)]">Saved Aegis Captures</h3>
+            <p className="mt-1 text-sm leading-6">These images stay available after an Aegis stream ends and remain downloadable during Navi sessions.</p>
           </div>
-          <span className="text-xs text-[#aeb8c2]">{captureHistory.length} image{captureHistory.length === 1 ? "" : "s"}</span>
+          <span className="text-xs">{captureHistory.length} image{captureHistory.length === 1 ? "" : "s"}</span>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {[...captureHistory].reverse().map((capture, index) => (
-            <article key={capture.captureId} className="flex items-center gap-3 border border-[#25303b] bg-[#0d1218] p-2">
+            <article key={capture.captureId} className={`${styles.tile} flex min-w-0 items-center gap-3 p-3`}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={capture.dataUrl} alt={`Captured robot image ${captureHistory.length - index}`} className="h-16 w-24 shrink-0 object-cover" />
+              <img src={capture.dataUrl} alt={`Captured robot image ${captureHistory.length - index}`} className="h-16 w-20 shrink-0 rounded-lg object-cover" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs text-white">Capture {captureHistory.length - index}</p>
-                <p className="mt-1 text-[11px] text-[#8995a3]">{new Date(capture.createdAt).toLocaleString()}</p>
+                <p className="text-sm font-semibold text-[var(--color-title)]">Capture {captureHistory.length - index}</p>
+                <p className="mt-1 text-xs">{new Date(capture.createdAt).toLocaleString()}</p>
                 <a
                   href={capture.dataUrl}
                   download={`agentech-capture-${capture.createdAt.replace(/[:.]/g, "-")}.${captureExtension(capture.dataUrl)}`}
-                  className="mt-2 inline-block text-xs font-semibold text-[#93c5fd] underline-offset-4 hover:underline"
+                  className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--color-accent-strong)] underline-offset-4 hover:underline"
                 >
                   Download image
                 </a>

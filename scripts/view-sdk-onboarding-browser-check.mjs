@@ -633,8 +633,10 @@ await runScenario(scenarioNames[16], async ({ page }) => {
   const initialActiveInCoach = await page.evaluate(() => document.querySelector('[data-eaic-sdk-onboarding-coach]')?.contains(document.activeElement));
   assert.equal(initialActiveInCoach, false, "first auto-open must not steal focus");
   await page.locator('[data-eaic-sdk-onboarding-step="explore"]').click();
+  await page.waitForFunction(() => document.activeElement?.id === "view-sdk-coach-heading");
   assert.equal(await page.evaluate(() => document.activeElement?.id), "view-sdk-coach-heading");
   await page.locator('[data-eaic-sdk-onboarding-coach="explore"]').press("Escape");
+  await page.waitForFunction(() => document.activeElement === document.querySelector('[data-eaic-sdk-onboarding-step="explore"]'));
   assert.equal(await page.locator('[data-eaic-sdk-onboarding-step="explore"]').evaluate((element) => element === document.activeElement), true);
   await page.locator('[data-navi-reference-row][data-navi-reference-name="stand"] [data-navi-reference-toggle]').click();
   await page.locator('[data-navi-reference-detail][data-navi-reference-name="stand"]').waitFor();

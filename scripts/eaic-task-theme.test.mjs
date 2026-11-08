@@ -1156,11 +1156,13 @@ test("keeps the EAIC Hub blueprint linework legible in light mode", async () => 
       )?.value ?? blueprintFit;
     }
 
-    for (const theme of ["light", "dark"]) {
-      if (rule.selector.includes(`[data-eaic-hero-theme=${theme}]`) || rule.selector.includes(`[data-eaic-hero-theme="${theme}"]`)) {
-        const display = rule.nodes.find((node) => node.type === "decl" && node.prop === "display")?.value;
-        if (display) themeDisplay[`${isLightThemeRule ? "light" : "default"}:${theme}`] = display;
-      }
+    // The production optimizer groups selectors with the same display value.
+    for (const selector of rule.selectors) {
+      const theme = selector.match(/\[data-eaic-hero-theme="?(light|dark)"?\]/)?.[1];
+      if (!theme) continue;
+      const display = rule.nodes.find((node) => node.type === "decl" && node.prop === "display")?.value;
+      const light = /\[data-theme="?light"?\]/.test(selector);
+      if (display) themeDisplay[`${light ? "light" : "default"}:${theme}`] = display;
     }
 
     if (rule.selector.includes("[data-eaic-hero-overlay]") && rule.parent?.type === "root") {
@@ -1231,4 +1233,21 @@ test("an expired EAIC review session opens the real sign-in form with its editor
   const html = await response.text();
   assert.match(html, /data-login-card/);
   assert.match(html, /type="password"/);
+});
+
+test("Schedule Time shares the SDK canvas, task navigation and card on canonical and legacy visits", async () => {
+  const path = "/agentech-products/eaic-hub/schedule-time";
+  const legacy = await fetch(`${baseUrl}/agentech-products/agentech-library/schedule-time`, { redirect: "manual" });
+  assert.ok([307, 308].includes(legacy.status));
+  assert.equal(new URL(legacy.headers.get("location"), baseUrl).pathname, path);
+
+  const response = await fetch(`${baseUrl}${path}`);
+  assert.equal(response.status, 200);
+  const html = (await response.text()).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "");
+  assert.ok(html.includes("eaic-task-theme"), "Schedule Time must inherit the SDK page theme");
+  assert.ok(html.includes("data-eaic-task-card"), "the scheduling workspace must use the SDK card surface");
+  for (const [title, route] of taskRoutes) {
+    assert.ok(html.includes(`href="${route}"`), `Schedule Time needs navigation back to ${title}`);
+  }
+  assert.doesNotMatch(html, /data-task-number-badge="true"/, "scheduling is not a fifth task");
 });

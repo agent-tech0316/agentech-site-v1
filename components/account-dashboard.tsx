@@ -11,7 +11,6 @@ import { formatFullName, formatInvoiceItemName } from "@/lib/name-format";
 import { formatUsd } from "@/lib/pricing";
 import { buildDeviceResultsViewModel, type DeviceResult } from "@/lib/device-results";
 import { selectSoleProfile } from "@/lib/account-dashboard-profile-selection";
-import { HistoryBackButton } from "@/components/history-back-button";
 import {
   externalRobotViewingMaximumMinutes,
   externalRobotViewingMinimumMinutes,
@@ -267,7 +266,7 @@ function BodyOperatorReady({sessionId}: {sessionId:number}) {
     finally { setPending(false); }
   }
   return <div className="mt-3"><p className="text-sm">At the slot, confirm that you are beside Master, the full-body movement area is clear, and you have the physical stop.</p>
-    <button type="button" disabled={pending} onClick={confirm} className="mt-2 rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white">I’m ready at Master</button>
+    <button data-schedule-action="primary" type="button" disabled={pending} onClick={confirm} className="mt-2 rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white">I’m ready at Master</button>
     <p role="status" className="mt-1 text-sm">{message}</p></div>;
 }
 
@@ -1679,16 +1678,17 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
     const signInReturnPath = focusedRobotScheduling
       ? getEaicHubTaskPath("schedule-time") + (nativeAssetId ? "?nativeAssetId="+encodeURIComponent(nativeAssetId) : "")
       : "/account";
+    const Heading = focusedRobotScheduling ? "h2" : "h1";
 
     return (
-      <div className="rounded-[24px] border border-slate-200 bg-white p-8 shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
-        <h1 className="text-3xl font-semibold text-slate-950">Sign in required</h1>
+      <div className={focusedRobotScheduling ? undefined : "rounded-[24px] border border-slate-200 bg-white p-8 shadow-[0_18px_55px_rgba(15,23,42,0.08)]"}>
+        <Heading className="text-3xl font-semibold text-slate-950">Sign in required</Heading>
         <p className="mt-3 text-slate-600">
           {focusedRobotScheduling
             ? "Sign in to choose a robot viewing time and duration."
             : "Sign in to view your profile, requests, applications, and enrollments."}
         </p>
-        <Link href={`/login?next=${encodeURIComponent(signInReturnPath)}`} className="mt-6 inline-flex rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white">
+        <Link data-schedule-action="primary" href={`/login?next=${encodeURIComponent(signInReturnPath)}`} className="mt-6 inline-flex rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white">
           Sign In
         </Link>
       </div>
@@ -2047,43 +2047,49 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
     );
   }
 
-  return (
-    <>
-      {selectedDashboardProfileType === "student" ? (
-        <div data-account-decoration className="pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(180deg,rgba(5,8,25,0.08),rgba(5,8,25,0.18)),url('/assets/backgrounds/account-dashboard-background.png')] bg-cover bg-[right_center]" />
-      ) : null}
-    <div data-account-shell className="relative z-[1] overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
-      <div data-account-header className="relative z-[1] flex flex-col gap-5 px-5 pb-4 pt-5 sm:px-7 md:flex-row md:items-start md:justify-between md:px-8 md:pt-7">
+  const accountHeader = (
+    <div data-account-header className={focusedRobotScheduling ? "flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4" : "relative z-[1] flex flex-col gap-5 px-5 pb-4 pt-5 sm:px-7 md:flex-row md:items-start md:justify-between md:px-8 md:pt-7"}>
+      {focusedRobotScheduling ? (
+        <p className="break-all text-sm font-semibold text-slate-600">{displayName}</p>
+      ) : (
         <div>
           <h1 data-account-title className="text-[28px] font-bold leading-tight text-slate-950 sm:text-4xl">
-            {focusedRobotScheduling ? "Schedule Robot Time" : "Account"}
+            Account
           </h1>
           <p className="mt-2 text-sm font-medium text-slate-500">
-            {focusedRobotScheduling
-              ? "Choose the run type, available start time, and viewing duration for the supervised session."
-              : "Manage account information, profiles, credits, invoices, and access."}
+            Manage account information, profiles, credits, invoices, and access.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div data-account-avatar aria-hidden="true" className={`grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br text-base font-bold ${selectedVisual?.avatar ?? accountAvatar}`}>
-            {profileInitial}
-          </div>
-          <button
-            data-account-local-signout
-            type="button"
-            onClick={() => {
-              clearAccountSession();
-              setEmail("");
-              setData({});
-              router.replace("/login?signedOut=1");
-              router.refresh();
-            }}
-            className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-[#2f70c8] hover:text-[#2f70c8]"
-          >
-            Sign Out
-          </button>
+      )}
+      <div className="flex items-center gap-3">
+        <div data-account-avatar aria-hidden="true" className={`grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br text-base font-bold ${selectedVisual?.avatar ?? accountAvatar}`}>
+          {profileInitial}
         </div>
+        <button
+          data-account-local-signout
+          type="button"
+          onClick={() => {
+            clearAccountSession();
+            setEmail("");
+            setData({});
+            router.replace("/login?signedOut=1");
+            router.refresh();
+          }}
+          className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-[#2f70c8] hover:text-[#2f70c8]"
+        >
+          Sign Out
+        </button>
       </div>
+    </div>
+  );
+
+  return (
+    <>
+      {!focusedRobotScheduling && selectedDashboardProfileType === "student" ? (
+        <div data-account-decoration className="pointer-events-none fixed inset-0 z-0 bg-[linear-gradient(180deg,rgba(5,8,25,0.08),rgba(5,8,25,0.18)),url('/assets/backgrounds/account-dashboard-background.png')] bg-cover bg-[right_center]" />
+      ) : null}
+    <div data-account-shell className={focusedRobotScheduling ? "flex min-w-0 flex-col gap-6" : "relative z-[1] overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.08)]"}>
+      {!focusedRobotScheduling ? accountHeader : null}
 
       {!focusedRobotScheduling ? (
       <div data-account-tabs aria-label="Account sections" className="relative z-[1] overflow-x-auto border-b border-slate-200 px-5 sm:px-7 md:px-8">
@@ -2120,16 +2126,9 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
           })}
         </div>
       </div>
-      ) : (
-        <div className="relative z-[1] border-b border-slate-200 px-5 py-4 sm:px-7 md:px-8">
-          <HistoryBackButton
-            fallbackHref={getEaicHubTaskPath("watch-live-run")}
-            className="inline-flex border border-slate-300 bg-white px-4 py-2 text-xs font-bold uppercase text-slate-700 transition hover:border-[#008a7a] hover:text-[#006a5c]"
-          />
-        </div>
-      )}
+      ) : null}
 
-      <div data-account-content className="relative z-[1] space-y-6 p-5 sm:p-7 md:p-8">
+      <div data-account-content className={focusedRobotScheduling ? "min-w-0" : "relative z-[1] space-y-6 p-5 sm:p-7 md:p-8"}>
         {currentTab === "profile" ? (
           <section data-account-overview className="grid gap-5 lg:grid-cols-[0.82fr_1.35fr]">
             <div data-account-panel="information" className="rounded-xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
@@ -3030,16 +3029,16 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
       ) : null}
 
       {currentTab === "robot" && hasAccessProfiles ? (
-        <section className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-[0_18px_55px_rgba(15,23,42,0.08)] md:p-8">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+        <section className={focusedRobotScheduling ? undefined : "rounded-[24px] border border-slate-200 bg-white p-6 shadow-[0_18px_55px_rgba(15,23,42,0.08)] md:p-8"}>
+          <div data-schedule-intro className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2f70c8]">Robot Slot</p>
+              <p data-schedule-label className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2f70c8]">Robot Slot</p>
               <h2 className="mt-2 text-2xl font-semibold text-slate-950">Schedule Approved Robot Code</h2>
               <p className="mt-2 text-sm text-slate-600">
                 Sessions cost {robotViewingCreditsPerMinute} credits per minute. External accounts choose {externalRobotViewingMinimumMinutes}-{externalRobotViewingMaximumMinutes} minutes; @agent-tech.ai accounts are not charged. Only customer-approved code that passed both review gates can be scheduled.
               </p>
             </div>
-            <div className={`rounded-2xl px-4 py-3 text-sm font-semibold ${developerCodeReviewPassed ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-700"}`}>
+            <div data-schedule-notice={developerCodeReviewPassed ? "success" : "neutral"} className={`rounded-2xl px-4 py-3 text-sm font-semibold ${developerCodeReviewPassed ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-700"}`}>
               <p>{nativeAssetId ? "Happy Dance with bundled audio" : developerCodeReviewPassed ? "Live code approved" : "Live code locked"}</p>
               <p className="mt-1 text-xs opacity-80">
                 {nativeAssetId ? `ZIP receipt ${nativeAssetId}` : developerCodeReviewPassed
@@ -3050,7 +3049,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
           </div>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div data-schedule-panel="request" className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <h3 className="text-lg font-semibold text-slate-950">New Slot Request</h3>
               <div className="mt-4 space-y-4">
                 <label className="block">
@@ -3069,7 +3068,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
                 </label>
                 <div className="block">
                   <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">Run Type</span>
-                  <div className="mt-2 w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
+                  <div data-schedule-notice="success" className="mt-2 w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
                     {nativeAssetId ? "Master · Happy Dance with bundled audio" : "Approved custom code live test"}
                   </div>
                   <span className="mt-2 block text-sm text-slate-600">
@@ -3134,8 +3133,8 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
                       : "Submit and approve code for Aegies or Navi before scheduling."}
                   </span>
                 </label>
-                <p className={`rounded-xl border px-4 py-3 text-sm font-semibold ${developerCodeReviewPassed ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                  {nativeAssetId ? "When your slot opens, confirm your presence in the booking below." : developerCodeReviewPassed
+                <p data-schedule-notice={nativeAssetId ? "neutral" : developerCodeReviewPassed ? "success" : "warning"} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${developerCodeReviewPassed ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                  {nativeAssetId ? "Your booking will show whether you need to check in before playback." : developerCodeReviewPassed
                     ? "This slot will use the latest Supabase-approved custom code package."
                     : "Custom live-code testing is locked until both approval checks pass."}
                 </p>
@@ -3150,18 +3149,19 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
                   />
                 </label>
                 {robotSlotCreditLocked ? (
-                  <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+                  <p data-schedule-notice="warning" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
                     This session requires {robotSlotCreditCost.toLocaleString()} credits. Current balance: {Math.max(0, Math.floor(creditBalance)).toLocaleString()} credits.
                   </p>
                 ) : null}
                 {customCodeLocked ? (
-                  <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+                  <p data-schedule-notice="warning" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
                     Approved custom code requires a passed physical safety gate and AI security scan in Supabase.
                   </p>
                 ) : null}
-                {robotSlotMessage ? <p className="text-sm font-semibold text-[#2f70c8]">{robotSlotMessage}</p> : null}
+                {robotSlotMessage ? <p data-schedule-label role="status" className="text-sm font-semibold text-[#2f70c8]">{robotSlotMessage}</p> : null}
                 {robotSlotAvailabilityError ? <p role="alert" className="text-sm font-semibold text-[#2f70c8]">{robotSlotAvailabilityError}</p> : null}
                 <button
+                  data-schedule-action="primary"
                   type="button"
                   onClick={requestRobotSlot}
                   disabled={requestingRobotSlot || robotSlotUnavailable}
@@ -3172,7 +3172,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div data-schedule-panel="history" className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <h3 className="text-lg font-semibold text-slate-950">Requested Robot Slots</h3>
               <div className="mt-4 space-y-3">
                 {hasRobotSessions ? (
@@ -3188,7 +3188,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
                     });
 
                     return (
-                      <div key={session.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                      <div data-schedule-session key={session.id} className="rounded-xl border border-slate-200 bg-white p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <p className="font-semibold text-slate-950">{session.session_title}</p>
@@ -3198,7 +3198,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
                           <p className="mt-1 text-sm text-slate-600">{formatDateTime(session.scheduled_start)}</p>
                           {session.preset_demo ? <p className="mt-1 text-sm text-slate-600">{session.preset_demo}</p> : null}
                         </div>
-                        <div className="text-sm font-semibold text-[#2f70c8] md:text-right">
+                        <div data-schedule-label className="text-sm font-semibold text-[#2f70c8] md:text-right">
                           <p>{formatInvoiceStatus(session.session_status)}</p>
                           <p className="mt-1 text-xs text-slate-500">Run: {formatInvoiceStatus(session.approved_run_type || "preset_demo")}</p>
                         </div>
@@ -3235,7 +3235,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
                           </summary>
                           <div className="space-y-3 border-t border-slate-200 p-4">
                             {deviceResultsView.collectionError ? (
-                              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                              <div data-schedule-notice="danger" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
                                 <p className="font-semibold">Result collection failed</p>
                                 <p className="mt-1 break-words">{deviceResultsView.collectionError}</p>
                               </div>
@@ -3243,6 +3243,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
                             {deviceResultsView.items.map((item, index) => (
                               <article
                                 key={`${item.label}-${item.recordedAt}-${index}`}
+                                data-schedule-notice={item.tone === "error" ? "danger" : item.tone}
                                 className={`rounded-lg border p-4 ${item.tone === "success" ? "border-emerald-200 bg-emerald-50" : item.tone === "warning" ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50"}`}
                               >
                                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -3289,11 +3290,11 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
       ) : null}
 
       {currentTab === "robot" && !hasAccessProfiles ? (
-        <section className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6">
+        <section data-schedule-panel="empty" className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6">
           <h2 className="text-xl font-bold text-slate-950">Create a profile to request robot time</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">Robot viewing is tied to a developer, student, teacher, or talent profile so each session has its own credit limit and activity history.</p>
           {focusedRobotScheduling ? (
-            <Link href="/account/create-profile" className="mt-5 inline-flex rounded-lg bg-[#2563eb] px-5 py-3 text-sm font-bold text-white">
+            <Link data-schedule-action="primary" href="/account/create-profile" className="mt-5 inline-flex rounded-lg bg-[#2563eb] px-5 py-3 text-sm font-bold text-white">
               Create Profile
             </Link>
           ) : (
@@ -3483,6 +3484,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
       </section>
       ) : null}
       </div>
+      {focusedRobotScheduling ? accountHeader : null}
     </div>
     </>
   );

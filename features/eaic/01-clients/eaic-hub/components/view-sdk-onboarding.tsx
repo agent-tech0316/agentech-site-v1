@@ -417,7 +417,7 @@ export function ViewSdkOnboardingCoordinator({
                 type="button"
                 disabled={selectedStep === "choose"}
                 onClick={() => moveCoachStep(-1)}
-                className="min-h-11 rounded-full border border-[#b8c0cc] px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45"
+                className="min-h-11 rounded-full border border-[#b8c0cc] px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:border-dashed disabled:text-[color:var(--color-text-muted)]"
               >
                 Back
               </button>

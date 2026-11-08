@@ -88,3 +88,9 @@ test("five primary categories leave room for account controls by using the drawe
   assert.match(source, /data-mobile-theme-controls[^>]*xl:hidden/);
   assert.doesNotMatch(source, /\blg:(?:flex|hidden)\b/);
 });
+
+test("the mobile drawer only casts a shadow on the page while open", async () => {
+  const source = await readFile(path.join(process.cwd(), "components/site-header.tsx"), "utf8");
+  const drawer = source.slice(source.indexOf("data-site-mobile-drawer"), source.indexOf("<nav", source.indexOf("data-site-mobile-drawer")));
+  assert.match(drawer, /mobileOpen \? "translate-x-0 shadow-\[[^"]+\]" : "translate-x-full"/);
+});

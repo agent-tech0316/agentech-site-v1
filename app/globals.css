@@ -196,6 +196,11 @@ select {
   border-color: var(--workflow-accent);
 }
 
+:root[data-theme="light"] .eaic-engineering-theme [data-workflow-accent-box],
+:root[data-theme="light"] .eaic-engineering-theme [data-workflow-step^="stat-"] [data-workflow-accent] {
+  color: color-mix(in srgb, var(--workflow-accent) 90%, #111111);
+}
+
 :root[data-theme="light"] .eaic-engineering-theme [data-eaic-hero] {
   border-color: #d8d3ca !important;
   background: #f5f4f1 !important;
@@ -262,7 +267,7 @@ select {
 }
 
 :root[data-theme="light"] .eaic-engineering-theme [class*="text-[#80d8f4]"] {
-  color: #1a73e8 !important;
+  color: var(--color-accent-strong) !important;
 }
 
 :root[data-theme="light"] .eaic-engineering-theme [class*="text-[#e4edf5]"] {
@@ -810,6 +815,17 @@ select {
 }
 
 /* EAIC task pages: translate every light working surface into a true dark UI. */
+:root[data-theme="light"] .eaic-task-theme [class~="text-[#1a73e8]"]:not(:disabled),
+:root[data-theme="light"] .eaic-task-theme [data-code-upload-input]::file-selector-button {
+  color: var(--color-accent-strong);
+}
+
+:root[data-theme="light"] .eaic-task-theme [data-code-review-locked-badge],
+:root[data-theme="light"] .eaic-task-theme [data-code-review-locked-action],
+:root[data-theme="light"] .eaic-task-theme button:disabled[class~="disabled:text-[#7d8b9c]"] {
+  color: var(--color-text-muted);
+}
+
 :root[data-theme="dark"] .eaic-task-theme {
   color-scheme: dark;
   background: #040506 !important;
@@ -973,6 +989,38 @@ select {
   background-color: #241416 !important;
   border-color: #ef6b6b !important;
   color: #ffb4b4 !important;
+}
+
+:root[data-theme="dark"] [data-code-review-surface] [class~="bg-[#e8f7f3]"],
+:root[data-theme="dark"] [data-code-review-surface] [class~="bg-[#e7f7ef]"] {
+  background-color: #0d201d;
+}
+
+:root[data-theme="dark"] [data-code-review-surface] [class~="text-[#006a5c]"],
+:root[data-theme="dark"] [data-code-review-surface] [class~="text-[#087a43]"] {
+  color: #83dfc9;
+}
+
+:root[data-theme="dark"] [data-code-review-surface] [class~="bg-[#fff1f1]"],
+:root[data-theme="dark"] [data-code-review-surface] [class~="bg-[#fff4f2]"],
+:root[data-theme="dark"] [data-code-review-surface] [class~="bg-[#fdeceb]"] {
+  background-color: #241416;
+}
+
+:root[data-theme="dark"] [data-code-review-surface] [class~="text-[#a51f1f]"],
+:root[data-theme="dark"] [data-code-review-surface] [class~="text-[#8f1f1f]"],
+:root[data-theme="dark"] [data-code-review-surface] [class~="text-[#7f1d1d]"],
+:root[data-theme="dark"] [data-code-review-surface] [class~="text-[#b42318]"] {
+  color: #ffb4b4;
+}
+
+:root[data-theme="dark"] [data-code-review-surface] [class~="bg-[#fff8df]"],
+:root[data-theme="dark"] [data-code-review-surface] [class~="bg-[#fff7d6]"] {
+  background-color: #28200e;
+}
+
+:root[data-theme="dark"] [data-code-review-surface] [class~="text-[#9a6700]"] {
+  color: var(--color-warning);
 }
 
 :root[data-theme="dark"] .eaic-task-theme [data-code-review-stage-description=true] {

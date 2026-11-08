@@ -21,8 +21,8 @@ import {
 import { type SdkRobot } from "@/features/eaic/01-clients/eaic-hub/contracts/view-sdk-onboarding";
 import { getNaviSimulationMedia } from "@/features/eaic/01-clients/eaic-hub/contracts/navi-simulation-media";
 import { stripNaviExplorerParams } from "@/features/eaic/01-clients/eaic-hub/contracts/navi-sdk-explorer-state";
-import { agentechLibraryTasks, getAgentechLibraryTask, type AgentechLibraryTaskSlug } from "@/features/eaic/01-clients/eaic-hub/contracts/agentech-library-tasks";
-import { eaicHubPath, getEaicHubTaskPath } from "@/features/eaic/01-clients/eaic-hub/contracts/eaic-hub";
+import { getAgentechLibraryTask, type AgentechLibraryTaskSlug } from "@/features/eaic/01-clients/eaic-hub/contracts/agentech-library-tasks";
+import { getEaicHubTaskPath } from "@/features/eaic/01-clients/eaic-hub/contracts/eaic-hub";
 import { clearReviewDraft, readReviewDraft, saveReviewDraft } from "@/lib/eaic-review-reauth";
 import {
   masterWebsiteFunctions,
@@ -42,7 +42,7 @@ import { EaicTaskCard } from "./eaic-task-card";
 import { MasterMotorMap } from "@/features/eaic/01-clients/eaic-hub/components/master-motor-map";
 import { MasterJointMotionGuide } from "@/features/eaic/01-clients/eaic-hub/components/master-joint-motion-guide";
 import { MasterHeartbeat } from "@/features/eaic/01-clients/eaic-hub/components/master-heartbeat";
-import { HistoryBackButton } from "@/components/history-back-button";
+import { EaicTaskHeader } from "./eaic-task-header";
 import {
   buildMasterLiveTestPayload,
   getCodeCheckingRobotOptions,
@@ -1208,77 +1208,28 @@ const taskFeatureNotes: Record<AgentechLibraryTaskSlug, string> = {
   "watch-live-run": "Live Stream opens only during an approved scheduled robot slot after the required checks pass."
 };
 
-function TaskDetailHeader({ task, directSubmission = false }: { task: NonNullable<ReturnType<typeof getAgentechLibraryTask>>; directSubmission?: boolean }) {
-  return (
-    <section data-eaic-task-header className="border-b border-black/8 bg-[#f5f4f1]">
-      <div className="mx-auto max-w-7xl px-6 py-8 lg:px-8 lg:py-10">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <HistoryBackButton
-            fallbackHref={eaicHubPath}
-            className="rounded-full border border-black/10 bg-white/70 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.14em] text-[#111111] shadow-sm transition hover:border-[#1a73e8]/50 hover:text-[#1a73e8]"
-          />
-          <div className="flex flex-wrap gap-2">
-            {agentechLibraryTasks.map((item) => (
-              <Link
-                key={item.slug}
-                href={getEaicHubTaskPath(item.slug)}
-                aria-current={item.slug === task.slug ? "page" : undefined}
-                className={`rounded-[10px] border px-3 py-2 font-mono text-xs transition ${
-                  item.slug === task.slug
-                    ? "border-[#1a73e8]/45 bg-[#1a73e8] text-white shadow-[0_8px_20px_rgba(26,115,232,0.2)]"
-                    : "border-black/10 bg-white/65 text-[#5f6368] hover:border-[#1a73e8]/45 hover:text-[#1a73e8]"
-                }`}
-              >
-                {item.number}
-              </Link>
-            ))}
-          </div>
-        </div>
-        <div className="mt-7 grid gap-5 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-end">
-          <div
-            data-task-number-badge="true"
-            className="grid h-20 w-20 place-items-center rounded-full bg-[#111111] font-mono text-3xl font-medium text-white shadow-[0_14px_34px_rgba(17,17,17,0.14)]"
-          >
-            {Number.parseInt(task.number, 10)}
-          </div>
-          <div>
-            <p className="font-interface text-xs font-semibold uppercase tracking-[0.18em] text-[#1a73e8]">Command Library Task</p>
-            <h1 className="font-display mt-2 text-4xl font-semibold tracking-tight text-[#111111] md:text-5xl">{task.title}</h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-[#5f6368]">{directSubmission ? "Save a program for scheduling or upload a file to your account." : taskFeatureNotes[task.slug]}</p>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function FocusedLiveRunSection() {
   return (
-    <section className="bg-[#f5f4f1] px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-5xl">
-        <div className="overflow-hidden rounded-[22px] border border-black/8 bg-white/70 shadow-[0_28px_80px_rgba(17,17,17,0.08)]">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/8 px-5 py-4">
+    <section aria-labelledby="eaic-live-camera-title" className="bg-[#f5f4f1] px-4 py-10 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl">
+        <EaicTaskCard>
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1a73e8]">Live Stream Camera</p>
-              <p className="mt-1 text-xs leading-5 text-[#5f6368]">Live video appears here. Saved Aegies captures remain available for download.</p>
+              <h2 id="eaic-live-camera-title" className="text-3xl font-semibold tracking-tight text-[#111111]">Live Stream Camera</h2>
+              <p className="mt-2 text-sm leading-6 text-[#5f6368]">Live video appears here. Saved Aegis captures remain available for download.</p>
             </div>
-            <div className="flex items-center gap-3">
-              <Link
-                href={robotSchedulingPath}
-                className="rounded-full border border-[#1a73e8]/40 bg-white px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.12em] text-[#1a73e8] transition hover:bg-[#1a73e8] hover:text-white"
-              >
-                Schedule Time
-              </Link>
-              <span className="h-3 w-3 rounded-full bg-[#9aa0a6]" aria-hidden="true" />
-            </div>
+            <Link
+              href={robotSchedulingPath}
+              className="inline-flex min-h-11 items-center rounded-full bg-[#1a73e8] px-5 py-2 text-sm font-semibold text-white hover:bg-[#155fc0] focus-visible:outline-2 focus-visible:outline-offset-2"
+            >
+              Schedule Time
+            </Link>
           </div>
-          <div className="border-b border-black/8 bg-[#faf9f6] px-5 py-4 text-sm leading-6 text-[#5f6368]">
-            Aegies supports paid display captures and a persistent download archive. Navi sessions show live video only because the Navi SDK has no image-capture command.
-          </div>
-          <div className="bg-[#111111] p-4">
-            <LiveRobotCamera roomName={process.env.NEXT_PUBLIC_LIVEKIT_ROOM_NAME || "aegis-lab-1"} />
-          </div>
-        </div>
+          <p className="my-4 max-w-3xl text-sm leading-6 text-[#5f6368]">
+            Aegis supports paid display captures and a persistent download archive. Navi sessions show live video only because the Navi SDK has no image-capture command.
+          </p>
+          <LiveRobotCamera roomName={process.env.NEXT_PUBLIC_LIVEKIT_ROOM_NAME || "aegis-lab-1"} />
+        </EaicTaskCard>
       </div>
     </section>
   );
@@ -1768,7 +1719,7 @@ function FocusedBrowseFunctionsSection() {
             data-safety-limits-theme="engineering-yellow"
             className="rounded-[22px] border border-[#d8d3ca] bg-white/70 p-5 shadow-[0_28px_80px_rgba(17,17,17,0.08)]"
           >
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#8a6b12]">Safety Limits</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--color-warning)]">Safety Limits</p>
             <div className="mt-4 grid gap-2">
               {safetyLimits.map((limit) => {
                 const emphasizesCompletionVerification = limit.label === "Every live gesture waits for completion and verifies stable standing again";
@@ -2284,7 +2235,7 @@ function HardwareResultPanel({ result }: { result: HardwareResult }) {
   }, [passed, result.resultId, result.simulationClips.length]);
 
   return (
-    <section className="bg-[#f5f4f1] px-4 pb-10 sm:px-6 lg:px-8">
+    <section data-code-review-surface className="bg-[#f5f4f1] px-4 pb-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-5">
         <div className="rounded-[22px] border border-black/8 bg-white/70 p-5 shadow-[0_28px_80px_rgba(17,17,17,0.08)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2354,7 +2305,7 @@ function HardwareResultPanel({ result }: { result: HardwareResult }) {
                 </div>
                 <div className="border-x border-b border-[#dce7f2] bg-[#f8fbff] px-3 py-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-[#005bd6]">
+                    <p className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--color-accent-strong)]">
                       Playing {selectedRobotModel} preview {activeClipIndex + 1} / {result.simulationClips.length}: {activeClip.label}
                     </p>
                     <p className="font-mono text-xs text-[#526174]">{activeClip.sourceLine}</p>
@@ -2518,7 +2469,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
   const [previewGif, setPreviewGif] = useState<string>(initialPreview.gif);
   const [previewCommand, setPreviewCommand] = useState<string>(initialPreview.command);
   const [previewStatus, setPreviewStatus] = useState(
-    "MuJoCo simulator preview ready. Choose Aegies or Navi, then run your code."
+    "MuJoCo simulator preview ready. Choose Aegis or Navi, then run your code."
   );
   const [isSimulating, setIsSimulating] = useState(false);
   const [simFrames, setSimFrames] = useState<SimFrame[]>([{ x: 0, y: 0, z: 0.37, yaw: 0, pitch: 0 }]);
@@ -3430,7 +3381,12 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
           display: none !important;
         }
       `}</style>
-      {selectedTask ? <TaskDetailHeader task={selectedTask} directSubmission={showExemptWorkspace}/> : null}
+      {selectedTask && <EaicTaskHeader
+        title={selectedTask.title}
+        activeTask={selectedTask.slug}
+        number={selectedTask.number}
+        description={showExemptWorkspace ? "Save a program for scheduling or upload a file to your account." : taskFeatureNotes[selectedTask.slug]}
+      />}
       {showHero ? (
       <section className="border-b border-[#2a3440] bg-[#101418]">
         <div className="mx-auto grid max-w-7xl gap-8 px-6 py-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-8">
@@ -3519,7 +3475,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
           initialFile={uploadedFileName} schedulable={canScheduleRobotSlot}
           onViewOnly={masterLiveTestAccess ? ()=>changeCodeCheckingRobotModel("Master Live Test") : undefined}/>
       ) : showFocusedReview ? (
-        <section className="bg-[#f5f4f1] px-4 py-10 sm:px-6 lg:px-8">
+        <section data-code-review-surface className="bg-[#f5f4f1] px-4 py-10 sm:px-6 lg:px-8">
           <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
             <div className="flex h-full flex-col overflow-hidden rounded-[22px] border border-black/8 bg-white/70 shadow-[0_28px_80px_rgba(17,17,17,0.08)]">
               <div className="border-b border-black/8 bg-[#faf9f6] px-5 py-4">
@@ -3614,7 +3570,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
                     {masterLiveTestSelected
                       ? masterPresentation.viewOnlyNotice
                       : masterArmCodeSelected ? "Checks supported Master methods for a scheduled session."
-                      : robotModel === "Navi" ? "Checks this submission against the latest Navi SDK." : "Checks this submission against the Aegies SDK."}
+                      : robotModel === "Navi" ? "Checks this submission against the latest Navi SDK." : "Checks this submission against the Aegis SDK."}
                   </p>
                 </div>
                 <div className="rounded-[14px] border border-black/8 bg-[#faf9f6] p-3">
@@ -3624,7 +3580,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
                 </div>
                 <div className="flex items-center gap-3" aria-hidden="true">
                   <span className="h-px flex-1 bg-black/8" />
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7d8b9c]">Or upload a file</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--color-text-muted)]">Or upload a file</span>
                   <span className="h-px flex-1 bg-black/8" />
                 </div>
                 {(physicalSubmissionId || hardwareResult || softwareReviewStatus !== "locked" || softwarePassed) ? (
@@ -4173,7 +4129,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
                   {robotModelOptions.map((model) => <option key={model} value={model}>{model}</option>)}
                 </select>
               </label>
-              <p className="mt-2 text-xs leading-5 text-[#7f8c99]">{robotModel === "Navi" ? "Latest Navi SDK hardware rules are enabled." : "Aegies hardware rules are enabled."}</p>
+              <p className="mt-2 text-xs leading-5 text-[#7f8c99]">{robotModel === "Navi" ? "Latest Navi SDK hardware rules are enabled." : "Aegis hardware rules are enabled."}</p>
             </div>
             <div className="border border-[#2a3440] bg-[#0d1117] p-3">
               <p className="text-xs uppercase tracking-[0.14em] text-[#7f8c99]">Test type</p>

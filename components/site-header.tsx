@@ -260,8 +260,8 @@ export function SiteHeader() {
         data-site-mobile-drawer
         inert={!mobileOpen}
         aria-hidden={!mobileOpen}
-        className={`fixed right-0 top-[72px] z-[90] h-[calc(100vh-72px)] w-[82vw] max-w-[340px] overflow-y-auto border-l border-white/10 bg-[#05070a] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.72)] transition-transform duration-200 xl:hidden ${
-          mobileOpen ? "translate-x-0" : "translate-x-full"
+        className={`fixed right-0 top-[72px] z-[90] h-[calc(100vh-72px)] w-[82vw] max-w-[340px] overflow-y-auto border-l border-white/10 bg-[#05070a] p-5 transition-transform duration-200 xl:hidden ${
+          mobileOpen ? "translate-x-0 shadow-[0_24px_80px_rgba(0,0,0,0.72)]" : "translate-x-full"
         }`}
       >
         <nav className="flex flex-col gap-2">

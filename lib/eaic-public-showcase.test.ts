@@ -117,3 +117,10 @@ test("EAIC presents the generated motion-study artwork consistently in both them
     "light mode must derive stable black linework from the explicit dark-theme flood"
   );
 });
+
+test("public command placeholders keep the full contrast of the theme's muted ink", async () => {
+  for (const path of ["app/agentech-products/eaic/eaic-public.css", "components/eaic-wave-demo.module.css"]) {
+    const css = await readWorkspaceFile(path);
+    assert.match(css, /::placeholder\s*\{[^}]*color:\s*var\(--eaic-muted\);\s*opacity:\s*1;/, path);
+  }
+});

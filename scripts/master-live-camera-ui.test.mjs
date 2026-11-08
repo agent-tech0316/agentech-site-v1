@@ -21,7 +21,7 @@ test("Live camera gates Master controls and keeps the shared Aegies/Navi video p
 	assert.match(camera, /MasterLivekitCameraGrid/);
   assert.equal((camera.match(/<video\b/g) ?? []).length, 1);
   assert.match(camera, /Navi live session: live video only/);
-  assert.match(camera, /Aegies live session: display-mode captures/);
+  assert.match(camera, /Aegis live session: display-mode captures/);
 });
 
 test("Master defaults to the shared external camera and robot cameras require a user choice", () => {

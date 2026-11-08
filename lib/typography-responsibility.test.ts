@@ -76,15 +76,15 @@ test("matches desktop navigation labels to the robotics interface-caption rhythm
   );
 });
 
-test("keeps the expanded navigation behind the large-screen breakpoint", async () => {
+test("keeps the expanded navigation and drawer on opposite sides of the 1280px breakpoint", async () => {
   const header = await readWorkspaceFile("components/site-header.tsx");
 
-  assert.match(header, /data-mobile-theme-controls[^>]*className="[^"]*lg:hidden"/);
-  assert.match(header, /className="grid[^"]*lg:hidden"/);
-  assert.match(header, /<nav className=\{`[^`]*lg:flex/);
-  assert.match(header, /w-\[140px\][^"]*lg:flex/);
-  assert.equal((header.match(/lg:hidden/g) ?? []).length, 4);
-  assert.doesNotMatch(header, /\bmd:(?:flex|hidden)\b/);
+  assert.match(header, /data-mobile-theme-controls[^>]*className="[^"]*xl:hidden"/);
+  assert.match(header, /className="grid[^"]*xl:hidden"/);
+  assert.match(header, /<nav className=\{`[^`]*xl:flex/);
+  assert.match(header, /w-\[140px\][^"]*xl:flex/);
+  assert.equal((header.match(/xl:hidden/g) ?? []).length, 4);
+  assert.doesNotMatch(header, /\b(?:md|lg):(?:flex|hidden)\b/);
 });
 
 test("keeps mobile navigation readable without changing the approved type family or weight", async () => {
@@ -160,8 +160,9 @@ test("keeps EAIC interface controls in Interface while preserving technical valu
     "features/eaic/01-clients/eaic-hub/components/agentech-library-workbench.tsx"
   );
 
-  assert.match(workbench, /Command Library Task<\/p>[\s\S]{0,180}<h1 className="[^"]*font-display/);
-  assert.doesNotMatch(workbench, /font-mono[^>]*>Command Library Task/);
+  const header = await readWorkspaceFile("features/eaic/01-clients/eaic-hub/components/eaic-task-header.tsx");
+  assert.match(header, /font-interface[^>]*>\{eyebrow\}<\/p>[\s\S]{0,180}<h1 className="[^"]*font-display/);
+  assert.match(header, /font-mono[^>]*>[\s\S]*?item\.number/);
   assert.doesNotMatch(workbench, /font-mono[^>]*>View functions/);
   assert.doesNotMatch(workbench, /font-mono[^>]*>Hide functions/);
   assert.doesNotMatch(workbench, /font-mono[^>]*>details<\/span>/);

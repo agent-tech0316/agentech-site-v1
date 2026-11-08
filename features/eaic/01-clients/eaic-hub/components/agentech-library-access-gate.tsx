@@ -6,6 +6,7 @@ import { ReactNode, useEffect, useMemo, useState } from "react";
 import { getAccountSession } from "@/lib/account-session";
 import { isLocalHostname } from "@/lib/local-auth-bypass";
 import { eaicHubPath } from "@/features/eaic/01-clients/eaic-hub/contracts/eaic-hub";
+import { EaicTaskCard } from "./eaic-task-card";
 
 type AccessStatus = "checking" | "allowed" | "signed-out" | "locked" | "error";
 
@@ -15,6 +16,9 @@ type AccountSummary = {
   }>;
   error?: string;
 };
+
+const gateAction = "inline-flex min-h-11 items-center justify-center rounded-full px-5 py-2.5 text-center text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2";
+const primaryGateAction = `${gateAction} bg-[var(--color-title)] text-[color:var(--color-canvas)]`;
 
 function LibraryGateShell({
   children,
@@ -26,29 +30,14 @@ function LibraryGateShell({
   title: string;
 }) {
   return (
-    <div className="agentech-library-page min-h-screen bg-[#fbfdff] px-5 py-8 text-[#07142e] sm:px-8 lg:py-10">
-      <style>{`
-        body:has(.agentech-library-page) {
-          background: #fbfdff !important;
-          color: #07142e;
-        }
-
-        body:has(.agentech-library-page)::before,
-        body:has(.agentech-library-page)::after {
-          display: none;
-        }
-
-        body:has(.agentech-library-page) main.flex-1 {
-          background: #fbfdff;
-        }
-      `}</style>
-      <main className="mx-auto flex min-h-[78vh] w-full max-w-4xl items-center">
-        <section className="w-full rounded-[8px] border border-[#dce7f2] bg-white p-8 shadow-[0_22px_70px_rgba(12,31,58,0.08)] sm:p-10">
-          <p className="font-interface text-xs font-bold uppercase tracking-[0.18em] text-[#008a7a]">{eyebrow}</p>
-          <h1 className="mt-4 text-4xl font-extrabold tracking-normal text-[#07142e] sm:text-5xl">{title}</h1>
-          <div className="mt-5 text-base font-semibold leading-7 text-[#23304a]">{children}</div>
-        </section>
-      </main>
+    <div data-eaic-access-gate className="agentech-library-page eaic-task-theme min-h-screen bg-[#f5f4f1] px-5 py-8 text-[#111111] sm:px-8 lg:py-10">
+      <section aria-labelledby="eaic-access-title" className="mx-auto grid min-h-[78vh] w-full max-w-4xl content-center">
+        <EaicTaskCard>
+          <p className="font-interface text-xs font-semibold uppercase tracking-[0.18em] text-[#1a73e8]">{eyebrow}</p>
+          <h1 id="eaic-access-title" className="font-display mt-4 text-4xl font-semibold tracking-tight text-[#111111] sm:text-5xl">{title}</h1>
+          <div className="mt-5 break-words text-base leading-7 text-[#5f6368]">{children}</div>
+        </EaicTaskCard>
+      </section>
     </div>
   );
 }
@@ -137,7 +126,7 @@ export function AgentechLibraryAccessGate({ children }: { children: ReactNode })
     return (
       <LibraryGateShell eyebrow="Developer access required" title="Sign in to open EAIC HUB.">
         <p>You need an Agentech account with a developer profile before this workspace opens.</p>
-        <Link href={loginHref} className="mt-6 inline-flex rounded-[8px] bg-[#07142e] px-5 py-3 text-sm font-bold uppercase tracking-[0.12em] text-white">
+        <Link href={loginHref} className={`mt-6 ${primaryGateAction}`}>
           Sign In
         </Link>
       </LibraryGateShell>
@@ -151,10 +140,10 @@ export function AgentechLibraryAccessGate({ children }: { children: ReactNode })
           {email} is signed in, but this account does not have a developer profile yet. Create or switch to a developer profile to access robot testing tools.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link href="/account" className="rounded-[8px] bg-[#07142e] px-5 py-3 text-sm font-bold uppercase tracking-[0.12em] text-white">
+          <Link href="/account" className={primaryGateAction}>
             Create Developer Profile
           </Link>
-          <Link href={loginHref} className="rounded-[8px] border border-[#9cd9df] px-5 py-3 text-sm font-bold uppercase tracking-[0.12em] text-[#008a7a]">
+          <Link href={loginHref} className={`${gateAction} border border-[var(--color-border-strong)] text-[color:var(--color-title)]`}>
             Sign In
           </Link>
         </div>
@@ -166,7 +155,7 @@ export function AgentechLibraryAccessGate({ children }: { children: ReactNode })
     return (
       <LibraryGateShell eyebrow="Access check failed" title="We could not verify developer access.">
         <p>Refresh the page or open your account dashboard to confirm this account has a developer profile.</p>
-        <Link href="/account" className="mt-6 inline-flex rounded-[8px] bg-[#07142e] px-5 py-3 text-sm font-bold uppercase tracking-[0.12em] text-white">
+        <Link href="/account" className={`mt-6 ${primaryGateAction}`}>
           Open Account
         </Link>
       </LibraryGateShell>
