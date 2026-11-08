@@ -5,6 +5,11 @@ import { loadTypeScriptModule } from "./test-utils/load-typescript-module.mjs";
 
 const workbench = readFileSync(new URL("../features/eaic/01-clients/eaic-hub/components/agentech-library-workbench.tsx", import.meta.url), "utf8");
 
+test("the booking page shows on-site check-in only when the signed booking does not authorize the start", () => {
+  const dashboard = readFileSync(new URL("../components/account-dashboard.tsx", import.meta.url), "utf8");
+  assert.match(dashboard, /session\.body_booking_starts_automatically\s*!==\s*true[\s\S]{0,230}<BodyOperatorReady/);
+});
+
 test("gateway owner accounts retain the focused robot booking form", () => {
   const dashboard = readFileSync(new URL("../components/account-dashboard.tsx", import.meta.url), "utf8");
   assert.match(dashboard, /if \(isGatewayOwnerAccount && !focusedRobotScheduling\) \{/);

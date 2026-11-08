@@ -123,6 +123,7 @@ type DashboardData = {
   }>;
   robotSessions?: Array<{
     id: number;
+    body_booking_starts_automatically?: boolean;
     profile_username: string | null;
     profile_type: "developer" | "student" | "teacher" | "talent" | null;
     session_title: string;
@@ -3202,7 +3203,8 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
                           <p className="mt-1 text-xs text-slate-500">Run: {formatInvoiceStatus(session.approved_run_type || "preset_demo")}</p>
                         </div>
                       </div>
-                      {session.code_submission_id?.startsWith("master-body-") && ["approved","confirmed","scheduled","requested","pending"].includes(session.session_status) && (
+                      {session.code_submission_id?.startsWith("master-body-") && session.body_booking_starts_automatically !== true &&
+                        ["approved","confirmed","scheduled","requested","pending"].includes(session.session_status) && (
                         <BodyOperatorReady sessionId={Number(session.id)} />
                       )}
                       {isCustomCodeSession ? (

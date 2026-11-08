@@ -78,6 +78,8 @@ function applyMasterSubscriptions(room: Room, selection: MasterViewSelection) {
 export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [sound, setSound] = useState<"unavailable" | "playing" | "muted">("unavailable");
   const activeRoomRef = useRef<Room | null>(null);
   const masterSelectionRef = useRef<MasterViewSelection>({ mode: "wall" });
   const [isViewing, setIsViewing] = useState(false);
@@ -266,7 +268,25 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
     let noVideoTimer: ReturnType<typeof setTimeout> | null = null;
     let stopFrameObservation: (() => void) | undefined;
     let attachedVideoTrack: RemoteTrack | null = null;
+    let attachedAudioTrack: RemoteTrack | null = null;
+    const audioElement = audioRef.current;
     const tokenRequest = new AbortController();
+
+    function attachExternalTrack(track: RemoteTrack, withAudio: boolean) {
+      if (track.kind !== Track.Kind.Audio) {
+        attachVideo(track);
+        return;
+      }
+      if (!withAudio || !isMounted || !audioElement || attachedAudioTrack === track) return;
+      attachedAudioTrack?.detach(audioElement);
+      attachedAudioTrack = track;
+      track.attach(audioElement);
+      const report = (state: "playing" | "muted") => {
+        if (isMounted && attachedAudioTrack === track) setSound(state);
+      };
+      if (audioElement.muted) report("muted");
+      else void audioElement.play().then(() => report("playing"), () => report("muted"));
+    }
 
     function attachVideo(track: RemoteTrack) {
       if (!isMounted || !videoElement || track.kind !== Track.Kind.Video || attachedVideoTrack === track) {
@@ -342,12 +362,19 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
 
         room.on(RoomEvent.TrackSubscribed, (track, publication) => {
           if (masterConnection) attachMasterVideo(track, publication);
-          else attachVideo(track);
+          else attachExternalTrack(track, sessionModel === "Master");
         });
 
         room.on(RoomEvent.TrackUnsubscribed, (track, publication) => {
           if (masterConnection) {
             detachMasterVideo(track, publication);
+          } else if (track.kind === Track.Kind.Audio) {
+            if (attachedAudioTrack === track && audioElement) {
+              track.detach(audioElement);
+              attachedAudioTrack = null;
+              if (isMounted) setSound("unavailable");
+            }
+            return;
           } else {
             track.detach();
             if (attachedVideoTrack === track) {
@@ -413,7 +440,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
         } else {
           room.remoteParticipants.forEach((participant) => {
             participant.trackPublications.forEach((publication) => {
-              if (publication.track) attachVideo(publication.track);
+              if (publication.track) attachExternalTrack(publication.track, sessionModel === "Master");
             });
           });
         }
@@ -450,6 +477,11 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
       if (videoElement) {
         videoElement.srcObject = null;
       }
+      if (audioElement) {
+        attachedAudioTrack?.detach(audioElement);
+        audioElement.srcObject = null;
+      }
+      setSound("unavailable");
       setMasterTracksByName(new Map());
       if (activeRoomRef.current === activeRoom) activeRoomRef.current = null;
       activeRoom?.disconnect();
@@ -503,6 +535,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
 
   return (
     <div ref={containerRef}>
+    <audio ref={audioRef} autoPlay />
     {isMasterSession ? (
       <div role="group" aria-label="Master camera source" className="mb-3 flex flex-wrap gap-2">
         <button type="button" aria-pressed={masterCameraSource === "external"}
@@ -515,6 +548,22 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
           className="rounded border border-[#93c5fd] bg-[#101d2e] px-4 py-2 text-sm text-[#dbeafe] aria-pressed:bg-[#1a73e8] aria-pressed:text-white">
           Robot cameras
         </button>
+        {masterCameraSource === "external" && sound !== "unavailable" && (
+          <button type="button" aria-pressed={sound === "playing"} onClick={async () => {
+            const audio = audioRef.current;
+            if (!audio) return;
+            if (sound === "playing") {
+              audio.muted = true;
+              setSound("muted");
+            } else {
+              audio.muted = false;
+              try { await audio.play(); setSound("playing"); }
+              catch { setSound("muted"); }
+            }
+          }} className="rounded border border-[#93c5fd] bg-[#101d2e] px-4 py-2 text-sm text-[#dbeafe]">
+            {sound === "playing" ? "Mute camera audio" : "Play camera audio"}
+          </button>
+        )}
       </div>
     ) : null}
     {showMasterControls ? (

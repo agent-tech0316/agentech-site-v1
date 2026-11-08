@@ -138,6 +138,7 @@ export type AiRoboticsClubApplicationRecord = {
 };
 
 export type RobotSessionRecord = {
+  body_booking_starts_automatically?: boolean;
   id: number;
   email: string;
   access_profile_id: number | null;
@@ -899,7 +900,7 @@ export async function getAiRoboticsClubApplications(accountEmail: string) {
 export async function getRobotSessions(accountEmail: string) {
   try {
     const rows = await supabaseRequest<RobotSessionRecord[]>("agentech_robot_sessions", {
-      query: `email=eq.${encodeURIComponent(accountEmail)}&select=id,email,access_profile_id,profile_username,profile_type,session_title,robot_model,scheduled_start,scheduled_end,session_status,requested_run_type,approved_run_type,preset_demo,benchmark_status,code_submission_id,price,invoice_number,notes,device_results,device_results_requested,device_results_error,device_results_updated_at,created_at,updated_at&order=scheduled_start.desc.nullslast,created_at.desc`
+      query: `email=eq.${encodeURIComponent(accountEmail)}&select=id,email,access_profile_id,profile_username,profile_type,session_title,robot_model,scheduled_start,scheduled_end,session_status,requested_run_type,approved_run_type,preset_demo,benchmark_status,code_submission_id,price,invoice_number,notes,device_results,device_results_requested,device_results_error,device_results_updated_at,created_at,updated_at,body_booking_starts_automatically&order=scheduled_start.desc.nullslast,created_at.desc`
     });
     return rows.map(normalizeRobotSessionDeviceResults);
   } catch {
