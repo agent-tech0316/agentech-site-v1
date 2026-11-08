@@ -70,6 +70,18 @@ export async function publishExpiredAdmission(request, id, item) {
 }
 
 
+// The PC keeps the original hardware receipt. Its retry must not replace a
+// later, evidence-backed review of the same booking's public result.
+export async function publishTerminalPatch(request, id, item, patch) {
+  const filters = new URLSearchParams({ id: `eq.${id}`, select: "id" });
+  if (item.executionModel === "master") {
+    filters.set("execution_result->>reporting_review", "is.null");
+    if (item.executionSubmissionId != null) filters.set("code_submission_id", `eq.${item.executionSubmissionId}`);
+  }
+  const rows = await request("agentech_robot_sessions", filters.toString(), { method: "PATCH", body: patch });
+  return item.executionModel !== "master" || (Array.isArray(rows) && rows.length === 1);
+}
+
 export function buildExecutionResultPatch(item, updatedAt = new Date().toISOString()) {
   return {
     execution_result: item.executionResult ?? null,

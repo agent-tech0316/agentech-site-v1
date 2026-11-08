@@ -38,6 +38,7 @@ import { evaluateAgentechMovementSafety, type AgentechMovementSafety } from "@/l
 import { normalizeAgentechRobotModel, robotModelOptions, type AgentechRobotModel } from "@/features/eaic/02-unified-api/resources-runs/agentech-robot-model";
 import { LiveRobotCamera } from "@/features/eaic/05-delivery/live-results/components/live-robot-camera";
 import { ExemptSubmissionWorkbench } from "./exempt-submission-workbench";
+import exemptStyles from "./exempt-submission-workbench.module.css";
 import { MasterMotorMap } from "@/features/eaic/01-clients/eaic-hub/components/master-motor-map";
 import { MasterJointMotionGuide } from "@/features/eaic/01-clients/eaic-hub/components/master-joint-motion-guide";
 import { MasterHeartbeat } from "@/features/eaic/01-clients/eaic-hub/components/master-heartbeat";
@@ -1209,7 +1210,7 @@ const taskFeatureNotes: Record<AgentechLibraryTaskSlug, string> = {
 
 function TaskDetailHeader({ task, directSubmission = false }: { task: NonNullable<ReturnType<typeof getAgentechLibraryTask>>; directSubmission?: boolean }) {
   return (
-    <section className="border-b border-black/8 bg-[#f5f4f1]">
+    <section data-eaic-task-header className="border-b border-black/8 bg-[#f5f4f1]">
       <div className="mx-auto max-w-7xl px-6 py-8 lg:px-8 lg:py-10">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <HistoryBackButton
@@ -1221,6 +1222,7 @@ function TaskDetailHeader({ task, directSubmission = false }: { task: NonNullabl
               <Link
                 key={item.slug}
                 href={getEaicHubTaskPath(item.slug)}
+                aria-current={item.slug === task.slug ? "page" : undefined}
                 className={`rounded-[10px] border px-3 py-2 font-mono text-xs transition ${
                   item.slug === task.slug
                     ? "border-[#1a73e8]/45 bg-[#1a73e8] text-white shadow-[0_8px_20px_rgba(26,115,232,0.2)]"
@@ -2588,7 +2590,8 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
   const showFocusedBrowseFunctions = selectedTask?.slug === "view-sdk";
   const showFocusedLiveRun = selectedTask?.slug === "watch-live-run";
   const showDocs = !selectedTask;
-  const useLightTaskPage = Boolean(selectedTask);
+  const showExemptWorkspace = showFocusedReview && fullReviewExempt && !masterLiveTestSelected && !isLoadingReviewGate;
+  const taskTheme = selectedTask ? "eaic-task-theme bg-[#f5f4f1] text-[#111111]" : "bg-[#0b0d10] text-white";
 
   useEffect(() => {
     if (!showFocusedReview) {
@@ -3416,7 +3419,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
   }
 
   return (
-    <div className={`agentech-library-page min-h-screen ${useLightTaskPage ? "eaic-task-theme bg-[#f5f4f1] text-[#111111]" : "bg-[#0b0d10] text-white"}`}>
+    <div className={`agentech-library-page min-h-screen ${showExemptWorkspace ? exemptStyles.workspace : taskTheme}`}>
       <style>{`
         nextjs-portal,
         [data-nextjs-toast],
@@ -3427,7 +3430,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
           display: none !important;
         }
       `}</style>
-      {selectedTask ? <TaskDetailHeader task={selectedTask} directSubmission={showFocusedReview && fullReviewExempt && !masterLiveTestSelected}/> : null}
+      {selectedTask ? <TaskDetailHeader task={selectedTask} directSubmission={showExemptWorkspace}/> : null}
       {showHero ? (
       <section className="border-b border-[#2a3440] bg-[#101418]">
         <div className="mx-auto grid max-w-7xl gap-8 px-6 py-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-8">
@@ -3511,7 +3514,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
       {showFocusedStartCoding ? <FocusedStartCodingSection /> : null}
       {showFocusedBrowseFunctions ? <FocusedBrowseFunctionsSection /> : null}
       {showFocusedLiveRun ? <FocusedLiveRunSection /> : null}
-      {showFocusedReview && fullReviewExempt && !masterLiveTestSelected && !isLoadingReviewGate ? (
+      {showExemptWorkspace ? (
         <ExemptSubmissionWorkbench key={submissionQuery.id || "current"} initialCode={code} initialModel={robotModel}
           initialFile={uploadedFileName} schedulable={canScheduleRobotSlot}
           onViewOnly={masterLiveTestAccess ? ()=>changeCodeCheckingRobotModel("Master Live Test") : undefined}/>

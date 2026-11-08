@@ -57,6 +57,11 @@ class BundledAudio(unittest.TestCase):
         self.assertTrue(capture(owner=selected)['completed'])
         self.assertFalse(capture(owner='/tmp/other/audio.wav')['completed'])
         self.assertFalse(capture(owner=selected,finish_owner='tts')['completed'])
+        beginning=line('07:48:40.100001',f'WAV params: sr=16000Hz, ch=1, bps=16, bytes=2080000 file:{selected}')
+        beginning+=line('07:48:41.010001',f'AudioPlayer::pub_play_state {selected} state 1')
+        for contrary in ('pcm_started false','playback volume 0','get_playback_device 1'):
+            with self.subTest(contrary=contrary):
+                self.assertIn('error',body.parse_audio_output(beginning+line('07:48:42.110001',contrary)))
 
 
 class NativePackageExecution(unittest.TestCase):
@@ -77,8 +82,10 @@ class NativePackageExecution(unittest.TestCase):
         self.confirmed = runner._iso(self.now)
         self.end = dict(owner="mc_ros2_node3097",mode="STAND_DEFAULT",player=0,settled=True)
         self.finish_event = dict(final=self.end,playing_seconds=59.4,peak_travel_rad=2.542,
-                                 native_motion=body.SPEC["motion"],joints_fault_free=True)
+                                 native_motion=body.SPEC["motion"],joints_fault_free=True,terminal_standing_observed=True,
+                                 joint_fault_count=0,joint_faults=[])
         self.audio_finish = '07:49:46.010001'
+        self.hal_lines = None
 
     def execute(self, response=None, cancel=False, claimed_at=None):
         plan = self.root/"plan.json"
@@ -102,7 +109,7 @@ class NativePackageExecution(unittest.TestCase):
                 f'[2026-11-08 07:48:40.778001][Info][2609][audio_player.cpp:239] WAV params: sr=16000Hz, ch=1, bps=16, bytes=2080000 file:{body.AUDIO_PATH}\n'
                 '[2026-11-08 07:48:41.010001][Info][2609][audio_player.cpp:445] AudioPlayer::pub_play_state tts state 1\n'
                 f'[2026-11-08 {self.audio_finish}][Info][2609][audio_player.cpp:445] AudioPlayer::pub_play_state tts state 2\n')
-            yield io.BytesIO(audio.encode()), dict(board='soc2',file='audio.wav',sha256=body.SPEC['audio'],volume=100,muted=False,completed=False)
+            yield io.BytesIO((audio if self.hal_lines is None else self.hal_lines).encode()), dict(board='soc2',file='audio.wav',sha256=body.SPEC['audio'],volume=100,muted=False,completed=False)
         def play(_):
             self.calls.append(self.now)
             if isinstance(response,Exception): raise response
@@ -112,7 +119,8 @@ class NativePackageExecution(unittest.TestCase):
             self.now += 64
             if isinstance(self.finish_event,Exception): raise self.finish_event
             return read_event(io.BytesIO((json.dumps(self.finish_event)+'\n').encode()), **kwargs)
-        with patch.object(body,"connection",connection),patch.object(body,"observer",observer),patch.object(body,"speaker_output",speaker),patch.object(body,"play_once",play),patch.object(body,"event",event):
+        clock = SimpleNamespace(monotonic=lambda:self.now,sleep=sleep)
+        with patch.object(body,"connection",connection),patch.object(body,"observer",observer),patch.object(body,"speaker_output",speaker),patch.object(body,"play_once",play),patch.object(body,"event",event),patch.object(body,'time',clock):
             return runner.execute_plan(plan,cfg,self.root/"receipt.json",first_command_not_before=runner._iso(self.now+20),
                                        body_operator_confirmed_at=self.confirmed,body_booking_claimed_at=claimed_at,cancel_file=cancel_file,
                                        now=lambda:self.now,sleep=sleep)
@@ -124,6 +132,35 @@ class NativePackageExecution(unittest.TestCase):
         self.assertTrue(receipt["commands"][0]["result"]["audio_output"]["completed"])
         self.assertTrue(receipt["handoff_ready"])
         self.assertEqual(receipt["outcome"],"completed")
+
+    def test_108_measured_dance_and_pcm_start_survive_missing_transport_end(self):
+        # These are the timestamps/bytes retained by #108. The HAL close is absent from its receipt.
+        self.hal_lines = (
+            f'[2026-11-08 08:30:28.231777][Info] WAV params: sr=16000Hz, ch=1, bps=16, bytes=2080000 file:{body.AUDIO_PATH}\n'
+            f'[2026-11-08 08:30:28.940175][Info] AudioPlayer::pub_play_state {body.AUDIO_PATH} state 1\n'
+            '[2026-11-08 08:30:28.940335][Info] pcm_started successfully, state: PREPARED\n')
+        self.finish_event.update(playing_seconds=59.200001028,peak_travel_rad=2.5291147232055664,native_transitions=[
+            dict(mode='BMIMIC',player=2,motion=body.SPEC['motion'],stamp_ns='1794097828210819478'),
+            dict(mode='BMIMIC_STEP',player=0,motion='',stamp_ns='1794097887510823089'),
+            dict(mode='STAND_DEFAULT',player=0,motion='',stamp_ns='1794097891010818716')])
+        receipt = self.execute()
+        self.assertEqual(receipt['outcome'],'completed')
+        result = receipt['commands'][0]['result']
+        self.assertTrue(result['motion_complete'])
+        self.assertTrue(result['music_played'])
+        self.assertEqual(result['audio_output']['transport_status'],'end_not_observed')
+        self.assertFalse(result['audio_output']['completed'])
+        self.assertNotIn('finished_at_robot',result['audio_output'])
+        self.assertNotIn('playing_seconds',result['audio_output'])
+        self.assertEqual(len(self.calls),1)
+        self.hal_lines += '[2026-11-08 08:30:35.000000][Info] StopAudioPlay Enter\n'
+        self.confirmed=runner._iso(self.now)
+        self.config['scheduled_start']=self.confirmed
+        self.config['scheduled_end']=runner._iso(self.now+120)
+        interrupted=self.execute()
+        self.assertEqual(interrupted['outcome'],'failed')
+        self.assertTrue(interrupted['commands'][0]['result']['motion_complete'])
+        self.assertFalse(interrupted['commands'][0]['result']['music_played'])
 
     def test_booking_start_uses_its_bound_claim_and_does_not_record_an_operator_check_in(self):
         self.config["native_body_start_policy"] = "signed_booking"

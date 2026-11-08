@@ -34,6 +34,7 @@ import {
   buildExecutionResultPatch,
   finishExpiredAdmission,
   publishExpiredAdmission,
+  publishTerminalPatch,
   parseExecutionResult,
 } from "./robot-session-execution-result.mjs";
 
@@ -748,13 +749,13 @@ function finishSessionCleanup(id, item) {
 
 async function syncFinalSessionStatus(id, item) {
   const databaseStatus = finalSessionDatabaseStatus(item);
-  if (!databaseStatus || item.databaseStatus === databaseStatus) return;
+  if (!databaseStatus || item.databaseStatus === databaseStatus || item.terminalPublicationConflict) return;
   try {
-    await request(
-      "agentech_robot_sessions",
-      `id=eq.${encodeURIComponent(id)}&select=id`,
-      { method: "PATCH", body: { session_status: databaseStatus } },
-    );
+    if (!await publishTerminalPatch(request, id, item, { session_status: databaseStatus })) {
+      item.terminalPublicationConflict = true;
+      saveState();
+      return;
+    }
     item.databaseStatus = databaseStatus;
     delete item.databaseStatusError;
     console.log(`[robot-stream] session ${id} synchronized to ${databaseStatus} in Supabase.`);
@@ -836,6 +837,7 @@ async function syncExecutionResult(id, item) {
     || item.executionResultCollectionAttempted !== true
     || item.executionResultPersisted === true
     || item.admissionPublicationConflict === true
+    || item.terminalPublicationConflict === true
   ) return;
   try {
     if (item.admissionFailureRecordedAt) {
@@ -847,11 +849,11 @@ async function syncExecutionResult(id, item) {
       }
       item.databaseStatus = "failed";
     } else {
-      await request(
-        "agentech_robot_sessions",
-        `id=eq.${encodeURIComponent(id)}&select=id`,
-        { method: "PATCH", body: buildExecutionResultPatch(item) },
-      );
+      if (!await publishTerminalPatch(request, id, item, buildExecutionResultPatch(item))) {
+        item.terminalPublicationConflict = true;
+        saveState();
+        return;
+      }
     }
     item.executionResultPersisted = true;
     delete item.executionResultPersistenceError;

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { robotModelOptions, type AgentechRobotModel } from "@/lib/agentech-robot-model";
 import { getEaicHubTaskPath } from "../contracts/eaic-hub";
 import type { AssetContentManifest } from "@/lib/eaic-asset-content";
-import styles from "./asset-contents.module.css";
+import styles from "./exempt-submission-workbench.module.css";
 
 type Receipt = {id:string; sha256:string; native_motion_name:string|null; content_manifest:AssetContentManifest|null};
 type Asset = { key: string; name: string; kind: string; bytes?: number; receipt:Receipt|null };
@@ -14,8 +14,7 @@ type Props = {
   initialCode: string; initialModel: AgentechRobotModel; initialFile: string;
   schedulable: boolean; onViewOnly?: () => void;
 };
-const panel = "rounded-2xl border border-black/10 bg-white p-5 text-[#202124] dark:border-white/15 dark:bg-[#18212b] dark:text-[#eaf2fd]";
-const button = "rounded-full border border-[#1a73e8] bg-[#1a73e8] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50";
+const panel = `${styles.panel} min-w-0 rounded-2xl border p-5`;
 
 async function post(url: string, body: object) {
   const response = await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
@@ -80,7 +79,7 @@ export function ExemptSubmissionWorkbench({initialCode,initialModel,initialFile,
       <h2 className="text-xl font-semibold">Program for scheduling</h2>
       <p className="my-3 text-sm">Your account automatically passes Command / Hardware Check and Software Check.</p>
       <label className="block text-sm font-semibold">Robot model
-        <select disabled={busy} className="ml-3 rounded border bg-transparent p-2" value={model}
+        <select disabled={busy} className="ml-3 rounded border p-2" value={model}
           onChange={e=>{setModel(e.target.value as AgentechRobotModel);setSaved(false);}}>
           {robotModelOptions.map(m=><option key={m}>{m}</option>)}
         </select>
@@ -91,11 +90,11 @@ export function ExemptSubmissionWorkbench({initialCode,initialModel,initialFile,
           if(file) void act(async()=>{setCode(await file.text());setFilename(file.name);setSaved(false);});
         }}/>
       </label>
-      <textarea aria-label="Python code submission editor" spellCheck={false} disabled={busy} value={code}
+      <textarea aria-label="Python code submission editor" placeholder="Type or paste Python code" spellCheck={false} disabled={busy} value={code}
         onChange={e=>{setCode(e.target.value);setSaved(false);}}
-        className="my-2 min-h-64 w-full rounded-lg border border-current/25 bg-transparent p-3 font-mono text-sm"/>
+        className="my-2 min-h-64 w-full rounded-lg border p-3 font-mono text-sm"/>
       <div className="mt-2 flex flex-wrap items-center gap-3">
-        <button className={button} disabled={busy || !code.trim() || saved} onClick={()=>void act(saveProgram)}>
+        <button className={`${styles.saveButton} rounded-full border px-4 py-2 text-sm font-semibold`} disabled={busy || !code.trim() || saved} onClick={()=>void act(saveProgram)}>
           {saved ? "Program saved" : "Save program for scheduling"}
         </button>
         {saved && <Link className="font-semibold underline" href={getEaicHubTaskPath("schedule-time")}>Request Time Slot</Link>}
@@ -136,7 +135,7 @@ export function ExemptSubmissionWorkbench({initialCode,initialModel,initialFile,
 }
 
 function AssetContents({manifest}:{manifest:AssetContentManifest}) {
-  return <div data-asset-contents className={`${styles.contents} my-3 rounded-xl border p-3 text-sm`}>
+  return <div data-asset-contents className="my-3 rounded-xl border p-3 text-sm">
     <dl className="space-y-3">
       {manifest.movement && <div><dt className="font-semibold">Movement · ONNX</dt>
         <dd className="break-all">{manifest.movement.path}</dd></div>}
@@ -146,6 +145,6 @@ function AssetContents({manifest}:{manifest:AssetContentManifest}) {
     </dl>
     <p className="mt-3 text-xs">{manifest.playback.mode === "movement_with_audio" ? "Movement and audio paired in this package."
       : manifest.movement ? "Movement only · no audio included." : "Audio only · no movement included."}</p>
-    <p className="mt-2 text-xs opacity-75">File identification does not verify playback on the robot.</p>
+    <p className="mt-2 text-xs">File identification does not verify playback on the robot.</p>
   </div>;
 }

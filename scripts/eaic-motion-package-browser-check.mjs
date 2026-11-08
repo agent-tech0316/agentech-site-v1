@@ -68,8 +68,7 @@ try {
     assert.match(await contents.innerText(), /65\.0 s/);
     assert.match(await contents.innerText(), /Movement and audio paired/);
     const foreground = await contents.getByText("Movement · ONNX", { exact: true }).evaluate(element => getComputedStyle(element).color);
-    const rgb = foreground.match(/\d+/g).slice(0, 3).map(Number);
-    assert.ok(theme === "dark" ? rgb.every(value => value > 200) : rgb.every(value => value < 80), `${theme} package text must contrast with its background: ${foreground}`);
+    assert.equal(foreground, "rgb(255, 255, 255)", `${theme} package text must stay white on the certification workspace`);
     assert.equal(transferCount, 1);
     assert.equal(await page.getByRole("link", { name: "Schedule Happy Dance with audio", exact: true }).count(), 1);
     if (output) await contents.screenshot({ path: path.join(output, `eaic-package-${theme}.png`) });

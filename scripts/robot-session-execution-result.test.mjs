@@ -5,6 +5,7 @@ import {
   buildExecutionResultPatch,
   finishExpiredAdmission,
   publishExpiredAdmission,
+  publishTerminalPatch,
   parseExecutionResult,
 } from "./robot-session-execution-result.mjs";
 
@@ -29,6 +30,28 @@ const expected = {
   sourceSha256: "a".repeat(64),
   planSha256: "b".repeat(64),
 };
+
+test("a cached Master failure cannot overwrite a reviewed result or its final booking status", async () => {
+  const item = {executionModel: "master", executionSubmissionId: "original"};
+  const rows = [{id: "108", code_submission_id: "original", session_status: "completed",
+    execution_result: {outcome: "completed", reporting_review: {previous_outcome: "failed"}}}];
+  const request = async (table, query, {body}) => {
+    assert.equal(table, "agentech_robot_sessions");
+    const where = new URLSearchParams(query);
+    const matches = rows.filter(row => where.get("id") === "eq."+row.id &&
+      where.get("code_submission_id") === "eq."+row.code_submission_id &&
+      (where.get("execution_result->>reporting_review") !== "is.null" || row.execution_result?.reporting_review == null));
+    matches.forEach(row => Object.assign(row, body));
+    return matches.map(({id}) => ({id}));
+  };
+  for (const patch of [{session_status: "failed"}, {execution_result: {outcome: "failed"}}]) {
+    assert.equal(await publishTerminalPatch(request, "108", item, patch), false);
+  }
+  assert.equal(rows[0].session_status, "completed");
+  assert.equal(rows[0].execution_result.outcome, "completed");
+  rows[0].execution_result = null;
+  assert.equal(await publishTerminalPatch(request, "108", item, {session_status: "completed"}), true);
+});
 
 const expiredNavi = {
   executionModel: "navi", status: "staged", executionResultRequired: true, executionStatus: "pending",

@@ -1,0 +1,82 @@
+.workspace {
+  --submission-background: #000;
+  --submission-text: #fff;
+  --submission-border: #868686;
+  color-scheme: dark;
+  background: var(--submission-background);
+  color: var(--submission-text);
+}
+
+.workspace [data-eaic-task-header],
+.workspace [data-eaic-task-header] :is(a, [data-task-number-badge]),
+.panel,
+.panel [data-asset-contents],
+.panel :is(select, option, textarea),
+.saveButton {
+  background-color: var(--submission-background);
+  border-color: var(--submission-border);
+  color: var(--submission-text);
+}
+
+.workspace [data-eaic-task-header] :is(h1, p) {
+  color: inherit;
+}
+
+.workspace [data-eaic-task-header] :is(a, [data-task-number-badge]) {
+  box-shadow: none;
+}
+
+.workspace [data-task-number-badge] {
+  border: 1px solid var(--submission-border);
+}
+
+.workspace [aria-current="page"],
+.workspace a:hover,
+.panel button:enabled:hover,
+.panel summary:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.workspace [data-eaic-task-header] a[aria-current="page"] {
+  border-color: var(--submission-text);
+  font-weight: 700;
+}
+
+/* The shared Back control enforces its palette with important declarations. */
+.workspace [data-history-back] {
+  background: var(--submission-background) !important;
+  border-color: var(--submission-border) !important;
+  color: var(--submission-text) !important;
+}
+
+.panel :is(input, button, a, summary),
+.panel textarea::placeholder {
+  color: var(--submission-text);
+  opacity: 1;
+}
+
+.panel input::file-selector-button {
+  margin-inline-end: 0.5rem;
+  border: 1px solid var(--submission-border);
+  border-radius: 0.375rem;
+  background: var(--submission-background);
+  color: var(--submission-text);
+  padding: 0.2rem 0.65rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.panel :disabled,
+.panel input:disabled::file-selector-button {
+  border-style: dashed;
+  color: var(--submission-text);
+  opacity: 1;
+  -webkit-text-fill-color: var(--submission-text);
+  cursor: not-allowed;
+}
+
+.workspace :is(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--submission-text);
+  outline-offset: 3px;
+}

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createBodyPlan, parseBodySubmission, verifyBodyReceipt } from './master-native-body.mjs';
+import { createBodyPlan, parseBodySubmission, reconcileMissingSpeakerEnd, verifyBodyReceipt } from './master-native-body.mjs';
 import { createGatewayCloudRequest } from './robot-cloud-request.mjs';
 import { parseMasterExecutionResult } from './master-session-gateway.mjs';
 import { readFileSync } from 'node:fs';
@@ -78,4 +78,58 @@ test('atomic native claim uses one POST and the cloud client rejects arbitrary R
   assert.ok(calls[0].url.includes("/rest/v1/rpc/agentech_claim_body_booking"));
   await assert.rejects(request('rpc/agentech_claim_body_booking',''),/Invalid cloud table/);
   await assert.rejects(request('rpc/other','',{method:'POST'}),/Invalid cloud table/);
+});
+
+test('session 108 timing proves music played while the archival handoff and unknown WAV end stay intact', () => {
+  const plan=createBodyPlan(row), binding={owner:'mc_ros2_node3097',mode:'STAND_DEFAULT',player:0,settled:true};
+  const error={type:'RuntimeError',message:'Missing full speaker HAL playback evidence for the bundled WAV'};
+  const audio={board:'soc2',file:'audio.wav',sha256:spec.audio,muted:false,volume:100,completed:false,
+    opened_at_robot:'2026-11-08T08:30:28.231777+08:00',started_at_robot:'2026-11-08T08:30:28.940175+08:00',
+    pcm_device_started_at_robot:'2026-11-08T08:30:28.940335+08:00',pcm_bytes:2080000,sample_rate_hz:16000,
+    channels:1,bits_per_sample:16,error:error.message};
+  const result={asset_id:assetId,zip_sha256:spec.zip,policy_sha256:spec.policy,audio_sha256:spec.audio,
+    bundled_audio:'audio.wav',audio_output:audio,request_attempted:true,play_response:'Play success',serial:spec.serial,
+    native_motion:spec.motion,playing_seconds:59.200001028,peak_travel_rad:2.5291147232055664,
+    native_transitions:[{mode:'BMIMIC',player:2,motion:spec.motion,stamp_ns:'1794097828210819478'},
+      {mode:'BMIMIC_STEP',player:0,motion:'',stamp_ns:'1794097887510823089'},
+      {mode:'STAND_DEFAULT',player:0,motion:'',stamp_ns:'1794097891010818716'}],
+    terminal_standing_observed:true,joints_fault_free:true,joint_fault_count:0,joint_faults:[]};
+  const cmd={...plan.commands[0],source_args:plan.commands[0].args,command_index:1,status:'failed',error,result,
+    started_at:'2026-11-08T00:30:00.453887Z',sdk_call_started_at:'2026-11-08T00:30:21.891633Z',duration_ms:96453};
+  const receipt={schema_version:1,robot_model:'master',session_id:'108',submission_id:row.id,source_sha256:plan.source_sha256,
+    plan_sha256:'b'.repeat(64),attempt_id:'test-attempt',booked_end:'2026-11-08T00:35:00Z',command_count:1,
+    completed_count:0,commands:[cmd],error,started_at:'2026-11-08T00:30:00.450881Z',finished_at:'2026-11-08T00:31:36.898520Z',
+    outcome:'failed',handoff_ready:false,handoff_blocker:'Historical handoff stayed blocked',owner_hold_preserved:false,
+    owner_hold_verified:false,owner_binding:binding,final_owner_binding:binding,overrun_seconds:0};
+  const original=structuredClone(receipt);
+  const fixed=reconcileMissingSpeakerEnd(receipt);
+  assert.equal(fixed.outcome,'completed');
+  assert.equal(fixed.completed_count,1);
+  assert.equal(fixed.commands[0].error,null);
+  assert.equal(fixed.commands[0].result.motion_complete,true);
+  assert.equal(fixed.commands[0].result.music_played,true);
+  assert.equal(fixed.commands[0].result.audio_output.transport_status,'end_not_observed');
+  assert.equal(fixed.commands[0].result.audio_output.completed,false);
+  assert.equal(fixed.commands[0].result.audio_output.diagnostic,error.message);
+  assert.equal(fixed.commands[0].result.audio_output.finished_at_robot,undefined);
+  assert.equal(fixed.handoff_ready,false);
+  assert.equal(fixed.handoff_blocker,receipt.handoff_blocker);
+  assert.deepEqual(receipt,original);
+  assert.equal(reconcileMissingSpeakerEnd(fixed),null);
+  for(const change of [
+    r=>{r.error={type:'RuntimeError',message:'Joint fault'}},
+    r=>{r.commands[0].result.audio_output.error='Speaker playback interrupted'},
+    r=>{delete r.commands[0].result.audio_output.pcm_device_started_at_robot},
+    r=>{r.commands[0].result.audio_output.muted=true},
+    r=>{r.commands[0].result.audio_output.playing_seconds=4},
+    r=>{r.commands[0].result.joint_fault_count=1},
+    r=>{r.commands[0].result.terminal_standing_observed=false},
+    r=>{r.commands[0].result.native_transitions[0].stamp_ns='1494097828210819478'},
+    r=>{r.final_owner_binding={...binding,owner:'different'}},
+    r=>{r.finished_at='2026-11-08T00:31:30Z'}
+  ]) {
+    const bad=structuredClone(receipt);
+    change(bad);
+    assert.equal(reconcileMissingSpeakerEnd(bad),null);
+  }
 });

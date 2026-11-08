@@ -16,6 +16,8 @@ SPEC = json.loads((HERE / 'master-happy-dance.json').read_text(encoding='utf8'))
 ASSETS = '/agibot/nfs/soc0/var/robot_proxy/resources/linkcraft_resource_onnx_ffkuaile/0.0.1/unzip'
 AUDIO_PATH = ASSETS + '/audio.wav'
 AUDIO_BOARD = '/agibot/nfs/soc2'
+AUDIO_OBSERVATION_SECONDS = 75
+MISSING_SPEAKER_END = 'Missing full speaker HAL playback evidence for the bundled WAV'
 ROBOT_TIMEZONE = timezone(timedelta(hours=8))
 OUTER_HOST_KEY_SHA256 = '48dc8321a96ec7603649588758ca2f6836ff136377f00505fb55c465b2e033d0'
 SOURCE_HASH = sha256(SPEC['source'].encode()).hexdigest()
@@ -113,12 +115,21 @@ def parse_audio_output(lines):
         if 'opened_at_robot' not in result:
             continue
         stamp = datetime.fromisoformat(line[1:line.index(']')]).replace(tzinfo=ROBOT_TIMEZONE)
+        if re.search(r'\[(?:Error|Fatal|Critical)\].*\[(?:audio_player|audio_playback_driver)\.cpp:',line,re.I):
+            result['error'] = 'Speaker HAL playback error: '+message[:300]
+            break
+        if message in ('get_volume 0','playback volume 0','get_playback_device 1') or message.startswith('Setting volume: 0 '):
+            result['error'] = 'Built-in speaker was silent or deselected during playback'
+            break
         if message == 'StopAudioPlay Enter' or message.startswith(('PlayFile ', 'WAV params:')):
             result['error'] = 'Speaker playback interrupted or replaced before the WAV finished'
             break
         if message.startswith('pcm_started successfully'):
             result['pcm_device_started_at_robot'] = stamp.isoformat()
             continue
+        if message == 'pcm_started false' and started is not None and (stamp-started).total_seconds() < 63:
+            result['error'] = 'Speaker PCM output stopped early'
+            break
         state = re.fullmatch(r'AudioPlayer::pub_play_state (.+) state ([12])',message)
         if state is None:
             continue
@@ -130,7 +141,10 @@ def parse_audio_output(lines):
             if started is None:
                 started, play_owner = stamp, owner
                 result['started_at_robot'] = stamp.isoformat()
-        elif started is not None and owner == play_owner:
+        elif started is not None:
+            if owner != play_owner:
+                result['error'] = 'Speaker reported the end of a different playback source'
+                break
             duration = (stamp-started).total_seconds()
             result.update(finished_at_robot=stamp.isoformat(),playing_seconds=duration,completed=63 <= duration <= 68)
             if not result['completed']:
@@ -150,17 +164,61 @@ def collect_speaker_output(log, evidence, wait_seconds):
                 if len(data) > 2*1024*1024:
                     raise RuntimeError('Speaker HAL log exceeded the booked observation window')
                 evidence.update(parse_audio_output(data.decode('utf8',errors='replace')))
-            if evidence.get('completed') or evidence.get('error'):
+            if evidence.get('completed'):
+                evidence['transport_status'] = 'confirmed'
+                return
+            if evidence.get('error'):
+                evidence['transport_status'] = 'failed'
                 return
             if len(chunk) == 65536:
                 continue
             remaining = deadline-time.monotonic()
             if remaining <= 0:
-                evidence['error'] = 'Missing full speaker HAL playback evidence for the bundled WAV'
+                evidence.update(transport_status='end_not_observed',diagnostic=MISSING_SPEAKER_END)
                 return
             time.sleep(min(.3,remaining))
     except Exception as exc:
+        evidence['transport_status'] = 'failed'
         evidence['error'] = f'Speaker HAL observation failed: {exc}'
+
+
+def fault_free_motion(result, before, after):
+    return (all(b.get('mode') == 'STAND_DEFAULT' and b.get('settled') is True and b.get('player') == 0 for b in (before,after))
+            and before.get('owner') == after.get('owner') and re.fullmatch(r'mc_ros2_node\d+',before.get('owner') or '') is not None
+            and result.get('native_motion') == SPEC['motion'] and result.get('terminal_standing_observed') is True
+            and result.get('joints_fault_free') is True and result.get('joint_fault_count') == 0 and result.get('joint_faults') == []
+            and 55 <= result.get('playing_seconds',0) <= 75 and result.get('peak_travel_rad',0) > .1)
+
+
+def music_played(audio, result, observed_seconds):
+    if (audio.get('board') != 'soc2' or audio.get('file') != 'audio.wav' or audio.get('sha256') != SPEC['audio']
+            or audio.get('muted') is not False or type(audio.get('volume')) is not int or not 0 < audio['volume'] <= 100
+            or (audio.get('pcm_bytes'),audio.get('sample_rate_hz'),audio.get('channels'),audio.get('bits_per_sample')) != (2080000,16000,1,16)
+            or audio.get('error')):
+        return False
+    if audio.get('completed') is True:
+        return audio.get('transport_status') == 'confirmed'
+    if (audio.get('transport_status') != 'end_not_observed' or audio.get('diagnostic') != MISSING_SPEAKER_END
+            or 'finished_at_robot' in audio or 'playing_seconds' in audio or observed_seconds < AUDIO_OBSERVATION_SECONDS-.01):
+        return False
+    # The file-open, player and physical PCM timestamps are native robot time. Correlate them with the same dance.
+    transitions = result.get('native_transitions',[])
+    if not isinstance(transitions,list) or any(not isinstance(t,dict) for t in transitions):
+        return False
+    modes = [t.get('mode') for t in transitions]
+    if modes not in (['BMIMIC','STAND_DEFAULT'],['BMIMIC','BMIMIC_STEP','STAND_DEFAULT']):
+        return False
+    if (transitions[0].get('motion') != SPEC['motion'] or transitions[0].get('player') != 2
+            or any(t.get('motion') != '' or t.get('player') != 0 for t in transitions[1:])):
+        return False
+    try:
+        times = [int(t['stamp_ns']) / 1e9 for t in transitions]
+        opened,started,pcm = (datetime.fromisoformat(audio[k]).timestamp()
+                              for k in ('opened_at_robot','started_at_robot','pcm_device_started_at_robot'))
+    except (KeyError,TypeError,ValueError,OverflowError):
+        return False
+    return (all(a < b for a,b in zip(times,times[1:])) and opened <= started <= pcm and times[0] <= pcm
+            and times[-1]-pcm >= 55 and 0 <= times[1]-times[0]-result.get('playing_seconds',0) <= .501)
 
 
 def preflight(config):
@@ -191,6 +249,7 @@ def execute(config, receipt, open_dispatch, admitted, confirmed, end, now, iso):
     receipt.update(owner_hold_preserved=False)
     receipt['commands'].append(cmd)
     evidence = cmd['result']
+    evidence.update(motion_complete=False,music_played=False)
     started = time.monotonic()
     try:
         with connection(config) as client:
@@ -201,7 +260,8 @@ def execute(config, receipt, open_dispatch, admitted, confirmed, end, now, iso):
                     raise RuntimeError('Start authorization or remaining booked time expired before playback')
                 receipt['owner_binding'] = ready
                 cmd['sdk_call_started_at'] = iso(now())
-                audio_deadline = time.monotonic()+75
+                dispatched = time.monotonic()
+                audio_deadline = dispatched+AUDIO_OBSERVATION_SECONDS
                 evidence.update(asset_id=config['native_body_asset_id'],zip_sha256=SPEC['zip'],policy_sha256=SPEC['policy'],
                                 audio_sha256=SPEC['audio'],bundled_audio='audio.wav',audio_output=audio,request_attempted=True)
                 ended_standing = False
@@ -213,14 +273,18 @@ def execute(config, receipt, open_dispatch, admitted, confirmed, end, now, iso):
                     receipt['final_owner_binding'] = observation.pop('final')
                     evidence.update(observation)
                     ended_standing = True
+                    evidence['motion_complete'] = fault_free_motion(evidence, ready, receipt['final_owner_binding'])
+                    if not evidence['motion_complete']:
+                        raise RuntimeError('Missing fault-free native playback and settled standing evidence')
                 finally:
                     # A completed standing transition permits passive audio tracking even when the motion faulted.
                     partial = evidence.get('partial_observation',{})
                     terminal = ended_standing or partial.get('terminal_standing_observed') is True
                     remaining = max(0,min(audio_deadline-time.monotonic(),end-now())) if terminal else 0
                     collect_speaker_output(log,audio,remaining)
-                if not audio['completed']:
-                    raise RuntimeError(audio['error'])
+                    evidence['music_played'] = music_played(audio,evidence,time.monotonic()-dispatched)
+                if not evidence['music_played']:
+                    raise RuntimeError(audio.get('error') or audio.get('diagnostic') or MISSING_SPEAKER_END)
                 admitted()
         cmd['status'] = 'completed'
         receipt.update(outcome='completed',completed_count=1,handoff_ready=True,handoff_mode='native-body-playback',handoff_blocker=None)
