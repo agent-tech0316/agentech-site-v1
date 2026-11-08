@@ -469,7 +469,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!submissionId) {
-      return NextResponse.json({ error: "Run Step 3 Physical Hardware Check before starting Step 4 Software Check." }, { status: 400 });
+      return NextResponse.json({ error: "Run the hardware check before starting the software check." }, { status: 400 });
     }
 
     const submission = await getCodeSubmissionRecord(submissionId, email);
@@ -478,7 +478,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (submission.physical_safety_status !== "passed") {
-      return NextResponse.json({ error: "Software Check unlocks only after Step 3 Physical Hardware Check passes." }, { status: 403 });
+      return NextResponse.json({ error: "The software check unlocks only after the hardware check passes." }, { status: 403 });
     }
 
     if (normalizeAgentechRobotModel(submission.robot_model) !== robotModel) {
@@ -496,7 +496,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (submission.code !== code) {
-      return NextResponse.json({ error: "Code changed after Step 3 Physical Hardware Check passed. Run the hardware check again." }, { status: 409 });
+      return NextResponse.json({ error: "Code changed after the hardware check passed. Run the hardware check again." }, { status: 409 });
     }
 
     const record = {
@@ -525,7 +525,7 @@ export async function POST(request: NextRequest) {
         await writeLocalSubmission(submission.id, record);
         return NextResponse.json(
           {
-            error: `Step 3 Physical Hardware Check passed, but Step 4 Software Check needs ${creditCost} account credit${creditCost === 1 ? "" : "s"}.`,
+            error: `The hardware check passed, but the software check needs ${creditCost} account credit${creditCost === 1 ? "" : "s"}.`,
             id: submission.id,
             physicalSafetyStatus: "passed",
             aiSecurityStatus: "locked",
@@ -636,7 +636,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json(
         {
-          error: `Step 3 Physical Hardware Check passed, but Step 4 Software Check could not complete: ${message}`,
+          error: `The hardware check passed, but the software check could not complete: ${message}`,
           id: submission.id,
           physicalSafetyStatus: "passed",
           aiSecurityStatus: "error",

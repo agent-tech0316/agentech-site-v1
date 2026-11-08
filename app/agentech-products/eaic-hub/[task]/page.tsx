@@ -12,7 +12,7 @@ const legacyTaskRedirects: Record<string, AgentechLibraryTaskSlug> = {
   submit: "software-check",
   "submit-review": "software-check",
   "physical-hardware-check": "software-check",
-  "request-robot-slot": "watch-live-run"
+  "request-robot-slot": "schedule-time"
 };
 
 type PageProps = {
@@ -23,7 +23,8 @@ type PageProps = {
 };
 
 export function generateStaticParams() {
-  return agentechLibraryTasks.map((task) => ({ task: task.slug }));
+  // Scheduling has a dedicated page that preserves the selected motion package.
+  return agentechLibraryTasks.filter((task) => task.slug !== "schedule-time").map((task) => ({ task: task.slug }));
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {

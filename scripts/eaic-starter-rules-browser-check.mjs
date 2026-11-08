@@ -53,7 +53,7 @@ try {
         });
         return {
           stripWidth: stripRect.width,
-          pageOverflow: document.documentElement.scrollWidth - innerWidth,
+          pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
           cells,
         };
       });

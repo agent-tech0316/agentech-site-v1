@@ -3043,7 +3043,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
               <p className="mt-1 text-xs opacity-80">
                 {nativeAssetId ? `ZIP receipt ${nativeAssetId}` : developerCodeReviewPassed
                   ? "Latest code package passed both gates."
-                  : "Run Step 3 Physical Hardware Check and Step 4 Software Check first."}
+                  : "Pass the hardware and software checks in Code Certification (03) first."}
               </p>
             </div>
           </div>

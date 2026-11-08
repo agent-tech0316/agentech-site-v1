@@ -1,6 +1,20 @@
+import { workflowAccentPalette } from "@/lib/eaic-workflow-palette";
+
+export const scheduleTimeTask = {
+  slug: "schedule-time",
+  number: "04",
+  title: "Schedule Time",
+  summary: "Choose the run type, available start time, and viewing duration for the supervised session.",
+  ctaTitle: "CHOOSE A TIME SLOT",
+  ctaSummary: "See available times and reserve a session for your robot.",
+  ctaLabel: "SCHEDULE TIME",
+  workflowAccent: workflowAccentPalette[4],
+} as const;
+
 export const agentechLibraryTasks = [
   {
     slug: "start-coding",
+    workflowAccent: workflowAccentPalette[0],
     number: "01",
     title: "Start Coding",
     summary: "Install package, import Agentech, and copy example code.",
@@ -12,6 +26,7 @@ export const agentechLibraryTasks = [
   },
   {
     slug: "view-sdk",
+    workflowAccent: workflowAccentPalette[1],
     number: "02",
     title: "View SDK",
     summary: "Choose Aegis, Navi, or Master, then browse exact functions, parameters, limits, examples, and reference media.",
@@ -23,6 +38,7 @@ export const agentechLibraryTasks = [
   },
   {
     slug: "software-check",
+    workflowAccent: workflowAccentPalette[2],
     number: "03",
     title: "Code Certification",
     summary: "Run hardware safety first, then start software security review after it passes.",
@@ -32,13 +48,15 @@ export const agentechLibraryTasks = [
     accent: "#c85016",
     tint: "#fff4ec"
   },
+  scheduleTimeTask,
   {
     slug: "watch-live-run",
-    number: "04",
-    title: "Live Stream",
+    workflowAccent: workflowAccentPalette[3],
+    number: "05",
+    title: "Watch Live Run",
     summary: "Watch the supervised robot run after scheduling an approved session.",
     ctaTitle: "SEE THE ROBOT EXECUTE",
-    ctaSummary: "Schedule an approved session and watch the supervised run live.",
+    ctaSummary: "Open the live camera during your scheduled session.",
     ctaLabel: "WATCH LIVE",
     accent: "#149448",
     tint: "#edfff3"

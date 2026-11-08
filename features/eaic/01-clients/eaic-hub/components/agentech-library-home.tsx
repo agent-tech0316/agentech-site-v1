@@ -30,6 +30,10 @@ function StepIcon({ index }: { index: number }) {
       <path d="M32 6l21 8v15c0 14-8.5 23-21 29-12.5-6-21-15-21-29V14l21-8z" />
       <path d="M22 33l7 7 14-16" />
     </svg>,
+    <svg key="calendar" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="9" y="13" width="46" height="42" rx="4" />
+      <path d="M20 8v10M44 8v10M9 25h46M21 40l7 7 14-15" />
+    </svg>,
     <svg key="live" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <rect x="9" y="16" width="38" height="32" rx="4" />
       <path d="M47 27l8-5v20l-8-5" />
@@ -116,7 +120,7 @@ export function AgentechLibraryHome() {
           </div>
           <ol data-workflow-flow className="bg-[#03070a] p-4 sm:p-6 lg:p-8">
             {agentechLibraryTasks.map((task, index) => {
-              const accent = workflowAccentPalette[index];
+              const accent = task.workflowAccent;
               return (
                 <li
                   key={task.slug}

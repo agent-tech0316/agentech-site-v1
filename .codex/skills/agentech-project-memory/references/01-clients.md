@@ -15,12 +15,13 @@ Implementation anchors:
 
 ## Current product experience
 
-EAIC Hub exposes four numbered tasks:
+EAIC Hub exposes five numbered tasks:
 
 1. Start Coding.
 2. View SDK for Aegis, Navi, and Master.
 3. Code Certification: Physical Hardware Check before Software Check.
-4. Live Stream after an approved scheduled session.
+4. Schedule Time.
+5. Watch Live Run during the scheduled session.
 
 The Hub also contains the Master motor map, joint-motion guide, live gateway heartbeat, code upload/paste, validation/simulation results, scheduling, and live-view controls. Routes remain under `app/agentech-products/eaic-hub`; task definitions live in `features/eaic/01-clients/eaic-hub/contracts/agentech-library-tasks.ts`.
 

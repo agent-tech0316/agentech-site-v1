@@ -1,19 +1,16 @@
 import Link from "next/link";
 import { HistoryBackButton } from "@/components/history-back-button";
-import { agentechLibraryTasks, type AgentechLibraryTaskSlug } from "../contracts/agentech-library-tasks";
+import { agentechLibraryTasks } from "../contracts/agentech-library-tasks";
 import { eaicHubPath, getEaicHubTaskPath } from "../contracts/eaic-hub";
 
 type EaicTaskHeaderProps = {
-  title: string;
-  description: string;
-  activeTask?: AgentechLibraryTaskSlug;
-  number?: string;
-  eyebrow?: string;
+  task: (typeof agentechLibraryTasks)[number];
+  description?: string;
   fallbackHref?: string;
 };
 
 export function EaicTaskHeader({
-  title, description, activeTask, number, eyebrow = "Command Library Task", fallbackHref = eaicHubPath,
+  task, description = task.summary, fallbackHref = eaicHubPath,
 }: EaicTaskHeaderProps) {
   return (
     <section data-eaic-task-header className="border-b border-black/8 bg-[#f5f4f1]">
@@ -29,9 +26,9 @@ export function EaicTaskHeader({
                 key={item.slug}
                 href={getEaicHubTaskPath(item.slug)}
                 aria-label={`${item.number} ${item.title}`}
-                aria-current={item.slug === activeTask ? "page" : undefined}
+                aria-current={item.slug === task.slug ? "page" : undefined}
                 className={`rounded-[10px] border px-3 py-2 font-mono text-xs transition ${
-                  item.slug === activeTask
+                  item.slug === task.slug
                     ? "border-[#1a73e8]/45 bg-[#1a73e8] text-white shadow-[0_8px_20px_rgba(26,115,232,0.2)]"
                     : "border-black/10 bg-white/65 text-[#5f6368] hover:border-[#1a73e8]/45 hover:text-[#1a73e8]"
                 }`}
@@ -41,16 +38,16 @@ export function EaicTaskHeader({
             ))}
           </nav>
         </div>
-        <div className={`mt-7 grid gap-5 ${number ? "lg:grid-cols-[auto_minmax(0,1fr)] lg:items-end" : ""}`}>
-          {number && <div
+        <div className="mt-7 grid gap-5 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-end">
+          <div
             data-task-number-badge="true"
             className="grid h-20 w-20 place-items-center rounded-full bg-[#111111] font-mono text-3xl font-medium text-white shadow-[0_14px_34px_rgba(17,17,17,0.14)]"
           >
-            {Number.parseInt(number, 10)}
-          </div>}
+            {Number.parseInt(task.number, 10)}
+          </div>
           <div>
-            <p className="font-interface text-xs font-semibold uppercase tracking-[0.18em] text-[#1a73e8]">{eyebrow}</p>
-            <h1 className="font-display mt-2 text-4xl font-semibold tracking-tight text-[#111111] md:text-5xl">{title}</h1>
+            <p className="font-interface text-xs font-semibold uppercase tracking-[0.18em] text-[#1a73e8]">Command Library Task</p>
+            <h1 className="font-display mt-2 text-4xl font-semibold tracking-tight text-[#111111] md:text-5xl">{task.title}</h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-[#5f6368]">{description}</p>
           </div>
         </div>

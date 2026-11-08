@@ -12,7 +12,8 @@ const taskRoutes = [
   ["Start Coding", "/agentech-products/eaic-hub/start-coding"],
   ["View SDK", "/agentech-products/eaic-hub/view-sdk"],
   ["Code Certification", "/agentech-products/eaic-hub/software-check"],
-  ["Live Stream", "/agentech-products/eaic-hub/watch-live-run"],
+  ["Schedule Time", "/agentech-products/eaic-hub/schedule-time"],
+  ["Watch Live Run", "/agentech-products/eaic-hub/watch-live-run"],
 ];
 
 const workbenchSource = readFileSync(
@@ -166,7 +167,7 @@ function darkRuleDeclarations(stylesheet, selectorFragments) {
   return declarations;
 }
 
-test("renders all four EAIC tasks with the approved warm immersion theme", () => {
+test("renders all five EAIC tasks with the approved warm immersion theme", () => {
   for (const [title, route] of taskRoutes) {
     const html = pages.get(route) ?? "";
     assert.match(html, /bg-\[\#f5f4f1\] text-\[\#111111\]/, `${title} should use the warm page canvas`);
@@ -175,14 +176,23 @@ test("renders all four EAIC tasks with the approved warm immersion theme", () =>
   }
 });
 
-test("renders the task numbers as black circles without leading zeros", () => {
-  const expectedNumbers = ["1", "2", "3", "4"];
-
+test("every task header has five ordered links, one blue current step and its matching circle", () => {
   taskRoutes.forEach(([, route], index) => {
     const html = pages.get(route) ?? "";
+    const nav = html.match(/<nav aria-label="EAIC tasks"[^>]*>(.*?)<\/nav>/s)?.[1] ?? "";
+    const links = [...nav.matchAll(/<a\b([^>]*)>(\d\d)<\/a>/g)];
+    assert.equal(links.length, 5, route);
+    links.forEach(([, attrs, label], linkIndex) => {
+      const number = String(linkIndex + 1).padStart(2, "0");
+      assert.equal(label, number);
+      assert.ok(attrs.includes('href="' + taskRoutes[linkIndex][1] + '"'));
+      assert.ok(attrs.includes('aria-label="' + number + " " + taskRoutes[linkIndex][0] + '"'));
+      assert.equal(attrs.includes('aria-current="page"'), linkIndex === index);
+      assert.equal(attrs.includes("bg-[#1a73e8]"), linkIndex === index);
+    });
     assert.match(
       html,
-      new RegExp(`data-task-number-badge="true"[^>]*rounded-full[^>]*bg-\\\[\\#111111\\\][^>]*>${expectedNumbers[index]}</div>`),
+      new RegExp(`data-task-number-badge="true"[^>]*rounded-full[^>]*bg-\\\[\\#111111\\\][^>]*>${index + 1}</div>`),
       `${route} should render its task number as a black circle`,
     );
   });
@@ -1241,6 +1251,10 @@ test("Schedule Time shares the SDK canvas, task navigation and card on canonical
   assert.ok([307, 308].includes(legacy.status));
   assert.equal(new URL(legacy.headers.get("location"), baseUrl).pathname, path);
 
+  const oldRequest = await fetch(`${baseUrl}/agentech-products/eaic-hub/request-robot-slot?nativeAssetId=example`, { redirect: "manual" });
+  assert.ok([307, 308].includes(oldRequest.status));
+  assert.equal(new URL(oldRequest.headers.get("location"), baseUrl).href, `${baseUrl}${path}?nativeAssetId=example`);
+
   const response = await fetch(`${baseUrl}${path}`);
   assert.equal(response.status, 200);
   const html = (await response.text()).replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "");
@@ -1249,5 +1263,18 @@ test("Schedule Time shares the SDK canvas, task navigation and card on canonical
   for (const [title, route] of taskRoutes) {
     assert.ok(html.includes(`href="${route}"`), `Schedule Time needs navigation back to ${title}`);
   }
-  assert.doesNotMatch(html, /data-task-number-badge="true"/, "scheduling is not a fifth task");
+  assert.match(html, /data-task-number-badge="true"[^>]*>4<\/div>/, "Schedule Time is step 04");
+});
+
+test("the Hub lists the same five steps and links as the numbered header", async () => {
+  const response = await fetch(`${baseUrl}/agentech-products/eaic-hub`);
+  assert.equal(response.status, 200);
+  const list = (await response.text()).match(/<ol data-workflow-flow[^>]*>(.*?)<\/ol>/s)?.[1] ?? "";
+  const cards = [...list.matchAll(/<li data-workflow-step="(\d\d)"[^>]*>(.*?)<\/li>/gs)];
+  assert.equal(cards.length, taskRoutes.length);
+  cards.forEach(([, number, card], index) => {
+    assert.equal(number, String(index + 1).padStart(2, "0"));
+    assert.ok(card.includes('href="' + taskRoutes[index][1] + '"'));
+    assert.ok(card.includes(">" + taskRoutes[index][0] + "</h2>"));
+  });
 });

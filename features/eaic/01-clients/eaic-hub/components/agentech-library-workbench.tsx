@@ -1149,7 +1149,7 @@ Live camera -> Website viewer -> Student watches the run`;
             <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_340px]">
               <pre className="overflow-x-auto p-4 font-mono text-xs leading-6 text-[#e5edf5]">{robotRunnerExample}</pre>
               <div className="border-t border-[#2a3440] p-4 text-sm leading-6 text-[#aeb8c2] lg:border-l lg:border-t-0">
-                The student file stays tiny. After Step 3 Physical Hardware Check, Step 4 Software Check, and scheduling, the website sends approved code to the Raspberry Pi bridge. The Pi is connected to the robot hotspot, runs the code on the robot, and the Step 5 Live Stream lets the student watch the result on the website.
+                Certify your code in step 03, then choose a time in step 04. During the scheduled session, the Raspberry Pi bridge runs the approved code on the robot. Open Watch Live Run (05) to see the result.
               </div>
             </div>
           </div>
@@ -1200,7 +1200,7 @@ Live camera -> Website viewer -> Student watches the run`;
   );
 }
 
-const taskFeatureNotes: Record<AgentechLibraryTaskSlug, string> = {
+const taskFeatureNotes: Partial<Record<AgentechLibraryTaskSlug, string>> = {
   "start-coding": "Install commands, starter imports, and the beginner quick-start docs are collected here.",
   "view-sdk": "Choose Aegis, Navi, or Master, then browse exact functions, parameters, limits, examples, and reference images.",
   "physical-hardware-check": "Upload or paste one Python file, then run the physical hardware check before any software review.",
@@ -1249,7 +1249,7 @@ function LockedLiveRunPanel({ dark = false }: { dark?: boolean }) {
           <p className={`mt-5 text-xs font-semibold uppercase tracking-[0.16em] ${dark ? "text-[#8fdc8f]" : "text-[#008a7a]"}`}>Live View Locked</p>
           <h3 className={`mt-2 text-2xl font-semibold ${dark ? "text-white" : "text-[#07142e]"}`}>Schedule an approved robot slot first.</h3>
           <p className={`mt-3 text-sm leading-6 ${dark ? "text-[#aeb8c2]" : "text-[#334155]"}`}>
-            Live camera access only opens during an active scheduled session. For custom-code runs, pass Step 3 Physical Hardware Check and Step 4 Software Check before scheduling.
+            Live camera access only opens during an active scheduled session. For custom-code runs, pass both checks in Code Certification (03) before scheduling.
           </p>
           <Link
             href={robotSchedulingPath}
@@ -2701,7 +2701,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
         }
 
         if (!latestSubmission || latestSubmission.physicalSafetyStatus !== "passed") {
-          setRequestStatus("Run and pass Step 3 Physical Hardware Check before starting Step 4 Software Check.");
+          setRequestStatus("Pass the hardware check before starting the software check in Code Certification (03).");
           return;
         }
 
@@ -2791,9 +2791,9 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
         });
         setRequestStatus(
           latestSubmission.aiSecurityStatus === "passed"
-            ? `Step 4 Software Check already passed for review ${latestSubmission.id}. Step 5 Live Stream scheduling is unlocked.`
+            ? `Code Certification (03) passed for review ${latestSubmission.id}. Continue to Schedule Time (04).`
             : latestSubmission.aiSecurityStatus === "locked"
-              ? `Saved Step 3 Physical Hardware Check restored. Step 4 Software Check is unlocked. Review ID: ${latestSubmission.id}.`
+              ? `Saved hardware check restored. Continue with the software check in Code Certification (03). Review ID: ${latestSubmission.id}.`
               : `Saved submission restored. Its one Software Check has status: ${latestSubmission.aiSecurityStatus}. Review ID: ${latestSubmission.id}.`
         );
       } catch (error) {
@@ -2994,7 +2994,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
     }
 
     setReviewInputError("");
-    setRequestStatus(`${file.name} loaded. Run Step 3 Physical Hardware Check first.`);
+    setRequestStatus(`${file.name} loaded. Run the hardware check first.`);
   }
 
   function handleCodeFileDrop(event: DragEvent<HTMLLabelElement>) {
@@ -3161,7 +3161,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
     setCanScheduleRobotSlot(false);
     setHardwareResult(null);
     setApprovedCodeFile(null);
-    setRequestStatus("Running Step 3 Physical Hardware Check...");
+    setRequestStatus("Running the hardware check...");
     try {
       if (!movementSafety.submitReady) {
         setHardwareResult({
@@ -3302,7 +3302,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
 
     const submissionId = overrides?.submissionId ?? physicalSubmissionId;
     if (!submissionId || (!physicalSafetyPassed && !overrides)) {
-      setRequestStatus("Run and pass Step 3 Physical Hardware Check before starting Step 4 Software Check.");
+      setRequestStatus("Pass the hardware check before starting the software check in Code Certification (03).");
       return;
     }
 
@@ -3382,9 +3382,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
         }
       `}</style>
       {selectedTask && <EaicTaskHeader
-        title={selectedTask.title}
-        activeTask={selectedTask.slug}
-        number={selectedTask.number}
+        task={selectedTask}
         description={showExemptWorkspace ? "Save a program for scheduling or upload a file to your account." : taskFeatureNotes[selectedTask.slug]}
       />}
       {showHero ? (
@@ -3685,8 +3683,8 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
                         {masterLiveTestSelected
                           ? "This text is saved for the view-only test audit and is not executable."
                           : approvedCodeFile.source === "editor" || approvedCodeFile.editedOnWebsite
-                          ? "This code from the website editor passed Step 3. No file upload was needed."
-                          : "This is the exact uploaded version that passed Step 3."}
+                          ? "This code from the website editor passed the hardware check. No file upload was needed."
+                          : "This is the exact uploaded version that passed the hardware check."}
                       </p>
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                         <p className="text-xs text-[#526174]">Review ID: {physicalSubmissionId}</p>
@@ -3753,8 +3751,8 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
                         : isSoftwareReviewExempt
                           ? "Complete command validation first. Paid AI review is exempt for this account; scheduling and live execution checks still apply."
                           : isInternalCompanyAccount
-                          ? "Locked until Step 3 passes. Company credit balance does not block internal testing."
-                          : "Locked until Step 3 passes. Uses GPT-5.5 and charges account credits."}
+                          ? "Locked until the hardware check passes. Company credit balance does not block internal testing."
+                          : "Locked until the hardware check passes. Uses GPT-5.5 and charges account credits."}
                   </p>
                   {softwareFailed ? (
                     <div role="alert" className="mt-3 border-t border-[#c93434]/30 pt-3">
@@ -4137,7 +4135,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
               <p className="mt-1 text-xs leading-5 text-[#7f8c99]">{runModeDescription}</p>
             </div>
             <div className="border border-[#2a3440] bg-[#0d1117] p-3">
-              <p className="text-xs uppercase tracking-[0.14em] text-[#7f8c99]">Step 3 / Step 4 Review</p>
+              <p className="text-xs uppercase tracking-[0.14em] text-[#7f8c99]">Code Certification (03)</p>
               <p className="mt-2 font-mono text-xs leading-5 text-[#cdd6df]">{plan.motionCount} motion commands</p>
               <p className="mt-1 text-xs leading-5 text-[#7f8c99]">
                 {isInternalCompanyAccount

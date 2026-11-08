@@ -2,7 +2,8 @@ export const workflowAccentPalette = [
   { dark: "#75d4c2", light: "#007d6f" },
   { dark: "#83c8ef", light: "#365f91" },
   { dark: "#f0a56b", light: "#c85016" },
-  { dark: "#c7aff2", light: "#6f42c1" }
+  { dark: "#c7aff2", light: "#6f42c1" },
+  { dark: "#99d5a8", light: "#347044" }
 ] as const;
 
 function hexToRelativeLuminance(hex: string) {
