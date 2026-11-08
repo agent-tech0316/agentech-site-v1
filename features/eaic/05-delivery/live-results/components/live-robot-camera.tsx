@@ -93,6 +93,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
   const [captureHistory, setCaptureHistory] = useState<DisplayCapture[]>([]);
   const [hasActiveSession, setHasActiveSession] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const [danceOutcome, setDanceOutcome] = useState<"completed" | "failed" | null>(null);
   const [teachingViewer, setTeachingViewer] = useState(false);
   const [activeRobotModel, setActiveRobotModel] = useState<LiveRobotModel | null>(null);
   const [masterCameraSource, setMasterCameraSource] = useState<"external" | "robot">("external");
@@ -209,7 +210,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
         const payload = (await response.json()) as {
           active?: boolean;
           teachingViewer?: boolean;
-          session?: { id?: number; robotModel?: string } | null;
+          session?: { id?: number; robotModel?: string; danceOutcome?: "completed" | "failed" | null } | null;
         };
         if (!active) return;
         const model = normalizeLiveRobotModel(payload.session?.robotModel);
@@ -222,6 +223,7 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
         setHasActiveSession(sessionIsActive || (response.ok && payload.teachingViewer === true));
         setActiveSessionId(sessionIsActive ? sessionId : null);
         setActiveRobotModel(sessionIsActive ? model : null);
+        setDanceOutcome(sessionIsActive && model === "Master" ? payload.session?.danceOutcome ?? null : null);
       } catch {
         // Keep the last confirmed session state during a transient request
         // failure. The next poll will reconcile it without forcing a refresh.
@@ -536,6 +538,11 @@ export function LiveRobotCamera({ roomName }: LiveRobotCameraProps) {
   return (
     <div ref={containerRef}>
     <audio ref={audioRef} autoPlay />
+    {danceOutcome && (
+      <p role="status" className="mb-3 rounded border border-white bg-black px-4 py-2 text-sm font-semibold text-white">
+        {danceOutcome === "completed" ? "Happy Dance completed · music played" : "Happy Dance failed"}
+      </p>
+    )}
     {isMasterSession ? (
       <div role="group" aria-label="Master camera source" className="mb-3 flex flex-wrap gap-2">
         <button type="button" aria-pressed={masterCameraSource === "external"}

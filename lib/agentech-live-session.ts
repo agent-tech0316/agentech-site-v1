@@ -12,6 +12,9 @@ type ActiveSessionRow = {
   approved_run_type: string | null;
   preset_demo: string | null;
   code_submission_id: string | null;
+  receipt_session: string | null;
+  receipt_submission: string | null;
+  receipt_outcome: string | null;
 };
 
 export type ActiveRobotViewingSession = {
@@ -23,6 +26,7 @@ export type ActiveRobotViewingSession = {
   approvedRunType?: string | null;
   presetDemo?: string | null;
   codeSubmissionId?: string | null;
+  danceOutcome?: "completed" | "failed" | null;
 };
 
 function normalizeStatus(status: string) {
@@ -36,7 +40,8 @@ export async function getActiveRobotViewingSession(email: string, now = new Date
       `email=eq.${encodeURIComponent(email)}`,
       `scheduled_start=lte.${encodeURIComponent(nowIso)}`,
       `scheduled_end=gte.${encodeURIComponent(nowIso)}`,
-      "select=id,robot_model,session_status,scheduled_start,scheduled_end,approved_run_type,preset_demo,code_submission_id",
+      "select=id,robot_model,session_status,scheduled_start,scheduled_end,approved_run_type,preset_demo,code_submission_id," +
+        "receipt_session:execution_result->>session_id,receipt_submission:execution_result->>submission_id,receipt_outcome:execution_result->>outcome",
       "order=scheduled_start.asc",
       "limit=5"
     ].join("&")
@@ -45,6 +50,8 @@ export async function getActiveRobotViewingSession(email: string, now = new Date
   const session = sessions.find((item) => activeSessionStatuses.has(normalizeStatus(item.session_status)));
   if (!session) return null;
 
+  const isCurrentDance = session.robot_model === "Master" && session.code_submission_id?.startsWith("master-body-")
+    && session.receipt_session === String(session.id) && session.receipt_submission === session.code_submission_id;
   return {
     id: session.id,
     robotModel: normalizeLiveRobotModel(session.robot_model) ?? "Aegies",
@@ -54,5 +61,7 @@ export async function getActiveRobotViewingSession(email: string, now = new Date
     approvedRunType: session.approved_run_type,
     presetDemo: session.preset_demo,
     codeSubmissionId: session.code_submission_id,
+    danceOutcome: isCurrentDance && (session.receipt_outcome === "completed" || session.receipt_outcome === "failed")
+      ? session.receipt_outcome : null,
   } satisfies ActiveRobotViewingSession;
 }

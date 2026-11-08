@@ -23,7 +23,8 @@ export async function GET(request: NextRequest) {
       robotModel: session.robotModel,
       status: session.status,
       scheduledStart: session.scheduledStart,
-      scheduledEnd: session.scheduledEnd
+      scheduledEnd: session.scheduledEnd,
+      danceOutcome: session.danceOutcome
     }
   });
 }

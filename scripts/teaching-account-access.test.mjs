@@ -17,6 +17,28 @@ const {NextRequest}=await import('next/server');
 const {createSignedAccountSession}=await import('../lib/server-account-session.ts');
 const {isAgentechCompanyEmail,isAgentechGatewayOwnerEmail}=await import('../lib/company-accounts.ts');
 const routes = await Promise.all(['account/code-submissions','agentech-live-session','livekit-token'].map(async p=>[p,await import(`../app/api/${p}/route.ts`)]));
+test('live view exposes the current Master dance result while the booked stream stays active',async t=>{
+  const submission='master-body-12345678-1234-4321-8765-123456789012';
+  const row={id:42,robot_model:'Master',session_status:'requested',code_submission_id:submission,
+    receipt_session:'42',receipt_submission:submission,receipt_outcome:'completed'};
+  t.mock.method(globalThis,'fetch',async url=>{
+    const select=new URL(url).searchParams.get('select');
+    return Response.json([Object.fromEntries(Object.entries(row).filter(([key])=>select.includes(key)))]);
+  });
+  const req=new NextRequest('https://site.invalid/api/agentech-live-session',{
+    headers:{authorization:`Bearer ${createSignedAccountSession('developer@example.com')}`}});
+  const [,route]=routes.find(([name])=>name==='agentech-live-session');
+  const read=async()=>(await (await route.GET(req)).json()).session;
+  assert.equal((await read()).danceOutcome,'completed');
+  assert.equal((await read()).status,'requested');
+  row.receipt_outcome='failed';
+  assert.equal((await read()).danceOutcome,'failed');
+  for(const overrides of [{receipt_session:'41'},{receipt_submission:'other'},{receipt_outcome:null},{robot_model:'Navi'}]){
+    const original={...row}; Object.assign(row,overrides);
+    assert.equal((await read()).danceOutcome,null);
+    Object.assign(row,original);
+  }
+});
 process.env.LIVEKIT_API_KEY='test-only';
 process.env.LIVEKIT_API_SECRET='test-only-secret';
 process.env.AGENTECH_SESSION_SECRET='teaching-test-only-secret';
