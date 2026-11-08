@@ -37,13 +37,13 @@ class BundledAudio(unittest.TestCase):
         selected = body.ASSETS+'/audio.wav'
         def line(clock, message):
             return f'[2026-11-08 {clock}][Info][2609][audio_player.cpp:445] {message}\n'
-        def capture(path=selected, finish='07:49:46.010001', interrupt=False):
+        def capture(path=selected, finish='07:49:46.010001', interrupt=False, owner='tts', finish_owner=None):
             events = line('07:48:40.778001',f'WAV params: sr=16000Hz, ch=1, bps=16, bytes=2080000 file:{path}')
-            events += line('07:48:41.010001','AudioPlayer::pub_play_state tts state 1')
+            events += line('07:48:41.010001',f'AudioPlayer::pub_play_state {owner} state 1')
             if interrupt:
                 events += line('07:48:42.110001','StopAudioPlay Enter')
             if finish:
-                events += line(finish,'AudioPlayer::pub_play_state tts state 2')
+                events += line(finish,f'AudioPlayer::pub_play_state {finish_owner or owner} state 2')
             return body.parse_audio_output(events)
         captured = capture()
         self.assertTrue(captured['completed'])
@@ -54,6 +54,9 @@ class BundledAudio(unittest.TestCase):
         self.assertFalse(capture(finish=None)['completed'])
         self.assertFalse(capture(finish='07:48:42.010001')['completed'])
         self.assertFalse(capture(interrupt=True)['completed'])
+        self.assertTrue(capture(owner=selected)['completed'])
+        self.assertFalse(capture(owner='/tmp/other/audio.wav')['completed'])
+        self.assertFalse(capture(owner=selected,finish_owner='tts')['completed'])
 
 
 class NativePackageExecution(unittest.TestCase):

@@ -100,6 +100,7 @@ def parse_audio_output(lines):
     """Bind HAL playback-state transitions to the exact decoded WAV, within one dispatch's log window."""
     result = {'completed':False}
     started = None
+    play_owner = None
     wav = 'WAV params: sr=16000Hz, ch=1, bps=16, bytes=2080000 file:'+AUDIO_PATH
     for line in lines.splitlines():
         _, separator, message = line.rpartition('] ')
@@ -115,12 +116,21 @@ def parse_audio_output(lines):
         if message == 'StopAudioPlay Enter' or message.startswith(('PlayFile ', 'WAV params:')):
             result['error'] = 'Speaker playback interrupted or replaced before the WAV finished'
             break
-        if message == 'AudioPlayer::pub_play_state tts state 1' and started is None:
-            started = stamp
-            result['started_at_robot'] = stamp.isoformat()
-        elif message.startswith('pcm_started successfully'):
+        if message.startswith('pcm_started successfully'):
             result['pcm_device_started_at_robot'] = stamp.isoformat()
-        elif message == 'AudioPlayer::pub_play_state tts state 2' and started is not None:
+            continue
+        state = re.fullmatch(r'AudioPlayer::pub_play_state (.+) state ([12])',message)
+        if state is None:
+            continue
+        owner, phase = state.groups()
+        if phase == '1':
+            if owner not in ('tts',AUDIO_PATH) or (play_owner is not None and play_owner != owner):
+                result['error'] = 'A different speaker source started before the WAV finished'
+                break
+            if started is None:
+                started, play_owner = stamp, owner
+                result['started_at_robot'] = stamp.isoformat()
+        elif started is not None and owner == play_owner:
             duration = (stamp-started).total_seconds()
             result.update(finished_at_robot=stamp.isoformat(),playing_seconds=duration,completed=63 <= duration <= 68)
             if not result['completed']:
