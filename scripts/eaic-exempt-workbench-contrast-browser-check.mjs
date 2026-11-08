@@ -29,24 +29,66 @@ const reads = {
   "/api/account": { account: { email }, accessProfiles: [{ profile_type: "developer" }], featureAccess: { hasProfiles: true } },
   "/api/agentech-code-submit": { fullReviewExempt: true, currentSubmissionId: program.id, latestSubmission: program },
   "/api/eaic-account-assets": { files: [{ key: "sample", name: "ultra_example_kuaile.zip", kind: "Package", receipt }], nextOffset: null },
+  "/api/master-heartbeat": { online: false },
 };
 
 function readColors(element, pseudo) {
   const style = getComputedStyle(element, pseudo);
-  let background = style.backgroundColor;
+  const layers = [style.backgroundColor];
   let opacity = Number(style.opacity);
   let parent = pseudo ? element : element.parentElement;
   while (parent) {
     const ancestor = getComputedStyle(parent);
-    if (background === "rgba(0, 0, 0, 0)") background = ancestor.backgroundColor;
+    layers.push(ancestor.backgroundColor);
     opacity *= Number(ancestor.opacity);
     parent = parent.parentElement;
   }
-  return { color: style.color, fill: style.webkitTextFillColor, background, opacity };
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const pixel = canvas.getContext("2d", {willReadFrequently: true});
+  for (const color of ["white", ...layers.reverse()]) {
+    pixel.fillStyle = color;
+    pixel.fillRect(0, 0, 1, 1);
+  }
+  const rgb = () => Array.from(pixel.getImageData(0, 0, 1, 1).data).slice(0, 3);
+  const background = rgb();
+  pixel.fillStyle = style.webkitTextFillColor || style.color;
+  pixel.fillRect(0, 0, 1, 1);
+  return { fill: rgb(), background, opacity };
 }
 
-const black = "rgb(0, 0, 0)";
-const white = "rgb(255, 255, 255)";
+function contrast(text, background) {
+  function luminance(rgb) {
+    const channels = rgb.map(value => {
+      const n = value / 255;
+      return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4;
+    });
+    return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+  }
+  const [low, high] = [luminance(text), luminance(background)].sort((a, b) => a - b);
+  return (high + 0.05) / (low + 0.05);
+}
+
+async function headerStyles(page) {
+  const header = page.locator("[data-eaic-task-header]");
+  // Theme hydration can start the Back button's color transition on the first paint.
+  await header.evaluate(async el => {
+    await document.fonts.ready;
+    el.getBoundingClientRect();
+    const transitions = el.getAnimations({subtree: true}).filter(animation => animation instanceof CSSTransition);
+    await Promise.allSettled(transitions.map(animation => animation.finished));
+  });
+  return Promise.all([header, header.locator("h1"), header.locator("[data-history-back]"),
+    header.locator("[data-task-number-badge]"), header.locator('[aria-current="page"]')].map(el => el.evaluate(readColors)));
+}
+
+function cardStyle(element) {
+  const css = getComputedStyle(element);
+  const bounds = element.getBoundingClientRect();
+  const headerBottom = document.querySelector("[data-eaic-task-header]").getBoundingClientRect().bottom;
+  return {background: css.backgroundColor, border: css.borderTopColor, radius: css.borderRadius,
+    padding: css.paddingLeft, width: Math.round(bounds.width), headerGap: Math.round(bounds.top - headerBottom)};
+}
 const failures = [];
 const browser = await chromium.launch({ channel: process.env.EAIC_BROWSER_CHANNEL ?? "msedge" });
 try {
@@ -73,6 +115,15 @@ try {
         return route.fulfill({ status: 404, json: {} });
       });
 
+      await page.goto(origin + "/agentech-products/eaic-hub/view-sdk");
+      const guide = page.locator('[data-eaic-sdk-onboarding="true"]');
+      await guide.waitFor();
+      const sdkHeader = await headerStyles(page);
+      const reference = await page.locator("[data-eaic-task-card]").evaluate(cardStyle);
+      if (output) {
+        await page.locator(".agentech-library-page").evaluate(el => el.scrollIntoView({behavior:"instant"}));
+        await page.screenshot({path:path.join(output,`view-sdk-${scenario}.png`),animations:"disabled"});
+      }
       await page.goto(origin + "/agentech-products/eaic-hub/software-check");
       const workspace = page.getByRole("region", { name: "Account-exempt submissions" });
       const editor = workspace.getByRole("textbox");
@@ -83,6 +134,9 @@ try {
       assert.equal(await saved.isDisabled(), true);
       assert.equal(await editor.inputValue(), program.code);
       assert.equal(await page.locator("html").getAttribute("data-theme"), theme);
+      assert.deepEqual(await headerStyles(page), sdkHeader, `${scenario} task header differs from View SDK`);
+      assert.deepEqual(await workspace.locator("[data-eaic-task-card]").evaluate(cardStyle), reference,
+        `${scenario} card should align with the View SDK card`);
       await page.locator(".agentech-library-page").evaluate(element => element.scrollIntoView({ behavior: "instant" }));
       if (output) {
         await page.screenshot({ path: path.join(output, `certification-${scenario}.png`), animations: "disabled" });
@@ -109,7 +163,7 @@ try {
       ];
       async function checkColor(name, locator, pseudo) {
         const colors = await locator.evaluate(readColors, pseudo);
-        if (colors.color !== white || colors.fill !== white || colors.background !== black || colors.opacity !== 1) {
+        if (contrast(colors.fill, colors.background) < 4.5 || colors.opacity !== 1) {
           failures.push(`${scenario} ${name}: ${JSON.stringify(colors)}`);
         }
       }
@@ -123,7 +177,7 @@ try {
         const style = getComputedStyle(element);
         return { style: style.outlineStyle, width: parseFloat(style.outlineWidth), color: style.outlineColor };
       });
-      if (focus.style === "none" || focus.width < 2 || focus.color !== white) failures.push(`${scenario} focus: ${JSON.stringify(focus)}`);
+      if (focus.style === "none" || focus.width < 2) failures.push(`${scenario} focus: ${JSON.stringify(focus)}`);
       // Hold a local file read so the real busy state can be inspected without submitting anything.
       await page.evaluate(() => {
         const read = File.prototype.text;
@@ -147,5 +201,5 @@ try {
     }
   }
 } finally { await browser.close(); }
-assert.deepEqual(failures, [], "Signed-in Code Certification must render opaque white text on black, including native and disabled controls");
-console.log("Verified white on black (21:1), keyboard focus and viewport width on desktop and mobile in both site themes.");
+assert.deepEqual(failures, [], "Code Certification controls must remain legible in both site themes");
+console.log("Verified View SDK header and card parity, 4.5:1 or better text contrast, keyboard focus and mobile layout.");

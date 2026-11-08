@@ -38,7 +38,7 @@ import { evaluateAgentechMovementSafety, type AgentechMovementSafety } from "@/l
 import { normalizeAgentechRobotModel, robotModelOptions, type AgentechRobotModel } from "@/features/eaic/02-unified-api/resources-runs/agentech-robot-model";
 import { LiveRobotCamera } from "@/features/eaic/05-delivery/live-results/components/live-robot-camera";
 import { ExemptSubmissionWorkbench } from "./exempt-submission-workbench";
-import exemptStyles from "./exempt-submission-workbench.module.css";
+import { EaicTaskCard } from "./eaic-task-card";
 import { MasterMotorMap } from "@/features/eaic/01-clients/eaic-hub/components/master-motor-map";
 import { MasterJointMotionGuide } from "@/features/eaic/01-clients/eaic-hub/components/master-joint-motion-guide";
 import { MasterHeartbeat } from "@/features/eaic/01-clients/eaic-hub/components/master-heartbeat";
@@ -1664,7 +1664,7 @@ function FocusedBrowseFunctionsSection() {
         onboardingControllerRef.current = onboarding;
         return <section className="bg-[#f5f4f1] px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-6 rounded-[22px] border border-black/8 bg-white/70 p-5 shadow-[0_28px_80px_rgba(17,17,17,0.08)]">
+        <EaicTaskCard>
           <ViewSdkOnboardingSurface selectedRobot={selectedRobot} controller={onboarding} />
           <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-start">
             <div className="min-w-0">
@@ -1749,7 +1749,7 @@ function FocusedBrowseFunctionsSection() {
               )) : null}
             </div>
           </div>
-        </div>
+        </EaicTaskCard>
 
         <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
           <div className="rounded-[22px] border border-black/8 bg-white/70 p-5 shadow-[0_28px_80px_rgba(17,17,17,0.08)]">
@@ -3419,7 +3419,7 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
   }
 
   return (
-    <div className={`agentech-library-page min-h-screen ${showExemptWorkspace ? exemptStyles.workspace : taskTheme}`}>
+    <div className={`agentech-library-page min-h-screen ${taskTheme}`}>
       <style>{`
         nextjs-portal,
         [data-nextjs-toast],
