@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { masterUnresolvedSessions } from './master-native-handoff.mjs';
-import { masterLaunchBlocker, masterPreviousSessionBlocker, masterRecoveryForStagedPlan, createMasterSessionDeployment } from './master-session-gateway.mjs';
+import { masterLaunchBlocker, masterPreviousSessionIssue, masterRecoveryForStagedPlan, createMasterSessionDeployment } from './master-session-gateway.mjs';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const PREP_LEAD_MS = 90000;
@@ -23,7 +23,7 @@ export function masterFirstCommandNotBefore(item, nowMs = Date.now()) {
 // An archived handoff only discharges its previous attempt. Every new booking
 // gets a separate bounded read-only SDK preflight for its own plan and deadline.
 export function masterBookingAdmission(session, item, { sessions, runtimeDir, deploymentFile,
-  claimableStatuses, masterChecks, runCheck, prepareOnly=false, now=Date.now }) {
+  claimableStatuses, masterChecks, runCheck, observePrior, prepareOnly=false, now=Date.now }) {
   const id = String(session.id);
   const nowMs = now(), startMs = Date.parse(item.start), endMs = Date.parse(item.end);
   function blocked(reason) {
@@ -34,6 +34,12 @@ export function masterBookingAdmission(session, item, { sessions, runtimeDir, de
   try {
     if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs || nowMs >= endMs) {
       return blocked('Master booked session has expired or is invalid');
+    }
+    if (!claimableStatuses.includes(String(session.session_status).trim().toLowerCase()) || item.executionAttemptId ||
+        String(session.code_submission_id) !== String(item.executionSubmissionId) || session.email !== item.accountEmail ||
+        String(session.robot_model).trim().toLowerCase() !== 'master' || session.approved_run_type !== 'custom_code' ||
+        Date.parse(session.scheduled_start) !== startMs || Date.parse(session.scheduled_end) !== endMs) {
+      return blocked('Master booking changed since staging');
     }
     if (prepareOnly && nowMs < startMs) {
       const earlierMaster = Object.entries(sessions).some(([otherId, other]) => otherId !== id
@@ -48,17 +54,19 @@ export function masterBookingAdmission(session, item, { sessions, runtimeDir, de
     config = JSON.parse(readFileSync(deploymentFile,'utf8'));
     const outstanding = masterUnresolvedSessions(sessions,runtimeDir,config);
     item.masterRecoveryOwner = masterRecoveryForStagedPlan(readFileSync(item.localPlan),item.executionPlanSha256,outstanding,id);
-    const blocker = prepareOnly ? masterPreviousSessionBlocker(outstanding,id,item,nowMs)
-      : masterLaunchBlocker(outstanding,id,item,nowMs);
-    if (blocker) return blocked(blocker);
+    const issue = masterPreviousSessionIssue(outstanding,id,item,nowMs);
+    const blocker = prepareOnly ? issue?.reason : masterLaunchBlocker(outstanding,id,item,nowMs);
+    if (blocker) {
+      const previous = outstanding[issue?.priorId];
+      if (blocker === issue?.reason && previous?.status === 'finished' && previous.executionStatus === 'failed' &&
+          previous.masterHandoffReady === false && item.status === 'staged' && !item.pid) {
+        const detail = observePrior?.({previousId:issue.priorId,attempt:previous.executionAttemptId,waitingId:id,config});
+        if (detail) return blocked(blocker+': '+detail);
+      }
+      return blocked(blocker);
+    }
   } catch (error) { return blocked('Master handoff check failed: '+error.message); }
   try {
-    if (!claimableStatuses.includes(String(session.session_status).trim().toLowerCase()) || item.executionAttemptId ||
-        String(session.code_submission_id) !== String(item.executionSubmissionId) || session.email !== item.accountEmail ||
-        String(session.robot_model).trim().toLowerCase() !== 'master' || session.approved_run_type !== 'custom_code' ||
-        Date.parse(session.scheduled_start) !== Date.parse(item.start) || Date.parse(session.scheduled_end) !== Date.parse(item.end)) {
-      throw new Error('Master booking changed since staging');
-    }
     const attempt = item.masterPreparedAttemptId ?? randomUUID();
     const manifest = JSON.stringify(createMasterSessionDeployment(config,session,item,attempt));
     const identity = sha(manifest);

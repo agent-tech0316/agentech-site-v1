@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash,createHmac } from 'node:crypto';
-import { mkdtempSync,mkdirSync,writeFileSync,rmSync } from 'node:fs';
+import { mkdtempSync,mkdirSync,writeFileSync,rmSync,readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { masterUnresolvedSessions,masterTargetDigest,nativeHandoffPath } from './master-native-handoff.mjs';
+import { masterUnresolvedSessions,masterTargetDigest,nativeHandoffPath,verifyNativeHandoff } from './master-native-handoff.mjs';
 
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const domain='EAIC/Master/native-control-handoff/v1';
@@ -60,5 +60,56 @@ test('changed lease, invalid signature, stale native timestamp or unfinished own
     ({proof})=>{proof.unkeyed_terminal.terminal_ns='999999999';},
     ({proof})=>{proof.native_binding.nativeIdleObservation.bootId='different';}]){
     assert.throws(caseFixture(t,change),/native handoff/i);
+  }
+});
+
+function bodyAttempt() {
+  const spec=JSON.parse(readFileSync(new URL('./master-happy-dance.json',import.meta.url)));
+  const asset='d927d8cc-c519-4f41-b566-68a90ecf48e9', id='106', owner='mc_ros2_node3097';
+  const now=Date.now(), at=delta=>new Date(now+delta).toISOString(), end=at(-12000);
+  const args={motion_name:spec.motion,audio_path:''};
+  const plan={version:2,robot_model:'master',asset_id:asset,submission_id:'master-body-'+asset,source_sha256:sha(spec.source),
+    commands:[{name:'play_body',args,line:1}]};
+  const planBytes=Buffer.from(JSON.stringify(plan));
+  const common={session_id:id,attempt_id:'body-attempt',submission_id:plan.submission_id,source_sha256:plan.source_sha256,plan_sha256:sha(planBytes)};
+  const error={type:'RuntimeError',message:'Invalid joint feedback: leg'};
+  const pkg={asset_id:asset,zip_sha256:spec.zip,policy_sha256:spec.policy,audio_sha256:spec.audio,serial:spec.serial};
+  const initial={mode:'STAND_DEFAULT',settled:true,player:0,owner};
+  const receipt={schema_version:1,robot_model:'master',...common,outcome:'failed',booked_end:end,started_at:at(-85000),finished_at:at(-24000),
+    command_count:1,completed_count:0,handoff_ready:false,owner_hold_preserved:false,owner_hold_verified:false,owner_binding:initial,error,
+    commands:[{name:'play_body',command_index:1,line:1,args,source_args:args,status:'failed',started_at:at(-85000),sdk_call_started_at:at(-84000),
+      duration_ms:61000,error,result:{...pkg,request_attempted:true,play_response:'Play success',bundled_audio:'audio.wav'}}]};
+  const config={host:'fixture.invalid',sdk_api_sha256:'3'.repeat(64)};
+  const previous={status:'finished',executionStatus:'failed',executionModel:'master',masterHandoffReady:false,end,executionAttemptId:common.attempt_id,
+    executionSubmissionId:common.submission_id,executionSourceSha256:common.source_sha256,executionPlanSha256:common.plan_sha256,executionResult:{outcome:'failed'}};
+  const sides=(names)=>['left','right'].flatMap(side=>names.map(name=>side+'_'+name+'_joint'));
+  const names={arm:sides(['shoulder_pitch','shoulder_roll','shoulder_yaw','elbow','wrist_yaw','wrist_pitch','wrist_roll']),
+    leg:sides(['hip_pitch','hip_roll','hip_yaw','knee','ankle_pitch','ankle_roll']),waist:['waist_pitch_joint','waist_roll_joint','waist_yaw_joint'],
+    head:['head_yaw_joint','head_pitch_joint']};
+  function window(i) {
+    const base=i*1000000000;
+    return {...initial,receiver_id:'b350bb0a-22c3-4b16-ba1e-1913bb4329e'+i,boot_id:'a256db46-151e-42f3-bbd1-3a3fee0227cf',serial:spec.serial,
+      status:100,body:1,motion:'',input_source:'app_proxy',mode_before_ns:String(base),mode_after_ns:String(base+600000000),dwell_ms:500,
+      command_owners:{arm:owner,leg:owner,waist:owner,head:owner,hand:owner,mc:owner},hand_types:[0,0],manipulation_publishers:0,competing_body_pose_publishers:0,mc_body_pose_subscriber:true,
+      frames:Object.fromEntries(['arm','leg','waist','head','hand','mc','chest','torso'].map(k=>[k,{first_ns:String(base+20000000),last_ns:String(base+520000000),count:12,max_gap_ms:55}])),
+      joints:Object.fromEntries(Object.entries(names).map(([k,v])=>[k,{names:v,peak_velocity:.014,frame_state:0,max_error_code:0}])),
+      imus:Object.fromEntries(['chest','torso'].map(k=>[k,{min_acc:9.72,max_acc:9.83,peak_gyro:.02}])),observed_at:at(i===1?-5000:-3000)};
+  }
+  const proof={schema_version:1,kind:'native-control-handoff',robot_model:'master',read_only:true,robot_commands_sent:false,failed_outcome_preserved:true,
+    previous_session_id:id,previous_attempt_id:common.attempt_id,submission_id:common.submission_id,source_sha256:common.source_sha256,plan_sha256:common.plan_sha256,
+    sdk_api_sha256:config.sdk_api_sha256,target_sha256:masterTargetDigest(config),observed_at:at(-2000),body_package:pkg,native_binding_before:window(1),native_binding:window(2)};
+  return {proof,receipt,check(){ const receiptBytes=Buffer.from(JSON.stringify(receipt)); proof.failed_result_sha256=sha(receiptBytes);
+    return verifyNativeHandoff(proof,{id,previous,config,receiptBytes,planBytes,nowMs:now}); }};
+}
+
+test('a failed accepted body request is discharged only by two independently measured terminal windows for its package',()=>{
+  const good=bodyAttempt(); assert.equal(good.check().body_package.serial,good.receipt.commands[0].result.serial);
+  for(const change of [p=>{p.native_binding.receiver_id=p.native_binding_before.receiver_id;},p=>{p.native_binding.player=2;},
+    p=>{p.native_binding.command_owners.leg='another';},p=>{p.native_binding.competing_body_pose_publishers=1;},
+    p=>{p.native_binding.joints.leg.names[0]='wrong';},p=>{p.native_binding.joints.leg.max_error_code=3;},
+    p=>{p.native_binding.imus.torso.peak_gyro=.4;},p=>{p.native_binding.frames.leg.first_ns=p.native_binding_before.frames.leg.last_ns;},
+    p=>{p.native_binding.frames.chest.count=1;},p=>{p.body_package.audio_sha256='0'.repeat(64);},
+    (p,r)=>{r.commands[0].result.serial='wrong';},(p,r)=>{delete r.commands[0].result.play_response;}]) {
+    const bad=bodyAttempt(); change(bad.proof,bad.receipt); assert.throws(()=>bad.check(),/native handoff/i);
   }
 });

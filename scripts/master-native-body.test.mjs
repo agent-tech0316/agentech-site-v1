@@ -52,6 +52,9 @@ test('the booked receipt accepts measured completion and rejects lost telemetry 
   const start='2026-11-07T20:00:20Z', end='2026-11-07T20:02:00Z', plan=createBodyPlan(row);
   const result={serial:spec.serial,asset_id:assetId,policy_sha256:spec.policy,audio_sha256:spec.audio,zip_sha256:spec.zip,
     play_response:'Play success',native_motion:spec.motion,bundled_audio:'audio.wav',playing_seconds:59.4,peak_travel_rad:2.542,joints_fault_free:true};
+  result.audio_output={board:'soc2',file:'audio.wav',sha256:spec.audio,pcm_bytes:2080000,sample_rate_hz:16000,
+    channels:1,bits_per_sample:16,muted:false,volume:85,opened_at_robot:'2026-11-08T04:00:20+08:00',
+    started_at_robot:'2026-11-08T04:00:21+08:00',finished_at_robot:'2026-11-08T04:01:26+08:00',playing_seconds:65,completed:true};
   const cmd={...plan.commands[0],command_index:1,source_args:plan.commands[0].args,status:'completed',started_at:start,
     sdk_call_started_at:start,duration_ms:64000,result,error:null};
   const raw={schema_version:1,robot_model:'master',outcome:'completed',session_id:'12',submission_id:row.id,source_sha256:plan.source_sha256,
@@ -60,7 +63,8 @@ test('the booked receipt accepts measured completion and rejects lost telemetry 
     owner_hold_preserved:false,owner_hold_verified:false,owner_binding:binding,final_owner_binding:binding};
   const expected={sessionId:'12',submissionId:row.id,sourceSha256:plan.source_sha256,planSha256:raw.plan_sha256,attemptId:'attempt',bookedEnd:end};
   assert.equal(parseMasterExecutionResult(JSON.stringify(raw),expected).completed_count,1);
-  for(const change of [{playing_seconds:1},{joints_fault_free:false},{audio_sha256:spec.policy},{asset_id:'bad'},{peak_travel_rad:0}]) {
+  for(const change of [{playing_seconds:1},{joints_fault_free:false},{audio_sha256:spec.policy},{asset_id:'bad'},{peak_travel_rad:0},
+    {audio_output:null},{audio_output:{...result.audio_output,muted:true}},{audio_output:{...result.audio_output,completed:false}}]) {
     assert.throws(()=>parseMasterExecutionResult(JSON.stringify({...raw,commands:[{...cmd,result:{...result,...change}}]}),expected));
   }
 });

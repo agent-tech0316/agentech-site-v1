@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test:eaic-account-exemptions": "node --experimental-transform-types --test scripts/eaic-full-exemption.test.mjs scripts/eaic-motion-package.test.mjs scripts/master-native-body.test.mjs && python -m unittest discover -s scripts -p test_master_native_body.py",
+    "test:eaic-account-exemptions": "node --experimental-transform-types --test scripts/eaic-full-exemption.test.mjs scripts/eaic-motion-package.test.mjs scripts/master-native-body.test.mjs scripts/master-booking-start.test.mjs && python -m unittest discover -s scripts -p test_master_native_body.py",
     "dev": "next dev",
     "build": "next build",
     "serve:3001": "next start -p 3001",

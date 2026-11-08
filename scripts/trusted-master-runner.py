@@ -709,7 +709,8 @@ def preflight(plan_path, deployment_path, *, session_end=None, adapter_factory=S
 
 
 def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, cancel_file=None,
-                 first_command_not_before=None, body_operator_confirmed_at=None, adapter_factory=SDKAdapter, now=time.time, sleep=time.sleep):
+                 first_command_not_before=None, body_operator_confirmed_at=None, body_booking_claimed_at=None,
+                 adapter_factory=SDKAdapter, now=time.time, sleep=time.sleep):
     config = load_deployment(deployment_path)
     plan, start, end = load_bound_plan(plan_path, config, session_end)
     receipt = dict(schema_version=1, robot_model='master', outcome='failed',
@@ -748,10 +749,20 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
             receipt['first_command_not_before'] = first_command_not_before
         if config.get("native_body_asset_id"):
             import master_native_body
-            if first_command_not_before is None or body_operator_confirmed_at is None:
-                raise ValueError("Native dance requires the viewer countdown and confirmed on-site operator")
+            basis = config.get('native_body_start_policy', 'onsite_check_in')
+            if basis == 'signed_booking' and body_operator_confirmed_at is None:
+                authorized_at = body_booking_claimed_at
+            elif basis == 'onsite_check_in' and body_booking_claimed_at is None:
+                authorized_at = body_operator_confirmed_at
+            else:
+                raise ValueError('Native dance authorization differs from its bound booking')
+            if first_command_not_before is None or authorized_at is None:
+                raise ValueError('Native dance requires the viewer countdown and its bound start authorization')
+            if basis == 'signed_booking' and not start <= _timestamp(authorized_at) <= now():
+                raise ValueError('Native dance claim is outside the active booking')
+            receipt['body_start_authority'] = basis
             with master_lease(lease):
-                master_native_body.execute(config, receipt, open_dispatch, admitted, _timestamp(body_operator_confirmed_at), end, now, _iso)
+                master_native_body.execute(config, receipt, open_dispatch, admitted, _timestamp(authorized_at), end, now, _iso)
             receipt["finished_at"] = _iso(now())
             receipt["overrun_seconds"] = max(0,now()-end)
             _atomic_json(result_file, receipt)
@@ -925,6 +936,7 @@ def main():
     parser.add_argument('--session-end')
     parser.add_argument('--first-command-not-before')
     parser.add_argument('--body-operator-confirmed-at')
+    parser.add_argument('--body-booking-claimed-at')
     parser.add_argument('--cancel-file')
     parser.add_argument('--check-ready', action='store_true')
     args = parser.parse_args()
@@ -938,7 +950,7 @@ def main():
         parser.error('--first-command-not-before is required for a booked Master run')
     receipt = execute_plan(args.plan, args.deployment, args.result_file,
         session_end=args.session_end, cancel_file=args.cancel_file, first_command_not_before=args.first_command_not_before,
-        body_operator_confirmed_at=args.body_operator_confirmed_at)
+        body_operator_confirmed_at=args.body_operator_confirmed_at, body_booking_claimed_at=args.body_booking_claimed_at)
     print(json.dumps({'outcome': receipt['outcome'], 'handoff_ready': receipt['handoff_ready']}))
     return 0 if receipt['outcome'] == 'completed' else 1
 

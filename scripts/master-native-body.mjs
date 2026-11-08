@@ -21,6 +21,18 @@ export function createBodyPlan(submission) {
     commands:[{name:'play_body',args:{motion_name:spec.motion,audio_path:''},line:1}]};
 }
 
+function verifyDanceAudio(audio) {
+  if (!audio || audio.board !== 'soc2' || audio.file !== 'audio.wav' || audio.sha256 !== spec.audio ||
+      audio.pcm_bytes !== 2080000 || audio.sample_rate_hz !== 16000 || audio.channels !== 1 ||
+      audio.bits_per_sample !== 16 || audio.muted !== false || !Number.isInteger(audio.volume) ||
+      audio.volume < 1 || audio.volume > 100 || audio.completed !== true) return false;
+  const opened = Date.parse(audio.opened_at_robot), started = Date.parse(audio.started_at_robot);
+  const finished = Date.parse(audio.finished_at_robot);
+  return opened <= started && started < finished && Number.isFinite(audio.playing_seconds) &&
+    audio.playing_seconds >= 63 && audio.playing_seconds <= 68 &&
+    Math.abs((finished - started) / 1000 - audio.playing_seconds) < 0.02;
+}
+
 export function verifyBodyReceipt(value) {
   const cmd = value.commands?.[0], r = cmd?.result;
   const before = value.owner_binding, after = value.final_owner_binding;
@@ -32,6 +44,7 @@ export function verifyBodyReceipt(value) {
     && r?.serial === spec.serial && r?.asset_id && uuid.test(r.asset_id) && value.submission_id === prefix+r.asset_id
     && r.policy_sha256 === spec.policy && r.audio_sha256 === spec.audio && r.zip_sha256 === spec.zip
     && r.play_response === 'Play success' && r.native_motion === spec.motion && r.bundled_audio === 'audio.wav'
+    && verifyDanceAudio(r.audio_output)
     && Number.isFinite(r.playing_seconds) && r.playing_seconds >= 55 && r.playing_seconds <= 75
     && Number.isFinite(r.peak_travel_rad) && r.peak_travel_rad > 0.1 && r.joints_fault_free === true
     && before?.mode === 'STAND_DEFAULT' && after?.mode === 'STAND_DEFAULT' && before?.settled === true && after?.settled === true

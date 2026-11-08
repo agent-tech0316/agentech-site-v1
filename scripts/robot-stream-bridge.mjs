@@ -2,6 +2,7 @@ import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import {parseBodySubmission,createBodyPlan,bodyOperatorConfirmation} from "./master-native-body.mjs";
 import { MasterReadinessChecks } from "./master-readiness-check.mjs";
+import { automaticNativeHandoff } from "./master-native-handoff.mjs";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -144,6 +145,7 @@ function naviEnvironment() {
 function masterEnvironment() {
   const env = { ...process.env };
   delete env.AGENTECH_MASTER_HANDOFF_EVIDENCE_KEY;
+  delete env.AGENTECH_MASTER_HANDOFF_SIGNING_KEY_V1;
   delete env.SUPABASE_SERVICE_ROLE_KEY;
   delete env.OBS_WEBSOCKET_PASSWORD;
   return env;
@@ -160,7 +162,7 @@ const request = createGatewayCloudRequest({
 async function dueSessions() {
   const now = new Date();
   const end = new Date(now.getTime() + prepMs);
-  const select = "id,email,session_title,robot_model,scheduled_start,scheduled_end,session_status,approved_run_type,code_submission_id,created_at";
+  const select = "id,email,session_title,robot_model,scheduled_start,scheduled_end,session_status,approved_run_type,code_submission_id,created_at,body_booking_starts_automatically";
   const query = `scheduled_start=lte.${encodeURIComponent(end.toISOString())}&scheduled_end=gte.${encodeURIComponent(now.toISOString())}&approved_run_type=eq.custom_code&select=${select}&order=scheduled_start.asc`;
   return (await request("agentech_robot_sessions", query)).filter((item) => activeStatuses.has(normalized(item.session_status)));
 }
@@ -361,10 +363,20 @@ async function claimSession(session) {
   return claimed?.length === 1;
 }
 
+const handoffSigningKey = createHmac('sha256', process.env.AGENTECH_MASTER_HANDOFF_EVIDENCE_KEY || supabaseKey)
+  .update('EAIC/Master/native-control-handoff/v1').digest('hex');
+const observePriorMaster = automaticNativeHandoff({
+  runtimeDir, wake: wakeForMasterReadiness,
+  run: args => runAsync(localPython, [join(here, 'verify-master-native-handoff.py'), ...args], {
+    env: {...masterEnvironment(), AGENTECH_MASTER_HANDOFF_SIGNING_KEY_V1: handoffSigningKey},
+    timeout: 95000, windowsHide: true, maxBuffer: 256 * 1024,
+  }),
+});
+
 function checkMasterBooking(session,item,prepareOnly=false) {
   return masterBookingAdmission(session,item,{
     prepareOnly,
-    sessions:state.sessions, runtimeDir, deploymentFile:masterDeploymentFile, claimableStatuses, masterChecks,
+    sessions:state.sessions, runtimeDir, deploymentFile:masterDeploymentFile, claimableStatuses, masterChecks, observePrior:observePriorMaster,
     runCheck:async ({planPath,deploymentPath,timeoutMs,signal}) => {
       const attempt = item.masterPreparedAttemptId;
       const began = Date.now();
@@ -414,9 +426,11 @@ async function launch(session) {
       return;
     }
     if (item.bodyAssetId) {
-      item.bodyOperatorConfirmedAt = await bodyOperatorConfirmation(request,session,item.bodyAssetId,masterNotBefore);
+      const bookingAuthorizesStart = session.body_booking_starts_automatically === true;
+      item.bodyOperatorConfirmedAt = bookingAuthorizesStart ? null :
+        await bodyOperatorConfirmation(request,session,item.bodyAssetId,masterNotBefore);
       const remaining = Date.parse(item.end) - Math.max(Date.now(),Date.parse(masterNotBefore));
-      if (!item.bodyOperatorConfirmedAt || remaining < 80000) {
+      if ((!bookingAuthorizesStart && !item.bodyOperatorConfirmedAt) || remaining < 80000) {
         const reason = remaining < 80000 ? "Insufficient booking time for full Happy Dance playback" : "Waiting for the on-site operator at Master";
         if (item.launchBlockedReason !== reason) { item.launchBlockedReason = reason; saveState(); }
         return;
@@ -491,6 +505,15 @@ async function launch(session) {
     // Persist the attempt before spawn. A crash must not authorize a replay.
     item.executionAttemptId = item.masterPreparedAttemptId;
     item.masterFirstCommandNotBefore = masterNotBefore;
+    const bodyAuthorizationArgs = [];
+    if (item.bodyAssetId) {
+      if (session.body_booking_starts_automatically === true) {
+        item.bodyBookingClaimedAt = new Date().toISOString();
+        bodyAuthorizationArgs.push("--body-booking-claimed-at", item.bodyBookingClaimedAt);
+      } else {
+        bodyAuthorizationArgs.push("--body-operator-confirmed-at", item.bodyOperatorConfirmedAt);
+      }
+    }
     item.masterHandoffReady = false;
     item.localExecutionResult = join(runtimeDir, `session-${session.id}.${item.executionAttemptId}.master-result.json`);
     item.status = "running";
@@ -500,7 +523,7 @@ async function launch(session) {
       const child = spawn(localPython, [trustedMasterRunner, "--plan", item.localPlan,
         "--deployment", item.masterSessionDeployment, "--result-file", item.localExecutionResult,
         "--session-end", item.end, "--first-command-not-before", masterNotBefore,
-        "--cancel-file", item.masterCancelFile, ...(item.bodyAssetId ? ["--body-operator-confirmed-at",item.bodyOperatorConfirmedAt] : [])], {
+        "--cancel-file", item.masterCancelFile, ...bodyAuthorizationArgs], {
         detached: true, windowsHide: true, stdio: ["ignore", logFd, logFd], env: masterEnvironment(),
       });
       child.on("error", error => console.error(`[robot-stream] Master runner spawn failed: ${error.message}`));

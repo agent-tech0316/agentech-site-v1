@@ -207,7 +207,8 @@ export function createMasterSessionDeployment(config, session, item, attemptId) 
     session_id: String(session.id), submission_id: item.executionSubmissionId,
     source_sha256: item.executionSourceSha256, plan_sha256: item.executionPlanSha256,
     attempt_id: attemptId, scheduled_start: session.scheduled_start, scheduled_end: session.scheduled_end,
-    ...(item.bodyAssetId ? {native_body_asset_id:item.bodyAssetId} : {}),
+    ...(item.bodyAssetId ? {native_body_asset_id:item.bodyAssetId,
+      native_body_start_policy:session.body_booking_starts_automatically === true ? 'signed_booking' : 'onsite_check_in'} : {}),
     ...(item.masterRecoveryOwner ? { recovery_owner_binding: item.masterRecoveryOwner } : {}) };
 }
 
@@ -218,11 +219,16 @@ export function masterLaunchBlocker(sessions, id, item, nowMs = Date.now()) {
 }
 
 export function masterPreviousSessionBlocker(sessions, id, item, nowMs) {
+  return masterPreviousSessionIssue(sessions, id, item, nowMs)?.reason ?? null;
+}
+
+export function masterPreviousSessionIssue(sessions, id, item, nowMs) {
   for (const [otherId, other] of Object.entries(sessions)) {
     if (String(otherId) === String(id) || other.executionModel !== 'master' || !other.executionAttemptId) continue;
-    if (['running', 'publishing'].includes(other.status)) return `Master session ${otherId} is still running`;
-    if (Number.isFinite(Date.parse(other.end)) && nowMs < Date.parse(other.end)) return `Master session ${otherId} still owns its booked window`;
-    if (!masterHandoffResolved(sessions, otherId, other) && !recoveryMatches(item.masterRecoveryOwner, otherId, other)) return `Master session ${otherId} requires a verified upper-body handoff`;
+    if (['running', 'publishing'].includes(other.status)) return {reason:`Master session ${otherId} is still running`};
+    if (Number.isFinite(Date.parse(other.end)) && nowMs < Date.parse(other.end)) return {reason:`Master session ${otherId} still owns its booked window`};
+    if (!masterHandoffResolved(sessions, otherId, other) && !recoveryMatches(item.masterRecoveryOwner, otherId, other)) return {
+      priorId:otherId, reason:`Master session ${otherId} requires a verified upper-body handoff`};
   }
   return null;
 }

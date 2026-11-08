@@ -49,6 +49,21 @@ test('another Master owner blocks the next check, and a different account cannot
   assert.match(f.run().reason,/booking changed/); assert.deepEqual(f.ops.calls,[]);
 });
 
+test('a staged booking automatically requests verification of its expired predecessor without admitting motion',t=>{
+  const f=booking(t);
+  f.item.status='staged';
+  f.ops.sessions[199]={executionModel:'master',status:'finished',executionStatus:'failed',
+    executionAttemptId:'old-attempt',masterHandoffReady:false,end:new Date(Date.parse(f.item.start)-1000).toISOString()};
+  const attempts=[];
+  f.ops.observePrior=({previousId,attempt,waitingId})=>{attempts.push([previousId,attempt,waitingId]);return 'observing native control';};
+  assert.match(f.run().reason,/199.*observing native control/);
+  assert.deepEqual(attempts,[['199','old-attempt','200']]);
+  assert.deepEqual(f.ops.calls,[]);
+  f.ops.sessions[199].status='running';
+  assert.match(f.run().reason,/still running/);
+  assert.equal(attempts.length,1);
+});
+
 test('pre-slot preparation is read-only and the same fresh evidence is consumed only after opening', async t=>{
   const f=booking(t);
   const start=Date.now()+15000;

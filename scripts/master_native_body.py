@@ -1,16 +1,22 @@
 """One pinned Master Ultra play_body request with its bundled audio and a measured receipt."""
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import posixpath
 import re
 import shlex
 import time
+from urllib.parse import urlencode
 
 HERE = Path(__file__).resolve().parent
 SPEC = json.loads((HERE / 'master-happy-dance.json').read_text(encoding='utf8'))
 ASSETS = '/agibot/nfs/soc0/var/robot_proxy/resources/linkcraft_resource_onnx_ffkuaile/0.0.1/unzip'
+AUDIO_PATH = ASSETS + '/audio.wav'
+AUDIO_BOARD = '/agibot/nfs/soc2'
+ROBOT_TIMEZONE = timezone(timedelta(hours=8))
 OUTER_HOST_KEY_SHA256 = '48dc8321a96ec7603649588758ca2f6836ff136377f00505fb55c465b2e033d0'
 SOURCE_HASH = sha256(SPEC['source'].encode()).hexdigest()
 ARGS = {'motion_name':SPEC['motion'], 'audio_path':''}
@@ -42,21 +48,26 @@ def connection(config):
         yield client
 
 
-def event(out):
+def event(out, *, evidence=None):
     line = out.readline(8192)
     if not line:
         raise RuntimeError('Master telemetry observer disconnected')
     value = json.loads(line)
-    if 'error' in value: raise RuntimeError(value['error'])
+    if 'error' in value:
+        partial = value.get('partial_observation')
+        if (evidence is not None and isinstance(partial,dict) and partial.get('native_motion') == SPEC['motion']
+                and partial.get('joints_fault_free') is False):
+            evidence['partial_observation'] = partial
+        raise RuntimeError(value['error'])
     return value
 
 
 @contextmanager
-def observer(client,watch=False):
+def observer(client,watch=False,*,handoff=False):
     script = (HERE/'master_body_observer.py').read_text(encoding='utf8')
     command = ("source /opt/ros/humble/setup.bash && source /agibot/software/common/share/aimdk_msgs/local_setup.bash && "
                "export FASTRTPS_DEFAULT_PROFILES_FILE=/agibot/software/entry/cfg/ros_dds_configuration.xml && "
-               "exec python3 -u - "+shlex.quote(SPEC['motion'])+(' watch' if watch else ' check'))
+               "exec python3 -u - "+shlex.quote(SPEC['motion'])+(' watch' if watch else ' handoff' if handoff else ' check'))
     stdin,out,_ = client.exec_command('bash -c '+shlex.quote(command),timeout=12)
     try:
         stdin.write(script); stdin.flush(); stdin.channel.shutdown_write()
@@ -66,14 +77,93 @@ def observer(client,watch=False):
         out.channel.close()
 
 
+@contextmanager
+def speaker_output(client):
+    # 'latest' is absolute on the speaker board. A direct traversal from the gateway board reads its own log tree.
+    with client.open_sftp() as sftp:
+        sftp.get_channel().settimeout(4)
+        directory = posixpath.basename(sftp.readlink(AUDIO_BOARD+'/log/latest'))
+        if not re.fullmatch(r'log_\d{8}_\d{6}',directory):
+            raise RuntimeError('Cannot locate the current Master speaker-board HAL log')
+        with sftp.open(AUDIO_BOARD+'/var/hal_audio/config/audio_config.json','rb') as f:
+            cfg = json.loads(f.read(2048))
+        volume = cfg.get('playback_volume')
+        if cfg.get('is_mute') is not False or type(volume) is not int or not 0 < volume <= 100:
+            raise RuntimeError('Master speaker is muted or lacks a positive configured playback volume')
+        with sftp.open(f'{AUDIO_BOARD}/log/{directory}/hal_audio/hal_audio.log','rb') as log:
+            # SFTPFile.seek(..., SEEK_END) silently substitutes zero when stat fails.
+            log.seek(log.stat().st_size)
+            yield log, dict(board='soc2',file='audio.wav',sha256=SPEC['audio'],volume=volume,muted=False,completed=False)
+
+
+def parse_audio_output(lines):
+    """Bind HAL playback-state transitions to the exact decoded WAV, within one dispatch's log window."""
+    result = {'completed':False}
+    started = None
+    wav = 'WAV params: sr=16000Hz, ch=1, bps=16, bytes=2080000 file:'+AUDIO_PATH
+    for line in lines.splitlines():
+        _, separator, message = line.rpartition('] ')
+        if not separator or not line.startswith('['):
+            continue
+        if message == wav and 'opened_at_robot' not in result:
+            stamp = datetime.fromisoformat(line[1:line.index(']')]).replace(tzinfo=ROBOT_TIMEZONE)
+            result.update(opened_at_robot=stamp.isoformat(),sample_rate_hz=16000,channels=1,bits_per_sample=16,pcm_bytes=2080000)
+            continue
+        if 'opened_at_robot' not in result:
+            continue
+        stamp = datetime.fromisoformat(line[1:line.index(']')]).replace(tzinfo=ROBOT_TIMEZONE)
+        if message == 'StopAudioPlay Enter' or message.startswith(('PlayFile ', 'WAV params:')):
+            result['error'] = 'Speaker playback interrupted or replaced before the WAV finished'
+            break
+        if message == 'AudioPlayer::pub_play_state tts state 1' and started is None:
+            started = stamp
+            result['started_at_robot'] = stamp.isoformat()
+        elif message.startswith('pcm_started successfully'):
+            result['pcm_device_started_at_robot'] = stamp.isoformat()
+        elif message == 'AudioPlayer::pub_play_state tts state 2' and started is not None:
+            duration = (stamp-started).total_seconds()
+            result.update(finished_at_robot=stamp.isoformat(),playing_seconds=duration,completed=63 <= duration <= 68)
+            if not result['completed']:
+                result['error'] = f'Speaker played {duration:g}s of the 65s WAV'
+            break
+    return result
+
+
+def collect_speaker_output(log, evidence, wait_seconds):
+    deadline = time.monotonic()+wait_seconds
+    data = bytearray()
+    try:
+        while True:
+            chunk = log.read(65536)
+            if chunk:
+                data.extend(chunk)
+                if len(data) > 2*1024*1024:
+                    raise RuntimeError('Speaker HAL log exceeded the booked observation window')
+                evidence.update(parse_audio_output(data.decode('utf8',errors='replace')))
+            if evidence.get('completed') or evidence.get('error'):
+                return
+            if len(chunk) == 65536:
+                continue
+            remaining = deadline-time.monotonic()
+            if remaining <= 0:
+                evidence['error'] = 'Missing full speaker HAL playback evidence for the bundled WAV'
+                return
+            time.sleep(min(.3,remaining))
+    except Exception as exc:
+        evidence['error'] = f'Speaker HAL observation failed: {exc}'
+
+
 def preflight(config):
-    with connection(config) as client, observer(client) as (ready,_):
+    with connection(config) as client, speaker_output(client) as (_,audio), observer(client) as (ready,_):
         return {'ready':True,'robot_model':'master','plan_sha256':config['plan_sha256'],'robot_commands_sent':False,
-                'standing':ready,'native_motion':SPEC['motion'],'policy_sha256':SPEC['policy'],'audio_sha256':SPEC['audio']}
+                'standing':ready,'native_motion':SPEC['motion'],'policy_sha256':SPEC['policy'],'audio_sha256':SPEC['audio'],
+                'speaker_volume':audio['volume']}
 
 
 def play_once(client):
-    url = 'http://10.0.1.40:5000/lingxi/interaction/play_body?motion_name='+SPEC['motion']+'&audio_path='
+    # The submitted empty selector means this approved ZIP's WAV. The installed proxy requires its absolute path.
+    query = urlencode({'motion_name':SPEC['motion'],'audio_path':AUDIO_PATH})
+    url = 'http://10.0.1.40:5000/lingxi/interaction/play_body?'+query
     _,out,_ = client.exec_command("curl --noproxy '*' --max-time 10 --silent --show-error --write-out '\\n%{http_code}' "+shlex.quote(url),timeout=12)
     raw = out.read(4096).decode()
     if out.channel.recv_exit_status() != 0: raise RuntimeError('Native request outcome unknown')
@@ -85,7 +175,7 @@ def play_once(client):
 
 
 def execute(config, receipt, open_dispatch, admitted, confirmed, end, now, iso):
-    # Preparation does not dispatch; the single HTTP request follows the viewer and operator gates.
+    # The single HTTP request follows the viewer and start-authorization checks.
     cmd = {'command_index':1,'line':1,'name':'play_body','args':ARGS,'source_args':ARGS,'status':'failed',
            'started_at':iso(now()),'duration_ms':0,'result':{},'error':None}
     receipt.update(owner_hold_preserved=False)
@@ -95,20 +185,32 @@ def execute(config, receipt, open_dispatch, admitted, confirmed, end, now, iso):
     try:
         with connection(config) as client:
             open_dispatch()
-            with observer(client,True) as (ready,out):
+            with speaker_output(client) as (log,audio), observer(client,True) as (ready,out):
                 admitted()
                 if confirmed is None or not 0 <= now()-confirmed <= 90 or end-now() < 75:
-                    raise RuntimeError('On-site operator confirmation or remaining booked time expired before playback')
+                    raise RuntimeError('Start authorization or remaining booked time expired before playback')
                 receipt['owner_binding'] = ready
                 cmd['sdk_call_started_at'] = iso(now())
+                audio_deadline = time.monotonic()+75
                 evidence.update(asset_id=config['native_body_asset_id'],zip_sha256=SPEC['zip'],policy_sha256=SPEC['policy'],
-                                audio_sha256=SPEC['audio'],bundled_audio='audio.wav',request_attempted=True)
-                response = play_once(client)
-                evidence.update(play_response=response['message'],serial=response['robot_sn'])
-                out.channel.settimeout(min(80,max(1,end-now())))
-                observation = event(out)
-                receipt['final_owner_binding'] = observation.pop('final')
-                evidence.update(observation)
+                                audio_sha256=SPEC['audio'],bundled_audio='audio.wav',audio_output=audio,request_attempted=True)
+                ended_standing = False
+                try:
+                    response = play_once(client)
+                    evidence.update(play_response=response['message'],serial=response['robot_sn'])
+                    out.channel.settimeout(min(80,max(1,end-now())))
+                    observation = event(out,evidence=evidence)
+                    receipt['final_owner_binding'] = observation.pop('final')
+                    evidence.update(observation)
+                    ended_standing = True
+                finally:
+                    # A completed standing transition permits passive audio tracking even when the motion faulted.
+                    partial = evidence.get('partial_observation',{})
+                    terminal = ended_standing or partial.get('terminal_standing_observed') is True
+                    remaining = max(0,min(audio_deadline-time.monotonic(),end-now())) if terminal else 0
+                    collect_speaker_output(log,audio,remaining)
+                if not audio['completed']:
+                    raise RuntimeError(audio['error'])
                 admitted()
         cmd['status'] = 'completed'
         receipt.update(outcome='completed',completed_count=1,handoff_ready=True,handoff_mode='native-body-playback',handoff_blocker=None)

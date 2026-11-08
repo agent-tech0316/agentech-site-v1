@@ -4,6 +4,7 @@ import { join, sep } from 'node:path';
 import { parseMasterExecutionResult, scopedNativeOwner } from './master-session-gateway.mjs';
 
 const commands = JSON.parse(readFileSync(new URL('./master-command-contract.json', import.meta.url), 'utf8')).commands;
+const dance = JSON.parse(readFileSync(new URL('./master-happy-dance.json',import.meta.url), 'utf8'));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const deployed98 = { id:'98', attempt:'a3cb275d-c62c-43dc-98c0-a63389ec6f5a',
   sdk:'a9ed186b2977fce0eab98932299dc31cd7dea15150c0e2d0c2dd4f4982160de4',
@@ -65,6 +66,63 @@ function signedNativeMeasurements(proof, heart, unkeyed) {
   return before <= stamp && stamp <= after && after > before && after-before <= 1000000000n;
 }
 
+const bilateral = names => ['left','right'].flatMap(side=>names.map(name=>`${side}_${name}_joint`));
+const bodyJoints = {arm:bilateral(['shoulder_pitch','shoulder_roll','shoulder_yaw','elbow','wrist_yaw','wrist_pitch','wrist_roll']),
+  leg:bilateral(['hip_pitch','hip_roll','hip_yaw','knee','ankle_pitch','ankle_roll']),
+  waist:['waist_yaw_joint','waist_pitch_joint','waist_roll_joint'],head:['head_yaw_joint','head_pitch_joint']};
+const bodyStreams = [...Object.keys(bodyJoints),'hand','mc','chest','torso'];
+const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
+const nativeNs = value=>typeof value === 'string' && /^[1-9]\d{0,19}$/.test(value) ? BigInt(value) : -1n;
+const finiteRange = (v,min,max)=>Number.isFinite(v) && min <= v && v <= max;
+
+function bodyWindow(binding) {
+  if (!binding || !/^mc_ros2_node\d+$/.test(binding.owner) || binding.serial !== dance.serial || !uuid.test(binding.boot_id) || !uuid.test(binding.receiver_id)
+      || binding.mode !== 'STAND_DEFAULT' || binding.status !== 100 || binding.body !== 1 || binding.player !== 0 || binding.motion !== '' || binding.settled !== true
+      || typeof binding.input_source !== 'string' || !binding.input_source.trim() || binding.manipulation_publishers !== 0
+      || binding.competing_body_pose_publishers !== 0 || binding.mc_body_pose_subscriber !== true
+      || !['arm','leg','waist','head','hand','mc'].every(k=>binding.command_owners?.[k] === binding.owner)
+      || !Array.isArray(binding.hand_types) || binding.hand_types.length !== 2 || !binding.hand_types.every(v=>v === 0)
+      || !finiteRange(binding.dwell_ms,400,6000)) return false;
+  const before=nativeNs(binding.mode_before_ns),after=nativeNs(binding.mode_after_ns);
+  if (!(before>0n && before<after && after-before<=6000000000n)) return false;
+  for (const key of bodyStreams) {
+    const f=binding.frames?.[key],a=nativeNs(f?.first_ns),b=nativeNs(f?.last_ns);
+    if (!(before<a && a<b && b<=after && b-a>=400000000n && after-b<=150000000n && Number.isInteger(f?.count) && f.count>=3
+        && Number.isFinite(f.max_gap_ms) && f.max_gap_ms>0 && f.max_gap_ms<=150)) return false;
+  }
+  for (const [group,names] of Object.entries(bodyJoints)) {
+    const s=binding.joints?.[group];
+    if (!Array.isArray(s?.names) || s.names.length!==names.length || !names.every(n=>s.names.includes(n)) || s.frame_state!==0 || s.max_error_code!==0
+        || !Number.isFinite(s.peak_velocity) || s.peak_velocity<0 || s.peak_velocity>=.12) return false;
+  }
+  return ['torso','chest'].every(k=>{
+    const s=binding.imus?.[k];
+    return s && [s.min_acc,s.max_acc,s.peak_gyro].every(Number.isFinite) && 8<s.min_acc && s.min_acc<=s.max_acc && s.max_acc<11.5 && 0<=s.peak_gyro && s.peak_gyro<.15;
+  });
+}
+
+function bodyHandoff(proof,plan,receipt,nowMs,previous) {
+  const cmd=receipt.commands[0],r=cmd?.result, p=proof.body_package;
+  const argsOk = a => a && Object.keys(a).length===2 && a.motion_name===dance.motion && a.audio_path==='';
+  const pkg={asset_id:plan.asset_id,zip_sha256:dance.zip,policy_sha256:dance.policy,audio_sha256:dance.audio,serial:dance.serial};
+  if (!uuid.test(plan.asset_id) || plan.version!==2 || plan.submission_id!=='master-body-'+plan.asset_id || plan.source_sha256!==hash(dance.source)
+      || plan.commands.length!==1 || plan.commands[0].name!=='play_body' || plan.commands[0].line!==1 || !argsOk(plan.commands[0].args)
+      || receipt.outcome!=='failed' || receipt.handoff_ready!==false || receipt.owner_hold_preserved!==false || receipt.owner_hold_verified!==false
+      || receipt.command_count!==1 || receipt.completed_count!==0 || receipt.commands.length!==1 || cmd.command_index!==1 || cmd.line!==1 || cmd.name!=='play_body'
+      || cmd.status!=='failed' || !argsOk(cmd.args) || !argsOk(cmd.source_args) || !cmd.error || !receipt.error?.message
+      || receipt.error.type!==cmd.error.type || receipt.error.message!==cmd.error.message || (receipt.error.command ?? 'play_body')!=='play_body'
+      || (receipt.error.command_index ?? 1)!==1 || r?.request_attempted!==true || r.play_response!=='Play success' || r.bundled_audio!=='audio.wav'
+      || !Object.entries(pkg).every(([k,v])=>r[k]===v && p?.[k]===v)) return false;
+  const initial=receipt.owner_binding;
+  if (!/^mc_ros2_node\d+$/.test(initial?.owner) || initial?.mode!=='STAND_DEFAULT' || initial.player!==0 || initial.settled!==true) return false;
+  const start=Date.parse(receipt.started_at),call=Date.parse(cmd.sdk_call_started_at),finish=Date.parse(receipt.finished_at),end=Date.parse(previous.end);
+  const first=proof.native_binding_before,last=proof.native_binding;
+  const a=Date.parse(first?.observed_at),b=Date.parse(last?.observed_at),issued=Date.parse(proof.observed_at);
+  return start<=call && call<=finish && call<end && finish<=a && end<=a && a<b && b<=issued && issued<=nowMs && issued-a<=90000
+    && bodyWindow(first) && bodyWindow(last) && first.receiver_id!==last.receiver_id
+    && nativeNs(first.mode_after_ns)<nativeNs(last.mode_before_ns) && ['owner','boot_id','input_source'].every(k=>first[k]===last[k]);
+}
+
 export function verifyNativeHandoff(proof, {id, previous, config, receiptBytes, planBytes, nowMs = Date.now(), signed = true}) {
   const require = (condition, reason) => { if (!condition) throw new Error(`Master native handoff refused: ${reason}`); };
   require(previous?.executionModel === 'master' && previous.status === 'finished'
@@ -78,11 +136,15 @@ export function verifyNativeHandoff(proof, {id, previous, config, receiptBytes, 
   require(hash(planBytes) === proof.plan_sha256, 'authorized plan changed');
   const plan = JSON.parse(planBytes.toString('utf8'));
   require(plan.robot_model === 'master' && plan.submission_id === proof.submission_id && plan.source_sha256 === proof.source_sha256
-    && Array.isArray(plan.commands) && plan.commands.length > 0
-    && plan.commands.every(c => ['native_preset','native_head','passive'].includes(commands[c.name]?.backend)), 'program can own raw or retained control');
+    && Array.isArray(plan.commands) && plan.commands.length > 0, 'invalid native program');
   const receipt = parseMasterExecutionResult(receiptBytes.toString('utf8'), {sessionId:String(id),
     submissionId:previous.executionSubmissionId, attemptId:previous.executionAttemptId,
     sourceSha256:proof.source_sha256, planSha256:proof.plan_sha256, bookedEnd:previous.end});
+  if (String(plan.submission_id).startsWith('master-body-')) {
+    require(signed && bodyHandoff(proof,plan,receipt,nowMs,previous),'failed body attempt, installed package or two terminal native windows were not verified');
+    return proof;
+  }
+  require(plan.commands.every(c=>['native_preset','native_head','passive'].includes(commands[c.name]?.backend)), 'program can own raw or retained control');
   require(receipt.outcome === 'failed' && nativeControl(receipt.owner_binding), 'initial native ownership was not qualified');
   const attempted = receipt.commands;
   require(receipt.command_count === plan.commands.length && attempted.length > 0 && attempted.length <= plan.commands.length
@@ -135,6 +197,7 @@ export function loadMasterNativeHandoffs(sessions, runtimeDir, config, nowMs = D
       proof = JSON.parse(file.payload);
     }
     const issuanceConfig = pinned ? {...config,sdk_api_sha256:deployed98.sdk} : config;
+    if (proof.body_package && origin.native_body_asset_id !== proof.body_package.asset_id) throw new Error('Master native handoff historical body asset differs');
     proofs[id] = verifyNativeHandoff(proof,{id,previous,config:issuanceConfig,nowMs,signed:!pinned,
       receiptBytes:boundedFile(runtimeDir,join(runtimeDir,basename+'.master-result.json'),16*1024*1024),
       planBytes:boundedFile(runtimeDir,join(runtimeDir,`session-${id}.plan.json`),1024*1024)});
@@ -145,4 +208,27 @@ export function loadMasterNativeHandoffs(sessions, runtimeDir, config, nowMs = D
 export function masterUnresolvedSessions(sessions, runtimeDir, config, now = Date.now()) {
   const proofs = loadMasterNativeHandoffs(sessions, runtimeDir, config, now);
   return Object.fromEntries(Object.entries(sessions).filter(([id]) => !Object.hasOwn(proofs, id)));
+}
+
+// A successful subprocess is never itself admission: the next gateway poll
+// reads the signed proof against the actual failed receipt and the staged plan.
+export function automaticNativeHandoff({runtimeDir, run, wake, now=Date.now}) {
+  let working = false, previousKey, retryAt = 0, detail = '';
+  return ({previousId,attempt,waitingId,config}) => {
+    const output = nativeHandoffPath(runtimeDir,previousId,attempt,config.sdk_api_sha256);
+    if (!/^\d+$/.test(waitingId) || existsSync(output)) return '';
+    const key = JSON.stringify([output,waitingId]);
+    if (working) return 'observing native control';
+    if (previousKey === key && now() < retryAt) return detail;
+    const prefix = join(runtimeDir,`session-${previousId}.${attempt}`);
+    working = true; previousKey = key; detail = 'observing native control';
+    Promise.resolve().then(()=>run(['--plan',join(runtimeDir,`session-${previousId}.plan.json`),
+      '--deployment',prefix+'.master.json','--failed-result',prefix+'.master-result.json',
+      '--output',output,'--waiting-session',waitingId])).then(()=>{
+        detail = existsSync(output) ? '' : 'no signed observation was produced';
+      },error=>{
+        detail = String(error?.stderr || error?.message || 'observation failed').trim().split(/\r?\n/).at(-1).slice(0,400);
+      }).finally(()=>{working=false;retryAt=now()+15000;wake();});
+    return detail;
+  };
 }

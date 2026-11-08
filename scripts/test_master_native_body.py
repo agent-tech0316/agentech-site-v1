@@ -2,17 +2,58 @@
 from contextlib import contextmanager
 import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path
+import shlex
 import tempfile
 import unittest
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+from urllib.parse import parse_qs, urlsplit
 
 import master_native_body as body
 
 module = importlib.util.spec_from_file_location("body_runner",Path(__file__).with_name("trusted-master-runner.py"))
 runner = importlib.util.module_from_spec(module)
 module.loader.exec_module(runner)
+
+
+class BundledAudio(unittest.TestCase):
+    def test_one_vendor_request_selects_the_pinned_wav(self):
+        reply = json.dumps({'message':'Play success','robot_sn':body.SPEC['serial']})
+        out = io.BytesIO((reply+'\n200').encode())
+        out.channel = SimpleNamespace(recv_exit_status=lambda:0)
+        client = Mock()
+        client.exec_command.return_value = (None,out,None)
+        body.play_once(client)
+        client.exec_command.assert_called_once()
+        url = urlsplit(shlex.split(client.exec_command.call_args.args[0])[-1])
+        self.assertEqual(url.path,'/lingxi/interaction/play_body')
+        self.assertEqual(parse_qs(url.query,keep_blank_values=True),
+                         {'motion_name':[body.SPEC['motion']],'audio_path':[body.ASSETS+'/audio.wav']})
+
+    def test_native_audio_requires_this_wav_and_its_full_playback(self):
+        selected = body.ASSETS+'/audio.wav'
+        def line(clock, message):
+            return f'[2026-11-08 {clock}][Info][2609][audio_player.cpp:445] {message}\n'
+        def capture(path=selected, finish='07:49:46.010001', interrupt=False):
+            events = line('07:48:40.778001',f'WAV params: sr=16000Hz, ch=1, bps=16, bytes=2080000 file:{path}')
+            events += line('07:48:41.010001','AudioPlayer::pub_play_state tts state 1')
+            if interrupt:
+                events += line('07:48:42.110001','StopAudioPlay Enter')
+            if finish:
+                events += line(finish,'AudioPlayer::pub_play_state tts state 2')
+            return body.parse_audio_output(events)
+        captured = capture()
+        self.assertTrue(captured['completed'])
+        self.assertEqual(captured['playing_seconds'],65.0)
+        self.assertEqual(captured['pcm_bytes'],2080000)
+        self.assertIn('+08:00',captured['started_at_robot'])
+        self.assertFalse(capture('/tmp/other/audio.wav')['completed'])
+        self.assertFalse(capture(finish=None)['completed'])
+        self.assertFalse(capture(finish='07:48:42.010001')['completed'])
+        self.assertFalse(capture(interrupt=True)['completed'])
 
 
 class NativePackageExecution(unittest.TestCase):
@@ -34,8 +75,9 @@ class NativePackageExecution(unittest.TestCase):
         self.end = dict(owner="mc_ros2_node3097",mode="STAND_DEFAULT",player=0,settled=True)
         self.finish_event = dict(final=self.end,playing_seconds=59.4,peak_travel_rad=2.542,
                                  native_motion=body.SPEC["motion"],joints_fault_free=True)
+        self.audio_finish = '07:49:46.010001'
 
-    def execute(self, response=None, cancel=False):
+    def execute(self, response=None, cancel=False, claimed_at=None):
         plan = self.root/"plan.json"
         plan.write_bytes(json.dumps(self.plan).encode())
         self.config["plan_sha256"] = hashlib.sha256(plan.read_bytes()).hexdigest()
@@ -51,25 +93,48 @@ class NativePackageExecution(unittest.TestCase):
             self.assertTrue(watch)
             if cancel: cancel_file.touch()
             yield self.end, type("Channel",(),{"channel":type("Timeout",(),{"settimeout":lambda *_:None})()})()
+        @contextmanager
+        def speaker(_):
+            audio = (
+                f'[2026-11-08 07:48:40.778001][Info][2609][audio_player.cpp:239] WAV params: sr=16000Hz, ch=1, bps=16, bytes=2080000 file:{body.AUDIO_PATH}\n'
+                '[2026-11-08 07:48:41.010001][Info][2609][audio_player.cpp:445] AudioPlayer::pub_play_state tts state 1\n'
+                f'[2026-11-08 {self.audio_finish}][Info][2609][audio_player.cpp:445] AudioPlayer::pub_play_state tts state 2\n')
+            yield io.BytesIO(audio.encode()), dict(board='soc2',file='audio.wav',sha256=body.SPEC['audio'],volume=100,muted=False,completed=False)
         def play(_):
             self.calls.append(self.now)
             if isinstance(response,Exception): raise response
             return {"message":"Play success","robot_sn":body.SPEC["serial"]}
-        def event(_):
+        read_event = body.event
+        def event(out, **kwargs):
             self.now += 64
             if isinstance(self.finish_event,Exception): raise self.finish_event
-            return self.finish_event.copy()
-        with patch.object(body,"connection",connection),patch.object(body,"observer",observer),patch.object(body,"play_once",play),patch.object(body,"event",event):
+            return read_event(io.BytesIO((json.dumps(self.finish_event)+'\n').encode()), **kwargs)
+        with patch.object(body,"connection",connection),patch.object(body,"observer",observer),patch.object(body,"speaker_output",speaker),patch.object(body,"play_once",play),patch.object(body,"event",event):
             return runner.execute_plan(plan,cfg,self.root/"receipt.json",first_command_not_before=runner._iso(self.now+20),
-                                       body_operator_confirmed_at=self.confirmed,cancel_file=cancel_file,
+                                       body_operator_confirmed_at=self.confirmed,body_booking_claimed_at=claimed_at,cancel_file=cancel_file,
                                        now=lambda:self.now,sleep=sleep)
 
     def test_qualified_playback_after_countdown(self):
         receipt = self.execute()
         self.assertEqual(self.calls,[1800000020.0])
         self.assertEqual(receipt["commands"][0]["result"]["audio_sha256"],body.SPEC["audio"])
+        self.assertTrue(receipt["commands"][0]["result"]["audio_output"]["completed"])
         self.assertTrue(receipt["handoff_ready"])
         self.assertEqual(receipt["outcome"],"completed")
+
+    def test_booking_start_uses_its_bound_claim_and_does_not_record_an_operator_check_in(self):
+        self.config["native_body_start_policy"] = "signed_booking"
+        self.confirmed = None
+        receipt = self.execute(claimed_at=runner._iso(self.now))
+        self.assertEqual(receipt["body_start_authority"], "signed_booking")
+        self.assertEqual(receipt["outcome"], "completed")
+        self.assertEqual(len(self.calls), 1)
+
+    def test_a_claim_timestamp_cannot_replace_on_site_authorization_for_another_profile(self):
+        self.confirmed = None
+        receipt = self.execute(claimed_at=runner._iso(self.now))
+        self.assertEqual(receipt["outcome"], "failed")
+        self.assertFalse(self.calls)
 
     def test_acknowledgement_without_measured_finish_is_failed(self):
         self.finish_event = RuntimeError("Telemetry disconnected")
@@ -78,6 +143,34 @@ class NativePackageExecution(unittest.TestCase):
         self.assertFalse(receipt["handoff_ready"])
         self.assertEqual(receipt["completed_count"],0)
         self.assertEqual(len(self.calls),1)
+
+    def test_truncated_audio_keeps_measured_dance_and_fails_the_booking(self):
+        self.audio_finish = '07:48:45.010001'
+        receipt = self.execute()
+        command = receipt['commands'][0]
+        self.assertEqual(command['result']['playing_seconds'],59.4)
+        self.assertEqual(command['result']['audio_output']['playing_seconds'],4.0)
+        self.assertIn('4s of the 65s WAV',command['error']['message'])
+        self.assertEqual(receipt['outcome'],'failed')
+        self.assertFalse(receipt['handoff_ready'])
+        self.assertEqual(len(self.calls),1)
+
+    def test_observed_motion_with_an_actuator_fault_preserves_evidence_and_fails(self):
+        fault = 'Invalid joint feedback: leg left_ankle_roll_joint.error_code=533'
+        partial = dict(native_motion=body.SPEC['motion'],joints_fault_free=False,
+                       playing_seconds=58.9,terminal_standing_observed=True,
+                       joint_faults=[dict(name='left_ankle_roll_joint',error_code=533)])
+        self.finish_event = dict(error=fault,partial_observation=partial)
+        with patch.object(body,'collect_speaker_output',wraps=body.collect_speaker_output) as collect:
+            receipt = self.execute()
+        self.assertGreater(collect.call_args.args[2],0)
+        command = receipt['commands'][0]
+        self.assertEqual(command['error'],dict(type='RuntimeError',message=fault))
+        self.assertEqual(command['result'].get('partial_observation'),partial)
+        self.assertTrue(command['result']['audio_output']['completed'])
+        self.assertEqual(receipt['completed_count'],0)
+        self.assertFalse(receipt['handoff_ready'])
+        self.assertEqual(self.calls,[1800000020.0])
 
     def test_ambiguous_request_is_never_retried(self):
         receipt = self.execute(TimeoutError("native request timed out"))

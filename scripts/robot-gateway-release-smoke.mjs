@@ -115,6 +115,7 @@ async function simulateRoutes(root, scratch) {
       },
       run:(exe,args)=>{if(exe==='ssh'){const last=args.at(-1);if(last.includes('nohup'))launched.push(last);return '123';}
         checks.push(Array.from(args));return '';},
+      observePriorMaster:()=>assert.fail('Clean release fixture unexpectedly requested a handoff'),
       masterEnvironment:()=>({}),naviEnvironment:()=>({}),sshArgs:()=>[],robot:'fixture@invalid',remoteDir:'/fixture',
       claimSession:async()=>{claims.push(model);return true;},saveState:()=>{},openSync:()=>0,closeSync:()=>{},
       createNaviSessionOwner:()=>({attempt_id:'fixture-navi',owner_file:'owner',result_file:'result'}),
