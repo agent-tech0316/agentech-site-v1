@@ -198,3 +198,20 @@ test("ordinary signed Master upload flows through booking, staging, and one time
   }
   t.diagnostic("package "+digest+"; policy "+hash(content.model)+"; audio "+hash(content.wav));
 });
+
+test("account history and profile access reject unsigned or mismatched identities before storage", async () => {
+  const routes = await import("../app/api/account/route.ts");
+  const {createSignedAccountSession} = await import("../lib/server-account-session.ts");
+  process.env.AGENTECH_SESSION_SECRET ||= "local-test-signing-secret";
+  const target = "other@example.invalid";
+  const token = createSignedAccountSession("owner@example.invalid");
+  for (const method of ["GET","POST","PATCH"]) {
+    for (const [authorization, status] of [["",401],["Bearer "+token,403]]) {
+      const request = new Request("https://example.test/api/account?email="+target, {
+        method, headers:{authorization,"content-type":"application/json"},
+        ...(method==="GET"?{}:{body:JSON.stringify({email:target})})
+      });
+      assert.equal((await routes[method](request)).status,status);
+    }
+  }
+});
