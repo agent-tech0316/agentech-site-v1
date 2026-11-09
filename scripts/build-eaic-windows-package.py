@@ -17,7 +17,7 @@ def copy_tree(source,target):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('sdk','node','node-license','python','python-site-packages','python-home-site-packages','makensis','out'):p.add_argument('--'+name,type=Path,required=True)
-    p.add_argument('--version',default='1.0.0')
+    p.add_argument('--version',default='1.0.1')
     a=p.parse_args()
     contract=json.loads((HERE/'eaic-sdk-contract.json').read_text())
     out=a.out.resolve();out.mkdir(parents=True,exist_ok=True)

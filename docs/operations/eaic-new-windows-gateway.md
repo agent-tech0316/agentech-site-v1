@@ -1,5 +1,10 @@
 # Install EAIC on a new Windows PC
 
+[Download gateway 1.0.1 and its checksum](https://github.com/agent-tech0316/agentech-site-v1/releases/tag/eaic-gateway-v1.0.1).
+This patch fixes Windows credential loading, including protected files saved
+with line endings by gateway 1.0.0. The cloud key and OBS password remain
+protected with Windows DPAPI. It does not change robot commands or admission.
+
 This package prepares a **separate gateway PC**. Installing it does not start a
 gateway, connect to a robot, change a controller, or qualify physical motion.
 The existing gateway is not modified.
@@ -39,7 +44,7 @@ Remote access can use the organization's separately managed VPN or support tool.
 
 ## Setup
 
-1. Run `EAIC-Gateway-1.0.0-Setup-Windows-x64.exe`. It installs into the current
+1. Run `EAIC-Gateway-1.0.1-Setup-Windows-x64.exe`. It installs into the current
    user's Local AppData and adds Start menu shortcuts. The installer is unsigned.
    Verify its SHA-256 against the accompanying release checksum before use.
 2. Run **Offline check**. It verifies every packaged file, SDK API pins, imports

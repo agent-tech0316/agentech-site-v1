@@ -19,6 +19,13 @@ function Verify-Package {
   & $python (Join-Path $PSScriptRoot 'eaic-package-check.py') $gatewayRoot
   if($LASTEXITCODE -ne 0){throw 'Bundled SDK offline check failed'}
 }
+function Read-GatewaySecret([string]$Path){
+  # Set-Content from Windows PowerShell writes a line terminator. DPAPI's
+  # hexadecimal serialization does not accept it; trim the encoding only.
+  $encoded=(Get-Content -LiteralPath $Path -Raw -ErrorAction Stop).Trim()
+  if(-not $encoded){throw 'Protected gateway credential is empty'}
+  return ConvertTo-SecureString $encoded -ErrorAction Stop
+}
 function Test-Tcp([string]$TargetHost,[int]$Port){
   $client=[Net.Sockets.TcpClient]::new()
   try{
@@ -54,8 +61,8 @@ if($Action -eq 'Configure'){
   $acl.SetAccessRule([Security.AccessControl.FileSystemAccessRule]::new($identity,'FullControl','ContainerInherit,ObjectInherit','None','Allow'))
   Set-Acl -LiteralPath $configDir -AclObject $acl
   $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $configPath -Encoding UTF8
-  ConvertFrom-SecureString $cloudKey | Set-Content -LiteralPath $credentialPath
-  ConvertFrom-SecureString $obsKey | Set-Content -LiteralPath (Join-Path $configDir 'obs-key.dpapi')
+  ConvertFrom-SecureString $cloudKey | Set-Content -LiteralPath $credentialPath -NoNewline
+  ConvertFrom-SecureString $obsKey | Set-Content -LiteralPath (Join-Path $configDir 'obs-key.dpapi') -NoNewline
   $stateDir=Join-Path $gatewayRoot '.robot-stream-runtime'
   New-Item -ItemType Directory -Force -Path $stateDir | Out-Null
   $statePath=Join-Path $stateDir 'state.json'
@@ -79,9 +86,9 @@ try{
   & $node --input-type=module -e "import {gatewayAssignment} from './scripts/eaic-gateway-assignment.mjs'; gatewayAssignment();"
   if($LASTEXITCODE -ne 0){throw 'No valid exclusive booking assignment'}
   $env:SUPABASE_URL=$config.cloudUrl
-  $secure=Get-Content -LiteralPath $credentialPath -Raw | ConvertTo-SecureString
+  $secure=Read-GatewaySecret $credentialPath
   $env:SUPABASE_SERVICE_ROLE_KEY=[Net.NetworkCredential]::new('',$secure).Password
-  $obsSecure=Get-Content -LiteralPath (Join-Path $configDir 'obs-key.dpapi') -Raw | ConvertTo-SecureString
+  $obsSecure=Read-GatewaySecret (Join-Path $configDir 'obs-key.dpapi')
   $env:OBS_WEBSOCKET_PASSWORD=[Net.NetworkCredential]::new('',$obsSecure).Password
   $env:OBS_WEBSOCKET_URL=$config.obsUrl
   $env:ROBOT_HOST=$config.aegisHost;$env:ROBOT_SSH_USER=$config.aegisUser;$env:ROBOT_SSH_KEY=$config.sshKey
