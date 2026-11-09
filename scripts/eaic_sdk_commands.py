@@ -103,7 +103,9 @@ def bind(model, method, positional, arguments, *, references=frozenset()):
         if not isinstance(actions,list) or not 1<=len(actions)<=100: raise ValueError('Sequence requires 1 through 100 SDK actions')
         for action in actions:
             if not isinstance(action,dict) or set(action)-{'action','params'} or action.get('action') in {'run_sequence','emergency_stop'}: raise ValueError('Nested sequences are not allowed; emergency_stop must be a terminal top-level call')
-            bind(model,action.get('action'),[],action.get('params',{}),references=references)
+            _,child,_=bind(model,action.get('action'),[],action.get('params',{}),references=references)
+            from aegis_gateway_spec import ALLOWED_COMMANDS,AEGIS_192_168_4_88,validate_aegis_command
+            if action['action'] in ALLOWED_COMMANDS:validate_aegis_command(action['action'],child,device_profile=AEGIS_192_168_4_88)
     return entry, bound, positional[len(slots):]
 
 
@@ -171,10 +173,13 @@ def validate_plan(plan):
     if not isinstance(commands,list) or not 1<=len(commands)<=100:raise ValueError('SDK plans require 1 through 100 commands')
     refs=set();result_sources={};raw_entry=False
     master_modes=set()
+    operation_count=0
     for index,command in enumerate(commands):
         if not isinstance(command,dict) or set(command)-{'name','args','positional','sdk','line','save_result_as'} or command.get('sdk') is not True:raise ValueError('Invalid SDK plan command')
         if type(command.get('line')) is not int or command['line']<1:raise ValueError('Invalid SDK source line')
         entry,bound,extra=bind(plan['robot_model'],command['name'],[],command['args'],references=refs)
+        operation_count+=len(bound['actions']) if plan['robot_model']=='aegis' and command['name']=='run_sequence' else 1
+        if operation_count>100:raise ValueError('SDK program exceeds 100 commands including sequence children')
         # Keep the existing reviewed value/profile rules wherever they apply.
         # Expanded signatures are never an escape from a legacy numeric limit.
         base=command['name'].split('.')[-1]

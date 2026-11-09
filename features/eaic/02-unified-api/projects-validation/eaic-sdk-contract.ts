@@ -70,6 +70,7 @@ export function parseSdkProgram(source:string,model:string):SdkCall[] {
   const resultSources=new Map<string,string>();
   const masterModes=new Set<string>();
   let selected=false,rawEntry=false;
+  let operationCount=0;
   for(const statement of sourceStatements(source)){
     const imports=statement.text.match(/^from\s+agentech\s+import\s+(.+)$/);
     if(imports){
@@ -91,6 +92,8 @@ export function parseSdkProgram(source:string,model:string):SdkCall[] {
     const values=new LiteralParser(argumentsText,imported,refs,true).arguments([...slots,...variadic]) as Record<string,Value>;
     const extra=variadic.filter(n=>Object.hasOwn(values,n)).map(n=>{const v=values[n];delete values[n];return v;});
     validateSdkArguments(entry,values,refs);validLiteral(extra,refs);
+    operationCount+=model==='aegis'&&name==='run_sequence'?(values.actions as Value[]).length:1;
+    if(operationCount>100)throw Error('SDK program exceeds 100 commands including sequence children.');
     const base=name.split('.').at(-1)!;
     if(model==='master'){
       if(entry.effect==='action')masterModes.add(name.startsWith('seated_actions.')||values.posture==='sit'?'sit':'stand');

@@ -1,5 +1,6 @@
 import { normalizeAgentechRobotModel, type AgentechRobotModel } from "@/lib/agentech-robot-model";
-import { checkMasterExecutionCode } from "@/features/eaic/02-unified-api/projects-validation/master-execution-contract";
+import { checkAgentechSoftware } from "@/features/eaic/02-unified-api/projects-validation/agentech-validation";
+import {parseSdkProgram} from "@/features/eaic/02-unified-api/projects-validation/eaic-sdk-contract";
 
 export type AgentechMovementSafetyLevel = "PASS" | "WARNING" | "FAIL";
 
@@ -81,7 +82,7 @@ function formatMeters(value: number) {
 export function evaluateAgentechMovementSafety(code: string, robotModel: AgentechRobotModel | string = "Aegies"): AgentechMovementSafety {
   const selectedRobotModel = normalizeAgentechRobotModel(robotModel) ?? "Aegies";
   if (selectedRobotModel === "Master") {
-    const report = checkMasterExecutionCode(code);
+    const report = checkAgentechSoftware(code,"Master");
     return {
       level: report.status, submitReady: report.status === "PASS",
       maxDistanceMeters: 0, maxDxMeters: 0, maxDyMeters: 0,
@@ -91,7 +92,16 @@ export function evaluateAgentechMovementSafety(code: string, robotModel: Agentec
         : report.findings.map(item => item.message).join(" "),
     };
   }
-  const pattern = /(?:Agentech|dog)\.(\w+)\(([^)]*)\)/g;
+  // Account for every sequence child in the same floor-space estimate as a
+  // direct call. The public sequence cannot hide motion inside a list literal.
+  if(selectedRobotModel==='Aegies'&&/\.run_sequence\s*\(/.test(code)){
+    try{
+      const calls=parseSdkProgram(code,'aegis');
+      const flattened=calls.flatMap(c=>c.name==='run_sequence'?(c.args.actions as Array<{action:string;params?:Record<string,unknown>}>).map(a=>({name:a.action,args:a.params??{}})):[c]);
+      code=flattened.map(c=>'Agentech.'+c.name+'('+Object.entries(c.args).map(([k,v])=>k+'='+JSON.stringify(v)).join(',')+')').join('\n');
+    }catch(error){return {level:'FAIL',submitReady:false,maxDistanceMeters:0,maxDxMeters:0,maxDyMeters:0,detail:error instanceof Error?error.message:'Invalid SDK sequence.'};}
+  }
+  const pattern = /(?:Agentech|agentech\.Agentech|dog)\.(\w+)\s*\(([^)]*)\)/g;
   let match: RegExpExecArray | null;
   let x = 0;
   let y = 0;

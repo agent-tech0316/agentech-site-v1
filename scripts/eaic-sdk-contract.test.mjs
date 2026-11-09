@@ -42,3 +42,19 @@ test('read-only Navi completion never establishes a physical reset baseline',()=
   assert.equal(reconcileNaviCleanupOutcome({...owner,read_only:false},false,outcome).status,'failed');
   assert.equal(reconcileNaviCleanupOutcome(owner,true,outcome).status,'running');
 });
+test('expanded Master calls reach the movement and booking gates without physical credit',()=>{
+  const {evaluateAgentechMovementSafety}=loadTypeScriptModule('lib/agentech-motion-safety.ts');
+  const {masterBookingBlocker}=loadTypeScriptModule('lib/master-booking-policy.ts');
+  const code='Agentech.read()';
+  const report=evaluateAgentechMovementSafety(code,'Master');
+  assert.equal(report.submitReady,true);assert.equal(report.physicalQualified,false);
+  assert.equal(masterBookingBlocker(code,{AGENTECH_MASTER_EXECUTION_ENABLED:'true',AGENTECH_MASTER_GATEWAY_PROTOCOL:'master-arm-session-v1'}),null);
+  assert.equal(masterBookingBlocker('Agentech.sit()',{AGENTECH_MASTER_EXECUTION_ENABLED:'true',AGENTECH_MASTER_GATEWAY_PROTOCOL:'master-arm-session-v1'}).errorCode,'MASTER_PROGRAM_INVALID');
+});
+test('Aegis sequences retain cumulative floor-space and total-call limits',()=>{
+  const {evaluateAgentechMovementSafety}=loadTypeScriptModule('lib/agentech-motion-safety.ts');
+  const code='Agentech.run_sequence([{ "action":"forward", "params":{"speed":0.5,"seconds":2} },{ "action":"forward", "params":{"speed":0.5,"seconds":2} }])';
+  assert.equal(evaluateAgentechMovementSafety(code,'Aegies').level,'FAIL');
+  const actions=Array.from({length:60},()=>'{"action":"get_status"}').join(',');
+  assert.throws(()=>parseSdkProgram(`Agentech.run_sequence([${actions}])\nAgentech.run_sequence([${actions}])`,'aegis'));
+});

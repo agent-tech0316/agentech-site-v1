@@ -274,7 +274,7 @@ test("real Master code submission persists the normal review gate with explicit 
   process.env.NODE_ENV = "production";
   try {
     for (const code of [inRawMode('Agentech.adjust_waist(yaw=5)'),
-      'from agentech import Agentech\n\nAgentech.turn_head()', 'Agentech.turn_head(20)', 'Agentech.turn_head(-20)',
+      'Agentech.read()', 'from agentech import Agentech\n\nAgentech.turn_head()', 'Agentech.turn_head(20)', 'Agentech.turn_head(-20)',
       'Agentech.shake_head()', 'Agentech.shake_head(5, 2)', 'Agentech.shake_head(-20, 10)']) {
       const result = await POST({ json: async () => ({ robotModel: "Master", reviewStage: "physical", runMode: "Software check", code }) });
       assert.equal(result.status, 200, JSON.stringify(result.body));

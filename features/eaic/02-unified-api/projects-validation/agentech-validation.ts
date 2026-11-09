@@ -278,7 +278,7 @@ export function checkAgentechSoftware(code: string, robotModel: AgentechRobotMod
   const legacy=checkLegacyAgentechSoftware(code,robotModel);
   if(legacy.status==='PASS')return legacy;
   const extensionOnly=legacy.findings.every(f=>/UNAPPROVED|UNKNOWN_PARAMETER|POSITIONAL_PARAMETER/.test(f.code)
-    || /not approved|Only adjust_waist results|Use direct Agentech SDK calls|supported positional arguments/i.test(f.message));
+    || /not approved|not enabled for Master's upper-body execution contract|Only adjust_waist results|(?:Use|Only) direct Agentech SDK calls|supported positional arguments/i.test(f.message));
   if(!extensionOnly)return legacy;
   const selected=normalizeAgentechRobotModel(robotModel)??'Aegies';
   return checkSdkProgram(code,selected==='Aegies'?'aegis':selected.toLowerCase());
