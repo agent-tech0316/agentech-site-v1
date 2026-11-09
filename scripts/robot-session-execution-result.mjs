@@ -1,7 +1,8 @@
 const OUTCOMES = new Set(["completed", "failed"]);
 const COMMAND_STATUSES = new Set(["completed", "failed"]);
 const SHA256 = /^[0-9a-f]{64}$/;
-const DEFAULT_MAX_BYTES = 512 * 1024;
+// Up to 100 SDK calls, each limited to 32 KB of structured public data.
+const DEFAULT_MAX_BYTES = 4 * 1024 * 1024;
 const DEFAULT_MAX_COMMANDS = 256;
 
 // Previous bridge versions read an undefined receipt path after a staged booking expired.

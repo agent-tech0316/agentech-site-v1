@@ -9,6 +9,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import OBSWebSocket from "obs-websocket-js";
+import {gatewayAssignment,ownsGatewaySession} from './eaic-gateway-assignment.mjs';
 import { checkNaviBookedReadiness } from "./navi-booking-admission.mjs";
 import { createGatewayCloudRequest } from "./robot-cloud-request.mjs";
 import { masterReceiptNeedsReload, parseMasterExecutionResult, assertMasterExecutableSubmission } from "./master-session-gateway.mjs";
@@ -43,6 +44,7 @@ for (const key of ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ROBOT_HOST", "R
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
+const assignment=gatewayAssignment();
 const runtimeDir = join(here, "..", ".robot-stream-runtime");
 const stateFile = join(runtimeDir, "state.json");
 // Written only by a trusted supervised handoff, never by cached bridge state.
@@ -165,7 +167,7 @@ async function dueSessions() {
   const end = new Date(now.getTime() + prepMs);
   const select = "id,email,session_title,robot_model,scheduled_start,scheduled_end,session_status,approved_run_type,code_submission_id,created_at,body_booking_starts_automatically";
   const query = `scheduled_start=lte.${encodeURIComponent(end.toISOString())}&scheduled_end=gte.${encodeURIComponent(now.toISOString())}&approved_run_type=eq.custom_code&select=${select}&order=scheduled_start.asc`;
-  return (await request("agentech_robot_sessions", query)).filter((item) => activeStatuses.has(normalized(item.session_status)));
+  return (await request("agentech_robot_sessions", query)).filter((item) => activeStatuses.has(normalized(item.session_status))&&ownsGatewaySession(assignment,item));
 }
 
 async function reviewedSubmission(session) {
@@ -268,6 +270,11 @@ function stage(session, submission) {
       deviceResultsSerializer,
       gatewaySpec,
       runnerResultSerializer,
+      join(here,'eaic_sdk_commands.py'),
+      join(here,'eaic-sdk-contract.json'),
+      join(here,'master-command-contract.json'),
+      join(here,'master_gateway_spec.py'),
+      join(here,'navi_gateway_spec.py'),
       `${robot}:${remoteDir}/`,
     ]);
     for (const command of plan.commands) {
@@ -302,6 +309,8 @@ function stage(session, submission) {
     streamAvailableDuringSession: false,
     streamFailureCount: 0,
     endCleanupRequired: endCleanup.required,
+    sdkReadOnly: endCleanup.readOnly===true,
+    sdkContract:plan.sdk_contract??null,
     endReturnHomeRequired: endCleanup.returnHomeRequired,
     endCleanupStatus: endCleanup.required ? "pending" : "not_required",
     endCleanupAttempts: 0
@@ -539,6 +548,8 @@ async function launch(session) {
     // Reserve ownership before spawn: a crash in the spawn/PID-save window
     // must leave an unverified owner, never another launch opportunity.
     item.naviCleanupOwner = createNaviSessionOwner(session.id);
+    item.naviCleanupOwner.read_only=item.sdkReadOnly===true;
+    item.naviCleanupOwner.sdk_contract=item.sdkContract;
     item.executionAttemptId = item.naviCleanupOwner.attempt_id;
     item.localExecutionResult = `${item.naviCleanupOwner.result_file}.program.json`;
     item.naviSessionGuardian = true;
@@ -678,7 +689,11 @@ function finishSessionCleanup(id, item) {
       return;
     }
     item.endCleanupStatus = recovered.status;
-    if (recovered.status === "completed") {
+    if(recovered.status==='not_required'){
+      item.endCleanupRequired=false;
+      item.endCleanupResult=recovered.result;
+      delete item.endCleanupError;
+    } else if (recovered.status === "completed") {
       item.endCleanupResult = recovered.result;
       state.naviResetVerifiedAt = recovered.verified_at;
       state.naviResetResult = recovered.result;
@@ -715,6 +730,8 @@ function finishSessionCleanup(id, item) {
     if (item.executionModel === "navi") {
       if (!item.localPlan) throw new Error("Navi cleanup requires its validated session plan");
       item.naviCleanupOwner = createNaviSessionOwner(id);
+      item.naviCleanupOwner.read_only=item.sdkReadOnly===true;
+      item.naviCleanupOwner.sdk_contract=item.sdkContract;
       saveState();
       const owner = item.naviCleanupOwner;
       const child = spawn(localPython,[trustedNaviRunner,"--cleanup-supervisor",item.localPlan,

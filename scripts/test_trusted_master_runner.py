@@ -638,5 +638,34 @@ class TrustedMasterRunnerTests(unittest.TestCase):
                 self.assertEqual(checked.returncode, 0, checked.stderr)
 
 
+    def sdk_plan(self,source):
+        from eaic_sdk_commands import compile_sdk_plan
+        self.plan=compile_sdk_plan(source,'sub','master')
+        self.plan_path.write_text(json.dumps(self.plan),encoding='utf-8')
+        self.deployment.update(source_sha256=self.plan['source_sha256'],plan_sha256=hashlib.sha256(self.plan_path.read_bytes()).hexdigest())
+        self.deployment_path.write_text(json.dumps(self.deployment),encoding='utf-8')
+
+    def test_generic_read_only_never_prepares_or_releases_a_motion_owner(self):
+        self.sdk_plan('Agentech.read()')
+        self.adapter.execute.return_value={'read_only':True,'sdk_result':{'fixture':True}}
+        receipt=self.run_plan()
+        self.assertEqual(receipt['outcome'],'completed',receipt.get('error'))
+        self.assertEqual(receipt['handoff_mode'],'sdk-read-only')
+        self.assertFalse(receipt['robot_commands_sent'])
+        self.adapter.prepare_mode.assert_not_called()
+        self.adapter.check_ready.assert_not_called()
+
+    def test_generic_seated_receipt_requires_same_powered_owner(self):
+        self.sdk_plan('Agentech.seated_actions.turn_head(5)')
+        owner={'pid':7,'phase':'holding','active':True,'upper_body_powered':True}
+        self.adapter.robot.seated_status.return_value=dict(owner)
+        self.adapter.execute.return_value={'dry_run':False,'measured_endpoint_verified':True,
+            'gateway_seated_owner_before':dict(owner),'gateway_seated_owner_after':dict(owner)}
+        receipt=self.run_plan()
+        self.assertEqual(receipt['outcome'],'completed',receipt.get('error'))
+        self.assertEqual(receipt['handoff_mode'],'retained-seated')
+        self.adapter.prepare_mode.assert_not_called()
+        self.adapter.check_ready.assert_not_called()
+
 if __name__ == '__main__':
     unittest.main()

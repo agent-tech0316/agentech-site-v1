@@ -21,9 +21,9 @@ const isObject = (value: Literal): value is Record<string, Literal> => value !==
 const finite = (value: Literal) => typeof value === "number" && Number.isFinite(value);
 
 /** Parses data literals only. No Python evaluation, identifier lookup or attribute execution. */
-class LiteralParser {
+export class LiteralParser {
   index = 0;
-  constructor(readonly text: string, readonly constants: Record<string, string> = {}, readonly results: Set<string> = new Set()) {}
+  constructor(readonly text: string, readonly constants: Record<string, string> = {}, readonly results: Set<string> = new Set(), readonly sdkResults = false) {}
   whitespace() { while (/\s/.test(this.text[this.index] ?? "") && this.index < this.text.length) this.index++; }
   value(depth = 0, handChoices?: readonly string[]): Literal {
     if (depth > 6) throw new Error("Literal nesting is too deep.");
@@ -77,6 +77,7 @@ class LiteralParser {
       if (this.text.slice(start, start + token.length) === token) { this.index += token.length; return value; }
     }
     const identifier = this.text.slice(start).match(/^[A-Za-z_]\w*/)?.[0];
+    if (identifier && this.sdkResults && this.results.has(identifier)) { this.index += identifier.length; return { $sdk_result: identifier }; }
     if (identifier && Object.hasOwn(this.constants, identifier)) { this.index += identifier.length; return this.constants[identifier]; }
     if (identifier && handChoices?.includes(identifier) && ["left", "right", "both"].includes(identifier)) {
       this.index += identifier.length;
@@ -114,7 +115,7 @@ class LiteralParser {
   }
 }
 
-function sourceStatements(source: string) {
+export function sourceStatements(source: string) {
   const statements: Array<{ text: string; line: number }> = [];
   let current = "", quote = "", escaped = false, comment = false, depth = 0, line = 1, startLine = 1;
   for (const char of source + "\n") {
@@ -199,6 +200,25 @@ function validateArguments(name: string, spec: Command, args: Record<string, Lit
   if (spec.validator === "upper_body" && has("both_elbows") && (has("left_arm") || has("right_arm"))) throw new Error("both_elbows cannot be combined with arm maps.");
   if (spec.validator === "move_arms" && !["left", "right"].some(has)) throw new Error("Provide at least one arm target map.");
   if (spec.validator === "mirror_targets" && (!isObject(args.targets) || Object.keys(args.targets).length !== armKeys.size || ![...armKeys].every(key => Object.hasOwn(args.targets as object, key)))) throw new Error("Mirrored targets require all seven arm joints.");
+}
+
+// Apply the existing value/profile rules to expanded SDK signatures as well.
+// The SDK owns additional fields; adding one never removes an old numeric rule.
+export function validateExpandedMasterArguments(method: string, supplied: Record<string, unknown>) {
+  const name = method.split('.').at(-1)!;
+  const spec = commands[name];
+  if (!spec) return;
+  const normalized = {...supplied};
+  if (method.includes('.') && ['turn_head','shake_head'].includes(name)) {
+    normalized.angle_degrees = normalized.degrees;
+    delete normalized.degrees;
+  }
+  const args = Object.fromEntries(Object.entries(normalized).filter(([k]) => Object.hasOwn(spec.parameters,k))) as Record<string, Literal>;
+  const movement = args.movement;
+  if (movement && typeof movement === 'object' && !Array.isArray(movement) && '$sdk_result' in movement) {
+    args.movement = {$master_result: movement.$sdk_result};
+  }
+  validateArguments(name,{...spec,required:(spec.required??[]).filter(k=>Object.hasOwn(args,k))},args);
 }
 
 export function checkMasterExecutionCode(source: string): SoftwareCheckReport {

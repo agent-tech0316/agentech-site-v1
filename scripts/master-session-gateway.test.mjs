@@ -100,6 +100,19 @@ function receipt() {
 }
 const expected = { sessionId: 42, submissionId: 7, sourceSha256: hash, planSha256: hash, attemptId: 'attempt-42', bookedEnd: end };
 
+test('SDK read and existing seated receipts require their distinct evidence',()=>{
+  const contract=JSON.parse(readFileSync(new URL('./eaic-sdk-contract.json',import.meta.url),'utf8'));
+  const value=receipt();value.commands[0].name='read';value.commands[0].result={read_only:true,sdk_result:{fixture:true}};
+  Object.assign(value,{sdk_contract:contract.hash,handoff_ready:true,handoff_mode:'sdk-read-only',owner_hold_preserved:false,owner_hold_verified:false,robot_commands_sent:false,sdk_read_only_verified:true});
+  assert.equal(parseMasterExecutionResult(JSON.stringify(value),expected).handoff_mode,'sdk-read-only');
+  value.commands[0].name='wave';assert.throws(()=>parseMasterExecutionResult(JSON.stringify(value),expected));
+  const owner={pid:7,phase:'holding',active:true,upper_body_powered:true};
+  Object.assign(value,{handoff_mode:'retained-seated',owner_hold_preserved:true,owner_hold_verified:true,owner_binding:owner,final_owner_binding:{...owner}});
+  value.commands[0].name='seated_actions.turn_head';value.commands[0].result={dry_run:false,measured_endpoint_verified:true,gateway_seated_owner_before:owner,gateway_seated_owner_after:{...owner}};
+  assert.equal(parseMasterExecutionResult(JSON.stringify(value),expected).handoff_mode,'retained-seated');
+  value.final_owner_binding.pid=8;assert.throws(()=>parseMasterExecutionResult(JSON.stringify(value),expected));
+});
+
 test('an interrupted head call keeps the SDK timestamp and partial progress without completion credit', () => {
   const value = receipt();
   const error = {type:'RuntimeError', message:'Native head acknowledgment timed out', command:'shake_head', command_index:1};

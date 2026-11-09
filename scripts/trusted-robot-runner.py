@@ -230,6 +230,12 @@ def execute(
 
     try:
         validate_aegis_plan(plan)
+        sdk_plan=plan.get('sdk_contract') is not None
+        sdk_results={}
+        if sdk_plan:
+            from eaic_sdk_commands import verify_runtime
+            import agentech as sdk_module
+            verify_runtime(Path(sdk_module.__file__).resolve().parent.parent,'aegis')
         validated = True
         diary_path.unlink(missing_ok=True)
         _append_diary(
@@ -262,7 +268,15 @@ def execute(
             try:
                 if source_name == "emergency_stop":
                     terminal_emergency_stop_started = True
-                value = getattr(agentech, name)(**translated)
+                if sdk_plan:
+                    from eaic_sdk_commands import invoke,public_result
+                    def trusted(method,kwargs):
+                        if method=='say':return method,kwargs
+                        return _translated_call(plan_path,{'name':method,'args':kwargs},capture_index)
+                    value=invoke(agentech,'aegis',current_command,sdk_results,plan_path.parent,trusted_transform=trusted,result_validator=_assert_action_result)
+                    if current_command.get('save_result_as'):sdk_results[current_command['save_result_as']]=value
+                else:
+                    value = getattr(agentech, name)(**translated)
                 _assert_action_result(source_name, value)
                 if source_name in TELEMETRY_COMMANDS and results_path is not None:
                     telemetry_records.append(success_record(current_command, value))
@@ -277,7 +291,7 @@ def execute(
                     ),
                     "line": current_command.get("line"),
                     "status": "completed",
-                    "result": json_safe(value),
+                    "result": public_result(value) if sdk_plan else json_safe(value),
                     "error": None,
                     "started_at": command_started_at,
                     "duration_ms": duration_ms,

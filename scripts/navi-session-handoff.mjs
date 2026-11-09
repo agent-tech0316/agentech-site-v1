@@ -90,6 +90,11 @@ export function reconcileNaviCleanupOutcome(owner, ownerRunning, outcome) {
   if (ownerRunning === true) return {status:"running"};
   if (ownerRunning !== false) return {status:"unknown", error:"Navi cleanup owner identity is unverified"};
   try {
+    if(owner.read_only===true && outcome?.version===1&&outcome.attempt_id===owner.attempt_id
+        &&/^[a-f0-9]{64}$/.test(owner.sdk_contract??'')&&outcome.sdk_contract===owner.sdk_contract
+        &&outcome.outcome==='read-only-completed'&&outcome.robot_commands_sent===false){
+      return {status:'not_required',result:{read_only:true,robot_commands_sent:false}};
+    }
     if (outcome?.version !== 1 || outcome.attempt_id !== owner.attempt_id || outcome.outcome !== "verified") {
       throw new Error(outcome?.error || "Cleanup owner exited without a matching verified result");
     }

@@ -5,6 +5,8 @@ import { readFileSync } from 'node:fs';
 const { native_presets: nativePresets, native_preset_arm_gains: armProfiles } =
   JSON.parse(readFileSync(new URL('./master-command-contract.json', import.meta.url), 'utf8'));
 const scopedModes = new Set(['native-heart-head', 'native-preset-head']);
+const sdkContract=JSON.parse(readFileSync(new URL('./eaic-sdk-contract.json',import.meta.url),'utf8'));
+const sdkReadMethods=new Set(sdkContract.entries.filter(e=>e.robot==='master'&&e.policy==='customer'&&['local','observe'].includes(e.effect)).map(e=>e.method));
 
 function bilateralHeart(command) {
   return command.name === 'heart' && [undefined, 'both', 'stand'].includes(command.args?.hand);
@@ -157,6 +159,16 @@ function scopedNativeCommandVerified(command) {
 }
 
 function scopedNativeHandoffVerified(value) {
+  if(!Array.isArray(value.commands)||value.command_count!==value.commands.length||value.completed_count!==value.command_count)return false;
+  // Read calls may accompany a gesture but cannot count as its motion proof.
+  value={...value,commands:value.commands?.filter(c=>!(sdkReadMethods.has(c.name)&&c.result?.read_only===true)).map(c=>{
+    if(!c.name.startsWith('standing_actions.'))return c;
+    const name=c.name.slice('standing_actions.'.length),args={...c.args};
+    if(['turn_head','shake_head'].includes(name)){args.angle_degrees=args.degrees;delete args.degrees;}
+    return {...c,name,args};
+  })};
+  value.command_count=value.commands?.length;
+  value.completed_count=value.commands?.filter(c=>c.status==='completed').length;
   if (value.handoff_ready !== true || value.outcome !== 'completed' || value.error != null
     || value.owner_hold_preserved !== false || value.owner_hold_verified !== false
     || (value.owner_release_verified != null && value.owner_release_verified !== false)
@@ -253,7 +265,24 @@ export function parseMasterExecutionResult(text, expected) {
   if (value.handoff_ready && !nativeBody) {
     const first = value.owner_binding;
     const last = value.final_owner_binding;
-    if (value.handoff_mode === 'retained-hold') {
+    if (value.handoff_mode === 'sdk-read-only') {
+      if(value.sdk_contract!==sdkContract.hash||value.sdk_read_only_verified!==true||value.robot_commands_sent!==false
+          ||value.owner_hold_preserved!==false||value.owner_hold_verified!==false||value.outcome!=='completed'
+          ||!value.commands.every(c=>sdkReadMethods.has(c.name)&&c.result?.read_only===true)){
+        throw new Error('SDK read-only receipt contains a motion command or lacks its reviewed contract');
+      }
+    } else if (value.handoff_mode === 'retained-seated') {
+      const healthy=b=>b?.phase==='holding'&&b.active===true&&b.upper_body_powered===true&&Number.isInteger(b.pid)&&b.pid>0;
+      if(value.sdk_contract!==sdkContract.hash||value.owner_hold_verified!==true||value.owner_hold_preserved!==true
+          ||!healthy(first)||!healthy(last)||JSON.stringify(first)!==JSON.stringify(last)
+          ||!value.commands.every(c=>c.result?.read_only===true?sdkReadMethods.has(c.name):
+            sdkContract.entries.some(e=>e.robot==='master'&&e.method===c.name&&e.policy==='customer')
+            &&(c.name.startsWith('seated_actions.')||c.args?.posture==='sit'||c.name==='center')
+            &&c.result?.dry_run===false&&(c.result.measured_endpoint_verified===true||c.result.succeeded===true)
+            &&c.result.gateway_seated_owner_before?.pid===first.pid&&c.result.gateway_seated_owner_after?.pid===first.pid)) {
+        throw new Error('Seated handoff lacks the unchanged healthy persistent owner');
+      }
+    } else if (value.handoff_mode === 'retained-hold') {
       if (value.owner_hold_verified !== true || value.owner_hold_preserved !== true
         || !first?.requestId || !Number.isInteger(first.publisherPid) || first.publisherPid <= 0
         || first.requestId !== last?.requestId || first.publisherPid !== last?.publisherPid

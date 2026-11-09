@@ -80,7 +80,10 @@ def main():
         expanded.extend({**item, "syntax": ast.unparse(call), "variables": seeds} for call in calls)
     results = []
     for item in expanded:
-        robot = Master(dry_run=True, relay_url=None)
+        # Nonsecret fixture allows owner observations to reach the explicit
+        # transport blocker, rather than confusing missing credentials with a
+        # rejected method signature. It never authenticates to a real host.
+        robot = Master(dry_run=True, relay_url=None, ssh_password='offline-audit-fixture')
         values = {**base_values, **item["variables"]}
         values["target"] = 5.0 if item["function"] in {"turn_head", "shake_head"} else 25.0
         signature_bound = False

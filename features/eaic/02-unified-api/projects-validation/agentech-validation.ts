@@ -155,7 +155,7 @@ function checkSquatDiagonalComponent(
   }
 }
 
-export function checkAgentechSoftware(code: string, robotModel: AgentechRobotModel | string = "Aegies"): SoftwareCheckReport {
+export function checkLegacyAgentechSoftware(code: string, robotModel: AgentechRobotModel | string = "Aegies"): SoftwareCheckReport {
   const selectedRobotModel = normalizeAgentechRobotModel(robotModel) ?? "Aegies";
   if (selectedRobotModel === "Master") return checkMasterExecutionCode(code);
   const selectedSdkSpec = selectedRobotModel === "Navi" ? naviSdkSpec : agentechSdkSpec;
@@ -225,9 +225,8 @@ export function checkAgentechSoftware(code: string, robotModel: AgentechRobotMod
         }
       }
     }
-    if (selectedRobotModel === "Aegies" && command === "get_battery_status") {
-      add("CAPABILITY_NOT_SUPPORTED", "get_battery_status() is not supported on this AEGIS because the device has no battery installed (hardware_absent).", line);
-    }
+    // Battery presence belongs to the selected device profile at the edge.
+    // A model-wide absence flag incorrectly blocked battery-equipped Aegis.
     if (command === "yaw") {
       const provided = Object.keys(values).sort();
       const profiles = [
@@ -269,4 +268,19 @@ export function checkAgentechSoftware(code: string, robotModel: AgentechRobotMod
   return { status: findings.length ? "FAIL" : "PASS", commands, findings, checklist };
 }
 
+import {checkSdkProgram} from './eaic-sdk-contract';
+export function validateExpandedSdkValues(model: string, method: string, args: Record<string, unknown>) {
+  const spec=(model==='navi'?naviSdkSpec:agentechSdkSpec)[method];
+  if(!spec)return;
+  for(const [key,value] of Object.entries(args))if(spec.rules[key])checkRule(method,key,value,spec.rules[key],1,(_code,message)=>{throw Error(message);});
+}
+export function checkAgentechSoftware(code: string, robotModel: AgentechRobotModel | string = "Aegies"): SoftwareCheckReport {
+  const legacy=checkLegacyAgentechSoftware(code,robotModel);
+  if(legacy.status==='PASS')return legacy;
+  const extensionOnly=legacy.findings.every(f=>/UNAPPROVED|UNKNOWN_PARAMETER|POSITIONAL_PARAMETER/.test(f.code)
+    || /not approved|Only adjust_waist results|Use direct Agentech SDK calls|supported positional arguments/i.test(f.message));
+  if(!extensionOnly)return legacy;
+  const selected=normalizeAgentechRobotModel(robotModel)??'Aegies';
+  return checkSdkProgram(code,selected==='Aegies'?'aegis':selected.toLowerCase());
+}
 export function validateAgentechCode(code: string, robotModel: AgentechRobotModel | string = "Aegies") { return checkAgentechSoftware(code, robotModel).findings.map((f) => `${f.line ? `Line ${f.line}: ` : ""}${f.message}`); }

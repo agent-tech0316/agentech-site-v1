@@ -339,8 +339,13 @@ def run_cleanup_attempt(plan_path, result_path, attempt_id):
     try:
         with navi_owner():
             result = end_session_cleanup(return_home=False, session_plan=plan_path, stop_first=True)
-        _atomic_json(result_path, {'version':1, 'attempt_id':attempt_id, 'outcome':'verified',
-                                  'verified_at':datetime.now(timezone.utc).isoformat(), 'result':result})
+        if result.get('read_only') is True:
+            from eaic_sdk_commands import CONTRACT
+            _atomic_json(result_path,{'version':1,'attempt_id':attempt_id,'outcome':'read-only-completed',
+                'sdk_contract':CONTRACT['hash'],'robot_commands_sent':False})
+        else:
+            _atomic_json(result_path, {'version':1, 'attempt_id':attempt_id, 'outcome':'verified',
+                                      'verified_at':datetime.now(timezone.utc).isoformat(), 'result':result})
     except BaseException as error:
         _failed_outcome(result_path, attempt_id, error)
         raise
@@ -374,6 +379,10 @@ def _read_plan(path, expected_sha=None) -> NaviPlan:
         raise ValueError("unsupported Navi command plan")
     if not 1 <= len(commands) <= MAX_COMMANDS:
         raise ValueError(f"Navi command plan must contain 1 through {MAX_COMMANDS} commands")
+    if plan.get('sdk_contract') is not None:
+        from eaic_sdk_commands import validate_plan
+        validate_plan(plan)
+        return NaviPlan(raw,plan)
     for command in commands:
         if not isinstance(command, dict):
             raise ValueError("invalid Navi command plan entry")
@@ -383,6 +392,15 @@ def _read_plan(path, expected_sha=None) -> NaviPlan:
 
 def load_plan(path: str) -> list[dict]:
     return _read_plan(path).commands
+
+
+def read_only_plan(plan):
+    return bool(plan.data.get('sdk_contract')) and read_only_commands(plan.commands)
+
+
+def read_only_commands(commands):
+    from eaic_sdk_commands import ENTRIES
+    return bool(commands) and all(c.get('sdk') is True and ENTRIES['navi:'+c['name']]['effect'] in {'local','observe'} for c in commands)
 
 
 def is_recoverable_turn_timeout(name: str, error: BaseException) -> bool:
@@ -397,6 +415,11 @@ def execute(path: str, *, result_path=None, attempt_id=None, snapshot=None, veri
     plan = snapshot if snapshot is not None else _read_plan(path)
     commands = plan.commands
     agentech = configure_navi()
+    sdk_plan = plan.data.get('sdk_contract') is not None
+    sdk_results = {}
+    if sdk_plan:
+        from eaic_sdk_commands import verify_runtime
+        verify_runtime(os.environ['AGENTECH_SDK_ROOT'],'navi')
     # Booked snapshots have just passed this check under the same SDK owner.
     if snapshot is None and any(command['name'] == 'return_to_home' for command in commands):
         home_heading_readiness(agentech, allow_recovery=True)
@@ -414,9 +437,17 @@ def execute(path: str, *, result_path=None, attempt_id=None, snapshot=None, veri
                       'status':'completed','result':None,'error':None,
                       'started_at':_result_schema.utc_timestamp(),'duration_ms':0}
             try:
-                sdk_result = getattr(agentech, name)(**arguments)
-                record['result'] = _bounded_result(sdk_result)
-                _assert_sdk_result(name, sdk_result)
+                if sdk_plan:
+                    from eaic_sdk_commands import invoke,public_result,entry_for
+                    sdk_result=invoke(agentech,'navi',command,sdk_results,Path(path).parent)
+                    record['result']=public_result(sdk_result)
+                    if command.get('save_result_as'):sdk_results[command['save_result_as']]=sdk_result
+                    record['completion_basis']='SDK method returned; physical qualification is unchanged'
+                else:
+                    sdk_result = getattr(agentech, name)(**arguments)
+                    record['result'] = _bounded_result(sdk_result)
+                if not sdk_plan or entry_for('navi',name)['effect']=='action':
+                    _assert_sdk_result(name, sdk_result)
                 if index == 1 and verify_first_stand:
                     _verify_stand_after_lying(agentech)
             except BaseException as error:
@@ -460,9 +491,12 @@ def execute(path: str, *, result_path=None, attempt_id=None, snapshot=None, veri
         raise
     finally:
         try:
-            _assert_sdk_result('stop', agentech.stop())
-            if result is not None:
-                result['resting_stand'] = rest_after_program(agentech)
+            if not read_only_plan(plan):
+                _assert_sdk_result('stop', agentech.stop())
+                if result is not None:
+                    result['resting_stand'] = rest_after_program(agentech)
+            elif result is not None:
+                result.update(read_only=True,robot_commands_sent=False)
         except BaseException as cleanup_error:
             if result is not None:
                 result['cleanup_error'] = _program_error(cleanup_error)
@@ -700,6 +734,10 @@ def _verify_stand_after_lying(agentech):
 def check_home_ready(plan=None, *, reviewed=False):
     """Read-only admission. Only a digest-bound stand-first plan may start lying."""
     agentech = configure_navi()
+    if plan is not None and read_only_plan(plan):
+        result={'ready_for_session':True,'posture':'read_only','robot_commands_sent':False}
+        print('[navi-runner] session-ready verified; '+json.dumps(result),flush=True)
+        return result
     _battery_guard(agentech)
     stand_first = reviewed and plan is not None and plan.commands[0]['name'] == 'stand'
     posture = 'lowered_damped'
@@ -739,6 +777,8 @@ def end_session_cleanup(*, return_home: bool, session_plan: str | None = None, s
     started = time.monotonic()
     if session_plan is not None:
         commands = load_plan(session_plan)
+        if read_only_commands(commands):
+            return {'read_only':True,'robot_commands_sent':False}
         if return_home and any(command['name'] == 'emergency_stop' for command in commands):
             raise RuntimeError("Session plan contains emergency_stop; autonomous reset refused")
     agentech = configure_navi()

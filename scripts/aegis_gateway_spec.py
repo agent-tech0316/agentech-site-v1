@@ -374,6 +374,10 @@ def validate_aegis_command(
 
 
 def validate_aegis_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(plan,dict) and plan.get('sdk_contract') is not None:
+        from eaic_sdk_commands import validate_plan
+        if plan.get('robot_model')!='aegis':raise ValueError('SDK plan is not Aegis')
+        return validate_plan(plan)
     if not isinstance(plan, dict):
         raise TypeError("AEGIS plan must be an object")
     expected_plan_keys = {

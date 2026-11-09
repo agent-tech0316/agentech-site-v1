@@ -1184,5 +1184,26 @@ class TrustedNaviRunnerTests(unittest.TestCase):
         self.assertEqual(agentech.calls, ["pee", "stop"])
 
 
+class ReadOnlySdkSessionTests(unittest.TestCase):
+    def test_read_report_session_has_no_posture_or_cleanup_commands(self):
+        from eaic_sdk_commands import compile_sdk_plan
+        source='x=Agentech.read()\nAgentech.report(data=x)'
+        calls=[]
+        class Reader:
+            def read(self):calls.append('read');return {'battery':38,'fixture':True}
+            def report(self,*,data):calls.append('report');return {'snapshot':data}
+            def stop(self):raise AssertionError('read-only stop forbidden')
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'session-42.plan.json'
+            path.write_text(json.dumps(compile_sdk_plan(source,'sub','navi')),encoding='utf-8')
+            result=Path(folder)/'program.json';cleanup=Path(folder)/'cleanup.json'
+            with patch.object(runner,'configure_navi',return_value=Reader()),patch('eaic_sdk_commands.verify_runtime'),patch.dict('os.environ',{'AGENTECH_SDK_ROOT':folder}),patch.object(runner,'navi_owner',return_value=nullcontext()):
+                self.assertEqual(runner.check_home_ready(runner._read_plan(path))['posture'],'read_only')
+                runner.execute(path,result_path=result,attempt_id='fixture')
+                runner.run_cleanup_attempt(path,cleanup,'fixture')
+            self.assertEqual(calls,['read','report'])
+            self.assertTrue(json.loads(result.read_text())['read_only'])
+            self.assertEqual(json.loads(cleanup.read_text())['outcome'],'read-only-completed')
+
 if __name__ == "__main__":
     unittest.main()

@@ -8,7 +8,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {smokeGatewayRoutes} from './robot-gateway-release-smoke.mjs';
 
 const scopes = {
-  shared:['robot-stream-bridge.mjs','compile-robot-plan.py','robot-stream-session-policy.mjs','robot-session-execution-result.mjs',
+  shared:['robot-stream-bridge.mjs','compile-robot-plan.py','eaic_sdk_commands.py','eaic-sdk-contract.json','eaic-gateway-assignment.mjs','robot-stream-session-policy.mjs','robot-session-execution-result.mjs',
     'robot-stream-staging.mjs','robot-cloud-request.mjs','obs-stream-recovery.mjs','robot-session-device-results.mjs','aegis-runner-result.py',
     'robot-stream-process.ps1','restart-robot-stream-bridge.ps1'],
   master:['trusted-master-runner.py','master-command-contract.json','master_gateway_spec.py','master-session-gateway.mjs',

@@ -20,6 +20,7 @@ import time
 import uuid
 
 from master_gateway_spec import MASTER_COMMANDS, validate_master_command, validate_master_plan
+from eaic_sdk_commands import ENTRIES as SDK_ENTRIES
 import master_native_gesture_readiness as native_gesture
 
 MAX_COMMANDS = 200
@@ -28,6 +29,33 @@ HANDOFF_GAP = ('The current held owner has not been verified for the next sessio
                'Automatic cleanup leaves the existing controller unchanged; a failed, ambiguous or '
                'deliberately replaced owner requires fresh current-state handoff verification. '
                'This does not require an automatic pose return or stiffness change.')
+
+
+def command_backend(name, arguments):
+    if (name.startswith('seated_actions.') or arguments.get('posture')=='sit') and SDK_ENTRIES.get('master:'+name,{}).get('effect')=='action':
+        return 'seated_existing'
+    return MASTER_COMMANDS[name]['backend']
+
+
+def gesture_commands(commands):
+    result=[]
+    for command in commands:
+        entry=SDK_ENTRIES.get('master:'+command['name'],{})
+        if command.get('sdk') and entry.get('effect') in {'local','observe'}:continue
+        name=command['name'].removeprefix('standing_actions.')
+        args=dict(command['args'])
+        if command['name'].startswith('standing_actions.') and name in {'turn_head','shake_head'}:
+            args['angle_degrees']=args.pop('degrees')
+        if command_backend(command['name'],command['args'])=='seated_existing':return []
+        result.append({**command,'name':name,'args':args})
+    return result
+
+
+def customer_master_arguments(method, kwargs):
+    # Preserve the scheduled gateway's established standing head defaults.
+    if method in {'turn_head','shake_head','return_head_to_center','center_head'}:
+        kwargs={'posture':'stand',**kwargs}
+    return method,kwargs
 
 
 def sdk_arguments(name, arguments):
@@ -151,6 +179,12 @@ def load_bound_plan(plan_path, config, session_end=None):
         import master_native_body
         master_native_body.validate(config, plan)
         return plan, start, end
+    if plan.get('sdk_contract') is not None:
+        from eaic_sdk_commands import validate_plan
+        validate_plan(plan)
+        if config.get('recovery_owner_binding') is not None:
+            raise ValueError('Failed-session recovery must use the existing explicit restore workflow')
+        return plan,start,end
     for command in commands:
         if not isinstance(command, dict) or set(command) - {'name', 'args', 'line', 'source_args', 'save_result_as'}:
             raise ValueError('invalid Master command record')
@@ -275,10 +309,26 @@ class SDKAdapter:
         self.robot._standing_current_hold_control = lambda **kwargs: ExistingOwnerControl(self._owner_factory(**kwargs), self)
 
     def validate(self, commands):
-        self.native_gesture_plan = bool(commands) and all(c['name'] in native_gesture.COMMANDS for c in commands)
+        gestures=gesture_commands(commands)
+        self.native_gesture_plan = bool(gestures) and all(c['name'] in native_gesture.COMMANDS for c in gestures)
         preset_plans = {}
         for index, command in enumerate(commands, 1):
             name = command['name']
+            if command.get('sdk') is True:
+                from eaic_sdk_commands import entry_for,resolve_arguments,target_for,verify_runtime
+                verify_runtime(self.config['sdk_root'],'master')
+                entry=entry_for('master',name)
+                if entry['effect'] in {'local','observe'} or name=='center':continue
+                if any(isinstance(v,dict) and '$sdk_result' in v for v in command['args'].values()):continue
+                args,kwargs=resolve_arguments(command,{},self.config.get('session_workspace',Path(self.config['sdk_root']).parent/'session-artifacts'))
+                _,kwargs=customer_master_arguments(name,kwargs)
+                candidate=target_for(self.planner,'master',name)(*args,**kwargs)
+                if isinstance(candidate,dict) and candidate.get('live_enabled') is False:
+                    raise ValueError('SDK command is not qualified for live use: '+name)
+                if command_backend(name,kwargs)=='native_preset':
+                    native_gesture.verify_preset_identity(name.split('.')[-1],command['args'],candidate,dry_run=True)
+                    preset_plans[index]=candidate
+                continue
             if name == 'movement_a':
                 self.movement_a_adapter()
                 continue
@@ -409,10 +459,14 @@ class SDKAdapter:
         if self.config.get('recovery_owner_binding') is not None:
             return {'mode_entry_required': False, 'owner': self.check_recovery_owner(), 'robot_commands_sent': False}
         if commands:
-            first = commands[0]['name']
-            backend = MASTER_COMMANDS[first]['backend']
-            if all(c['name'] in native_gesture.COMMANDS for c in commands):
-                owner = native_sequence_ready(self, commands)
+            actions=[c for c in commands if not c.get('sdk') or SDK_ENTRIES['master:'+c['name']]['effect']=='action']
+            if not actions:return {'mode_entry_required':False,'owner':None,'robot_commands_sent':False}
+            first = actions[0]['name']
+            backend = command_backend(first,actions[0]['args'])
+            if first=='center' and self.robot.seated_status().get('active') is True:backend='seated_existing'
+            gestures=gesture_commands(commands)
+            if gestures and all(c['name'] in native_gesture.COMMANDS for c in gestures):
+                owner = native_sequence_ready(self, gestures)
                 return {'mode_entry_required':False, 'owner':owner, 'robot_commands_sent':False}
             if backend == 'movement_a':
                 return self.movement_a_adapter().preflight()
@@ -425,6 +479,9 @@ class SDKAdapter:
                 # admission. A readiness observation must not block fault recovery.
                 return {'mode_entry_required': False, 'owner': None,
                     'sdk_command_admission_required': True, 'robot_commands_sent': False}
+            if backend=='seated_existing':
+                from eaic_sdk_commands import seated_owner
+                return {'mode_entry_required':False,'owner':seated_owner(self.robot),'robot_commands_sent':False}
         owner = self._owner_factory().inspect_active_ready(required_sides=('left', 'right'))
         if owner is None:
             # No launch or mode request here. Existing entry performs its live
@@ -494,7 +551,8 @@ class SDKAdapter:
             if name != 'restore_stand_hand_guide': raise ValueError('recovery permits only full upper-body restore')
             self.check_recovery_owner()
             self._admit()
-        backend = MASTER_COMMANDS[name]['backend']
+        backend = command_backend(name,arguments)
+        if name=='center' and self.robot.seated_status().get('active') is True:backend='seated_existing'
         if backend == 'movement_a':
             self.explicit_raw_entry = False
             result = self.movement_a_adapter().execute()
@@ -514,16 +572,20 @@ class SDKAdapter:
             if not getattr(self, 'explicit_raw_entry', False):
                 raise RuntimeError('Master adjustments require Agentech.enter_stand_hand_guide("both") before adjustment commands')
             self.check_ready()
-        elif name in native_gesture.COMMANDS and getattr(self, 'native_gesture_plan', False):
-            self._admit_native_command(name, arguments)
-            arguments = sdk_arguments(name, arguments)
+        elif getattr(self, 'native_gesture_plan', False) and gesture_commands([{'name':name,'args':arguments,'sdk':bool(getattr(self,'sdk_current_command',None))}]):
+            canonical=gesture_commands([{'name':name,'args':arguments,'sdk':bool(getattr(self,'sdk_current_command',None))}])[0]
+            self._admit_native_command(canonical['name'],canonical['args'])
+            if not getattr(self,'sdk_current_command',None):arguments = sdk_arguments(name, arguments)
         elif backend == 'native_preset':
             self.native_ready()
         elif backend == 'native_head':
             # No raw arm entry, preset task, or controller handoff. The pinned
             # SDK also verifies its approved head controller and fresh feedback.
             self.native_ready(require_presets=False)
-            arguments = sdk_arguments(name, arguments)
+            if not getattr(self,'sdk_current_command',None):arguments = sdk_arguments(name, arguments)
+        elif backend=='seated_existing':
+            from eaic_sdk_commands import seated_owner
+            seated_owner(self.robot)
         self._admit()
         if backend in {'native_preset', 'native_head', 'native_golf'} or name in {
                 'restore_stand_hand_guide', 'restore_stand_default', 'release_returned_hold', 'release_return_hold'}:
@@ -535,13 +597,27 @@ class SDKAdapter:
             wrapped = self.robot._standing_current_hold_control
             self.robot._standing_current_hold_control = self._owner_factory
             try:
-                result = getattr(self.robot, name)(**arguments)
+                if getattr(self,'sdk_current_command',None) is not None:
+                    from eaic_sdk_commands import invoke
+                    result=invoke(self.robot,'master',self.sdk_current_command,self.sdk_results,self.sdk_workspace,before_call=self._admit,trusted_transform=customer_master_arguments)
+                    self.last_sdk_value=result
+                else:
+                    result = getattr(self.robot, name)(**arguments)
             finally:
                 self.robot._standing_current_hold_control = wrapped
             self.binding = None
         else:
             self.sdk_call_started_at = _iso(time.time())
-            result = getattr(self.robot, name)(**arguments)
+            if getattr(self,'sdk_current_command',None) is not None:
+                from eaic_sdk_commands import invoke,public_result,entry_for
+                command=self.sdk_current_command
+                result=invoke(self.robot,'master',command,self.sdk_results,self.sdk_workspace,before_call=self._admit,trusted_transform=customer_master_arguments)
+                self.last_sdk_value=result
+                if entry_for('master',name)['effect'] in {'local','observe'}:
+                    result={'sdk_result':public_result(result),'read_only':True,
+                            'completion_basis':'SDK data returned; no new physical qualification'}
+            else:
+                result = getattr(self.robot, name)(**arguments)
         if isinstance(result, dict) and (result.get('ownerReleased') is True or result.get('ownerReleasedAfterBothReturnsVerified') is True):
             self.binding = None
         return result
@@ -613,14 +689,16 @@ def require_completed(name, result, preset_plan=None):
         raise RuntimeError('Master result is failed, dry-run, or lacks authoritative evidence')
     if result.get('status') in {'candidate', 'not-qualified'}:
         raise RuntimeError('Master result is an unqualified plan')
-    backend = MASTER_COMMANDS[name]['backend']
+    backend = command_backend(name, result.get('gateway_source_args',{}))
+    if result.get('gateway_seated_owner_before'):backend='seated_existing'
+    name=name.split('.')[-1]
     if backend == 'native_preset':
         complete = (result.get('succeeded') is True and type(result.get('task_id')) is int
             and type(result.get('task_state')) is int and result['task_state'] == 1
             and (result['task_id'] > 0 or (result['task_id'] == 0 and observed_preset_completed(name, result, preset_plan)))
             and result.get('posture_before') == 'STAND_DEFAULT' and result.get('posture_after') == 'STAND_DEFAULT')
     elif backend == 'native_head':
-        operation_matches = result.get('operation') == name or (name == 'shake_head' and measured_shake_sequence(result))
+        operation_matches = result.get('operation') == name or (name == 'shake_head' and measured_shake_sequence(result)) or (name in {'return_head_to_center','center_head','center'} and result.get('operation') in {'turn_head','return_head_to_center'})
         complete = (result.get('dry_run') is False and operation_matches
             and result.get('posture') == 'stand' and result.get('phase') == 'head-sequence-complete'
             and all(result.get(key) is True for key in (
@@ -639,6 +717,11 @@ def require_completed(name, result, preset_plan=None):
             and result.get('joint_targets_unchanged') is True and result.get('joint_gains_unchanged') is True)
     elif backend == 'native_golf':
         complete = result.get('succeeded') is True
+    elif backend=='seated_existing':
+        before=result.get('gateway_seated_owner_before');after=result.get('gateway_seated_owner_after')
+        complete=(isinstance(before,dict) and before==after and before.get('phase')=='holding'
+                  and result.get('whole_body_damping') is not True
+                  and (result.get('succeeded') is True or result.get('measured_endpoint_verified') is True))
     elif name == 'close_door':
         complete = result.get('allEndpointsVerified') is True and result.get('waistEndpointVerified') is True
     elif name == 'accept_current_hold':
@@ -687,7 +770,8 @@ def require_native_sequence_result(name, arguments, result, plan):
 
 def validate_plan_admission(adapter, commands):
     preset_plans = adapter.validate(commands)
-    if any(MASTER_COMMANDS[command['name']]['backend'] == 'native_head' for command in commands):
+    if any(command_backend(command['name'],command['args']) == 'native_head'
+        and not (command['name']=='center' and adapter.robot.seated_status().get('active') is True) for command in commands):
         adapter.verify_head_contract()
     return preset_plans
 
@@ -773,11 +857,22 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
             session_factory = getattr(type(adapter), 'plan_connection_session', None)
             if callable(session_factory):
                 connections.enter_context(session_factory(adapter))
+            sdk_read_only=bool(plan.get('sdk_contract')) and all(
+                SDK_ENTRIES['master:'+c['name']]['effect'] in {'local','observe'} for c in plan['commands'])
             preset_plans = validate_plan_admission(adapter, plan['commands'])
             admitted()
-            first_backend = MASTER_COMMANDS[plan['commands'][0]['name']]['backend']
-            native_sequence = all(c['name'] in native_gesture.COMMANDS for c in plan['commands'])
-            includes_heart = any(native_gesture.bilateral_heart(c) for c in plan['commands'])
+            actions=[c for c in plan['commands'] if not c.get('sdk') or SDK_ENTRIES['master:'+c['name']]['effect']=='action']
+            first_backend = command_backend(actions[0]['name'],actions[0]['args']) if actions else 'passive'
+            gestures=gesture_commands(plan['commands'])
+            native_sequence = bool(gestures) and all(c['name'] in native_gesture.COMMANDS for c in gestures)
+            seated_sequence = bool(actions) and all(command_backend(c['name'],c['args'])=='seated_existing' for c in actions)
+            if actions and any(c['name']=='center' for c in actions) and all(c['name']=='center' or command_backend(c['name'],c['args'])=='seated_existing' for c in actions):
+                seated_sequence=adapter.robot.seated_status().get('active') is True
+                if seated_sequence:first_backend='seated_existing'
+            includes_heart = any(native_gesture.bilateral_heart(c) for c in gestures)
+            if seated_sequence:
+                from eaic_sdk_commands import seated_owner
+                receipt['owner_binding']=seated_owner(adapter.robot)
             if config.get('recovery_owner_binding') is not None:
                 receipt['owner_binding'] = adapter.check_recovery_owner()
             elif first_backend == 'mode_entry':
@@ -786,15 +881,15 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
                 receipt['owner_binding'] = adapter.check_ready()
             elif native_sequence:
                 check_start = time.monotonic()
-                receipt['owner_binding'] = native_sequence_ready(adapter, plan['commands'])
+                receipt['owner_binding'] = native_sequence_ready(adapter, gestures)
                 # If preparation ends early, time the final fresh read to the
                 # deadline. A cached reading is never trusted through the wait.
-                first_command = plan['commands'][0]
+                first_command = gestures[0]
                 observed = time.monotonic()
                 if target - now() > 0.25:
                     check_duration = max(0.0, observed - check_start)
                     wait_until(target - check_duration, admitted, now, sleep)
-                    receipt['owner_binding'] = native_sequence_ready(adapter, plan['commands'])
+                    receipt['owner_binding'] = native_sequence_ready(adapter, gestures)
                     observed = time.monotonic()
                 adapter._first_native_observation = (first_command['name'], first_command['args'], observed)
                 receipt['owner_hold_preserved'] = False
@@ -816,15 +911,20 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
                 try:
                     adapter.sdk_call_started_at = None
                     arguments = dict(command['args'])
-                    if command['name'] == 'undo_waist':
+                    adapter.sdk_current_command=command if command.get('sdk') is True else None
+                    adapter.sdk_results=saved_results
+                    adapter.sdk_workspace=Path(plan_path).resolve().parent
+                    adapter.last_sdk_value=None
+                    if command['name'] == 'undo_waist' and not command.get('sdk'):
                         arguments['movement'] = saved_results[arguments['movement']['$master_result']]
                     result = adapter.execute(command['name'], arguments)
                     active['result'] = result
                     require_completed(command['name'], result, preset_plans.get(index) if isinstance(preset_plans, dict) else None)
-                    if native_sequence:
-                        require_native_sequence_result(command['name'],arguments,result,preset_plans.get(index) if isinstance(preset_plans,dict) else None)
+                    if native_sequence and (not command.get('sdk') or SDK_ENTRIES['master:'+command['name']]['effect']=='action'):
+                        normalized=gesture_commands([command])[0]
+                        require_native_sequence_result(normalized['name'],normalized['args'],result,preset_plans.get(index) if isinstance(preset_plans,dict) else None)
                     if command.get('save_result_as'):
-                        saved_results[command['save_result_as']] = result
+                        saved_results[command['save_result_as']] = adapter.last_sdk_value if command.get('sdk') is True else result
                     active.update(result=result, status='completed')
                     receipt['completed_count'] += 1
                     if command['name'] == 'restore_stand_hand_guide':
@@ -832,11 +932,11 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
                     if result.get('ownerReleased') is True or result.get('ownerReleasedAfterBothReturnsVerified') is True:
                         receipt['owner_hold_preserved'] = False
                         receipt['owner_release_verified'] = True
-                    backend = MASTER_COMMANDS[command['name']]['backend']
+                    backend = command_backend(command['name'],arguments)
                     if backend == 'movement_a':
                         receipt['owner_binding'] = result['ownerBinding']
                         receipt['owner_hold_preserved'] = True
-                    elif backend in {'owner_control', 'native_golf'} or 'owner_binding' not in receipt:
+                    elif not sdk_read_only and not seated_sequence and (backend in {'owner_control', 'native_golf'} or 'owner_binding' not in receipt):
                         receipt['owner_binding'] = adapter.check_ready()
                     elif (backend in {'raw_upper_body', 'mode_entry'}
                         and receipt['owner_binding'].get('ownerMode') != 'current-hold'):
@@ -858,10 +958,27 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
                     if isinstance(adapter.sdk_call_started_at, str):
                         record['sdk_call_started_at'] = adapter.sdk_call_started_at
             receipt['outcome'] = 'completed'
+            if seated_sequence:
+                from eaic_sdk_commands import seated_owner,CONTRACT
+                receipt['final_owner_binding']=seated_owner(adapter.robot)
+                if receipt['owner_binding']!=receipt['final_owner_binding']:raise RuntimeError('Seated owner changed during the session')
+                receipt.update(owner_hold_preserved=True,owner_hold_verified=True,handoff_ready=True,
+                    handoff_mode='retained-seated',handoff_blocker=None,sdk_contract=CONTRACT['hash'],
+                    finished_at=_iso(now()),overrun_seconds=max(0,now()-end))
+                _atomic_json(result_file,receipt)
+                return receipt
+            if sdk_read_only:
+                from eaic_sdk_commands import CONTRACT
+                receipt.update(owner_hold_preserved=False,owner_hold_verified=False,handoff_ready=True,
+                    handoff_mode='sdk-read-only',handoff_blocker=None,sdk_contract=CONTRACT['hash'],
+                    robot_commands_sent=False,sdk_read_only_verified=True,finished_at=_iso(now()),
+                    overrun_seconds=max(0,now()-end))
+                _atomic_json(result_file,receipt)
+                return receipt
             # Observation never changes ownership. A returned SDK call alone is
             # not evidence that the prior hold remains healthy at session end.
             try:
-                receipt['final_owner_binding'] = (native_sequence_ready(adapter, plan['commands'])
+                receipt['final_owner_binding'] = (native_sequence_ready(adapter, gestures)
                     if native_sequence else adapter.check_ready())
                 receipt['owner_hold_verified'] = not native_sequence
                 initial, final = receipt.get('owner_binding'), receipt['final_owner_binding']
@@ -879,7 +996,7 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
                     if not all(isinstance(before_idle.get(k),str) and before_idle[k].strip()
                                and before_idle[k] == after_idle.get(k) for k in identity_fields):
                         raise RuntimeError('Native gesture owner or input source changed during execution')
-                    mode = ('native-preset-head' if any(native_gesture.needs_preset_profile(c) for c in plan['commands'])
+                    mode = ('native-preset-head' if any(native_gesture.needs_preset_profile(c) for c in gestures)
                             else 'native-heart-head')
                     if mode == 'native-preset-head' and any(initial.get(key) != final.get(key) for key in
                             ('nativePresetStartProfile','nativePresetBootId','nativePresetMcNode')):

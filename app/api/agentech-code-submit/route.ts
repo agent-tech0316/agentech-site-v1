@@ -51,7 +51,7 @@ function masterReviewEvidence(robotModel: string) {
 
 function extractCommands(code: string) {
   const commands: string[] = [];
-  const pattern = /(?:Agentech|dog)\.(\w+)\(([^)]*)\)/g;
+  const pattern = /(?:Agentech|agentech\.Agentech|dog)\.((?:standing_actions\.|seated_actions\.)?\w+)\s*\(([^)]*)\)/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(code)) !== null) {
     const args = match[2].trim();

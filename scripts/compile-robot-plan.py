@@ -51,7 +51,7 @@ def normalize_robot_model(value: str) -> str:
     raise ValueError(f"unsupported robot model: {value!r}")
 
 
-def compile_plan(source: str, submission_id: str, robot_model: str = "aegis") -> dict:
+def compile_legacy_plan(source: str, submission_id: str, robot_model: str = "aegis") -> dict:
     selected_model = normalize_robot_model(robot_model)
     tree = ast.parse(source, filename=f"submission:{submission_id}", mode="exec")
     commands = []
@@ -101,6 +101,8 @@ def compile_plan(source: str, submission_id: str, robot_model: str = "aegis") ->
         elif call.args:
             raise ValueError(f"line {statement.lineno}: commands require named arguments")
         command_spec = MASTER_COMMANDS.get(call.func.attr, {}) if selected_model == 'master' else {}
+        if command_spec.get('validator')=='sdk':
+            raise ValueError('SDK extension is not approved through the legacy command format')
         if save_result_as and command_spec.get('result_type') != 'waist_adjustment':
             raise ValueError('Only adjust_waist results can be captured')
         def argument_literal(node, key):
@@ -159,6 +161,20 @@ def compile_plan(source: str, submission_id: str, robot_model: str = "aegis") ->
         plan["robot_model"] = "aegis"
         plan["device_profile"] = dict(AEGIS_192_168_4_88)
     return plan
+
+
+def compile_plan(source: str, submission_id: str, robot_model: str = 'aegis') -> dict:
+    try:
+        return compile_legacy_plan(source, submission_id, robot_model)
+    except (TypeError, ValueError) as error:
+        # Range/profile/safety failures never fall through to a different parser.
+        expandable = ('not approved', 'unapproved arguments', 'commands require named arguments',
+                      'only scalar literal arguments', 'Only adjust_waist results can be captured',
+                      'commands require a direct', 'only direct robot command calls are executable')
+        if not any(text in str(error) for text in expandable):
+            raise
+        from eaic_sdk_commands import compile_sdk_plan
+        return compile_sdk_plan(source, submission_id, normalize_robot_model(robot_model))
 
 
 def main() -> None:

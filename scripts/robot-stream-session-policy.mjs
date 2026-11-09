@@ -1,3 +1,4 @@
+import {isSdkReadOnly} from './eaic-gateway-assignment.mjs';
 export function endSessionPostureCommand(robotModel) {
   if (robotModel === "navi") return "lie_down";
   if (robotModel === "aegis") return "sit";
@@ -27,6 +28,7 @@ export function endSessionCleanupPolicy(plan, robotModel) {
   if (robotModel === "navi") {
     return {
       required: true,
+      ...(isSdkReadOnly(plan,'navi')?{readOnly:true}:{}),
       // Earlier user calls do not establish the posture at booked session end.
       returnHomeRequired: false,
     };

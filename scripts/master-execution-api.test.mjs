@@ -259,6 +259,7 @@ test("real booking POST pins normal Master custom code and does not charge when 
 test("real Master code submission persists the normal review gate with explicit static-only evidence", async () => {
   const persisted = [];
   const { POST } = loadRoute("app/api/agentech-code-submit/route.ts", {
+    "@/lib/eaic-review-exemption": {hasFullReviewExemption:async()=>false},
     fs: { promises: { mkdir: async () => {}, writeFile: async () => {} } },
     "@/lib/server-account-session": { getServerAccountEmail: async () => "developer@agent-tech.ai" },
     "@/lib/agentech-ai-review": { runAgentechAiCodeReview: async () => { throw new Error("Physical/static stage cannot invoke software review."); } },
@@ -276,7 +277,7 @@ test("real Master code submission persists the normal review gate with explicit 
       'from agentech import Agentech\n\nAgentech.turn_head()', 'Agentech.turn_head(20)', 'Agentech.turn_head(-20)',
       'Agentech.shake_head()', 'Agentech.shake_head(5, 2)', 'Agentech.shake_head(-20, 10)']) {
       const result = await POST({ json: async () => ({ robotModel: "Master", reviewStage: "physical", runMode: "Software check", code }) });
-      assert.equal(result.status, 200);
+      assert.equal(result.status, 200, JSON.stringify(result.body));
       assert.equal(result.body.physicalSafetyStatus, "passed");
       assert.equal(result.body.validationKind, "master_upper_body_static_contract");
       assert.equal(result.body.physicalQualified, false);

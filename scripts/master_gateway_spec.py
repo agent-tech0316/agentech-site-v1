@@ -9,6 +9,16 @@ from pathlib import Path
 
 MASTER_CONTRACT = json.loads(Path(__file__).with_name('master-command-contract.json').read_text(encoding='utf-8'))
 MASTER_COMMANDS = MASTER_CONTRACT['commands']
+from eaic_sdk_commands import ENTRIES as SDK_ENTRIES, generic_backend
+# The old reviewed profiles remain intact. New public methods use the shared
+# signature contract and retain their SDK admission at the execution boundary.
+for _entry in SDK_ENTRIES.values():
+    if _entry['robot']=='master' and _entry['policy']=='customer' and _entry['method'] not in MASTER_COMMANDS:
+        _base=_entry['method'].split('.')[-1]
+        _backend=(MASTER_COMMANDS.get(_base,{}).get('backend') if _entry['method'].startswith('standing_actions.') else None)
+        if _entry['method'].startswith('seated_actions.') and _entry['effect']=='action':_backend='seated_existing'
+        MASTER_COMMANDS[_entry['method']]={'parameters':{},'required':[],'positional':[],
+            'validator':'sdk','backend':_backend or generic_backend(_entry['method'])}
 ARM_AXES = frozenset({'shoulder_pitch', 'shoulder_roll', 'shoulder_yaw', 'elbow', 'wrist_yaw', 'wrist_pitch', 'wrist_roll'})
 AXES = frozenset({'pitch', 'roll', 'yaw'})
 RESULT_NAME = re.compile(r'^[A-Za-z][A-Za-z0-9_]{0,63}$')
@@ -56,6 +66,8 @@ def _check_type(value, spec, name):
 
 
 def validate_master_command(name: object, arguments: object) -> None:
+    if name in MASTER_COMMANDS and MASTER_COMMANDS[name]['validator']=='sdk':
+        raise ValueError('SDK extension is not approved through the legacy command format')
     if not isinstance(name, str) or name not in MASTER_COMMANDS:
         if isinstance(name, str) and name in MASTER_CONTRACT.get('unsupported_commands', {}):
             raise ValueError('Master ' + name + ': ' + MASTER_CONTRACT['unsupported_commands'][name])
