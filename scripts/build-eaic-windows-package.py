@@ -75,7 +75,7 @@ MessageBox MB_OK "Choose a fresh directory. Installation will not replace an exi
 Abort
 fresh:
 SetOutPath "$INSTDIR"
-File /r "'''+nsis(stage)+'''\\*"
+File /r /x "__pycache__" /x "*.pyc" /x "*.pyo" "'''+nsis(stage)+'''\\*"
 CreateDirectory "$SMPROGRAMS\\Agentech EAIC Gateway"
 CreateShortcut "$SMPROGRAMS\\Agentech EAIC Gateway\\1 Configure.lnk" "$INSTDIR\\Configure.cmd"
 CreateShortcut "$SMPROGRAMS\\Agentech EAIC Gateway\\2 Offline check.lnk" "$INSTDIR\\Offline.cmd"
