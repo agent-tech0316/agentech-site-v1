@@ -104,7 +104,7 @@ def prepare(m, path):
     files = load_package(m,path)
     need(m['model'] == 'Master Ultra','No identity-bound native playback adapter installed for '+m['model'])
     probe = HERE/'master_policy_probe.py'
-    scene = os.environ.get('AGENTECH_MASTER_ULTRA_SIM_SCENE','')
+    scene = os.environ.get('AGENTECH_MASTER_ULTRA_SIM_SCENE') or str(HERE.parent/'master-config'/'ultra-simulator'/'model_info'/'scene.xml')
     from importlib.metadata import version
     dependencies = version('onnxruntime')+' '+version('numpy')
     known = m['policy']['sha256'] == native.SPEC['policy']
