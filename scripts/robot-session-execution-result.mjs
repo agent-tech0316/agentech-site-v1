@@ -1,7 +1,7 @@
 const OUTCOMES = new Set(["completed", "failed"]);
 const COMMAND_STATUSES = new Set(["completed", "failed"]);
 const SHA256 = /^[0-9a-f]{64}$/;
-// Up to 100 SDK calls, each limited to 32 KB of structured public data.
+// SDK calls share a 3 MB structured-result budget, leaving room for metadata.
 const DEFAULT_MAX_BYTES = 4 * 1024 * 1024;
 const DEFAULT_MAX_COMMANDS = 256;
 

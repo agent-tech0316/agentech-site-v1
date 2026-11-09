@@ -900,6 +900,8 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
                 receipt['owner_binding'] = adapter.native_ready(require_presets=False)
                 receipt['owner_hold_preserved'] = False
             saved_results = {}
+            from eaic_sdk_commands import ResultBudget
+            result_budget=ResultBudget()
             for index, command in enumerate(plan['commands'], 1):
                 if index == 1 and not dispatch_enabled:
                     open_dispatch()
@@ -918,6 +920,7 @@ def execute_plan(plan_path, deployment_path, result_file, *, session_end=None, c
                     if command['name'] == 'undo_waist' and not command.get('sdk'):
                         arguments['movement'] = saved_results[arguments['movement']['$master_result']]
                     result = adapter.execute(command['name'], arguments)
+                    if command.get('sdk') is True:result=result_budget.export(result)
                     active['result'] = result
                     require_completed(command['name'], result, preset_plans.get(index) if isinstance(preset_plans, dict) else None)
                     if native_sequence and (not command.get('sdk') or SDK_ENTRIES['master:'+command['name']]['effect']=='action'):

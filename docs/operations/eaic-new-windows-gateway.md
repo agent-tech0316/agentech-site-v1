@@ -97,8 +97,9 @@ Scheduled plain Master head calls retain the gateway's standing default; use an
 explicit seated posture only with the existing commissioned seated owner.
 
 Public command results preserve structured values, with connection credentials
-redacted. Individual values are limited to 32 KB, with a clear failure on overflow;
-select fewer columns or a smaller recording. Record tables include at most 1,000
+redacted. A result is limited to 2 MB and a program's combined results to 3 MB,
+with a clear failure on overflow; select fewer columns or a smaller recording.
+The normal Navi read/report pair fits this budget. Record tables include at most 1,000
 rows with an explicit truncation flag. Generated report files remain in the
 session workspace; this package does not add a cloud PDF download endpoint.
 

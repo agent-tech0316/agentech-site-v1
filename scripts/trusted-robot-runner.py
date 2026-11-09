@@ -232,6 +232,8 @@ def execute(
         validate_aegis_plan(plan)
         sdk_plan=plan.get('sdk_contract') is not None
         sdk_results={}
+        from eaic_sdk_commands import ResultBudget
+        result_budget=ResultBudget()
         if sdk_plan:
             from eaic_sdk_commands import verify_runtime
             import agentech as sdk_module
@@ -291,7 +293,7 @@ def execute(
                     ),
                     "line": current_command.get("line"),
                     "status": "completed",
-                    "result": public_result(value) if sdk_plan else json_safe(value),
+                    "result": result_budget.export(value) if sdk_plan else json_safe(value),
                     "error": None,
                     "started_at": command_started_at,
                     "duration_ms": duration_ms,

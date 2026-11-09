@@ -356,5 +356,17 @@ def public_result(value):
             rows=list(islice(iter(item),1001));return {'rows':clean(rows[:1000],depth+1),'truncated':len(rows)>1000}
         raise ValueError('SDK returned an unsupported result type: '+type(item).__name__)
     result=clean(value)
-    if len(json.dumps(result,allow_nan=False).encode())>32*1024:raise ValueError('SDK result exceeds 32 KB; select fewer telemetry columns or read a smaller recording')
+    if len(json.dumps(result,allow_nan=False).encode())>2*1024*1024:raise ValueError('SDK result exceeds 2 MB; select fewer telemetry columns or read a smaller recording')
     return result
+
+
+class ResultBudget:
+    """Keep the complete program receipt inside its cloud transport envelope."""
+    def __init__(self):self.bytes=0
+    def export(self,value):
+        result=public_result(value)
+        size=len(json.dumps(result,allow_nan=False).encode())
+        if self.bytes+size>3*1024*1024:
+            raise ValueError('SDK program results exceed 3 MB; use fewer reads or select fewer telemetry columns')
+        self.bytes+=size
+        return result

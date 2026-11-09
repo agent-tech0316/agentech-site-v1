@@ -9,7 +9,7 @@ import unittest
 from types import SimpleNamespace
 
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-from eaic_sdk_commands import CONTRACT,ENTRIES,compile_sdk_plan,bind,invoke,public_result,validate_plan,verify_runtime
+from eaic_sdk_commands import CONTRACT,ENTRIES,compile_sdk_plan,bind,invoke,public_result,validate_plan,verify_runtime,ResultBudget
 
 class SdkContractTests(unittest.TestCase):
     def test_inventory_policy_and_hash(self):
@@ -91,6 +91,19 @@ class SdkContractTests(unittest.TestCase):
     def test_public_results_bound_and_redact(self):
         result=public_result({'host':'192.168.1.2','access_token':'private','battery':38,'path':'C:/private/file.json'})
         self.assertEqual(result,{'battery':38,'path':{'artifact_name':'file.json'}})
-        with self.assertRaises(ValueError):public_result('x'*33000)
+        with self.assertRaises(ValueError):public_result('x'*(2*1024*1024))
+
+    def test_full_snapshot_and_program_result_budget(self):
+        # Navi's default qualification/status snapshot is about 300 KB before
+        # live telemetry. A read/report pair must fit without truncation.
+        snapshot={'qualification_evidence':'x'*400000}
+        budget=ResultBudget()
+        self.assertEqual(budget.export(snapshot),snapshot)
+        self.assertEqual(budget.export({'snapshot':snapshot}),{'snapshot':snapshot})
+        large={'value':'x'*(1024*1024)}
+        budget.export(large);budget.export(large)
+        previous=budget.bytes
+        with self.assertRaises(ValueError):budget.export(large)
+        self.assertEqual(budget.bytes,previous)
 
 if __name__=='__main__':unittest.main()

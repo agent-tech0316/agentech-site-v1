@@ -417,6 +417,8 @@ def execute(path: str, *, result_path=None, attempt_id=None, snapshot=None, veri
     agentech = configure_navi()
     sdk_plan = plan.data.get('sdk_contract') is not None
     sdk_results = {}
+    from eaic_sdk_commands import ResultBudget
+    result_budget=ResultBudget()
     if sdk_plan:
         from eaic_sdk_commands import verify_runtime
         verify_runtime(os.environ['AGENTECH_SDK_ROOT'],'navi')
@@ -440,7 +442,7 @@ def execute(path: str, *, result_path=None, attempt_id=None, snapshot=None, veri
                 if sdk_plan:
                     from eaic_sdk_commands import invoke,public_result,entry_for
                     sdk_result=invoke(agentech,'navi',command,sdk_results,Path(path).parent)
-                    record['result']=public_result(sdk_result)
+                    record['result']=result_budget.export(sdk_result)
                     if command.get('save_result_as'):sdk_results[command['save_result_as']]=sdk_result
                     record['completion_basis']='SDK method returned; physical qualification is unchanged'
                 else:
