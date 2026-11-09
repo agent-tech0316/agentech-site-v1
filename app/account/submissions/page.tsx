@@ -28,7 +28,7 @@ export default async function Submissions({searchParams}:{searchParams:Promise<P
  if(!assetIdPattern.test(p.asset))notFound();
  const file=await ownedAssetFile(email,p.asset);if(!file)notFound();
  const {receipt,name}=file,m=receipt.content_manifest;
- const [row]=await supabaseRequest<{object_key:string;created_at:string}[]>("agentech_account_asset_submissions",{query:owner+"&id=eq."+p.asset+"&select=object_key,created_at&limit=1"});
+ const [row]=await supabaseRequest<{object_key:string;created_at:string}[]>("agentech_account_asset_submissions",{query:owner+"&id=eq."+p.asset+"&select=object_key,created_at:submitted_at&limit=1"});
  const prefix=assetPrefix(email)+"/",key=row?.object_key.slice(prefix.length);
  if(!key||!assetKeyPattern.test(key)||row.object_key!==prefix+key||key.slice(0,36)!==p.asset)notFound();
  content=<><p className="file-label">Submitted file</p><h1>{name}</h1><p>{file.robotModel} · {size(receipt.byte_size)} · {date(row.created_at)}</p><section className="file-card"><h2>{name.toLowerCase().endsWith(".zip")?"Package contents":"File details"}</h2>
@@ -40,7 +40,7 @@ export default async function Submissions({searchParams}:{searchParams:Promise<P
  content=<><p className="file-label">Submitted code</p><h1>{r.uploaded_file_name||"Website editor.py"}</h1><p>{r.robot_model} · {date(r.created_at)}</p><section className="file-card"><h2>Saved source</h2><pre><code>{r.code}</code></pre></section></>;
  }else{
  const u=page(p.uploads),s=page(p.sources);const [uploads,codes]=await Promise.all([
- supabaseRequest<Row[]>("agentech_account_asset_submissions",{query:owner+"&select=id,file_name,robot_model,created_at&order=created_at.desc,id.desc&limit=4&offset="+(u-1)*3}),
+ supabaseRequest<Row[]>("agentech_account_asset_submissions",{query:owner+"&select=id,file_name,robot_model,created_at:submitted_at&order=submitted_at.desc,id.desc&limit=4&offset="+(u-1)*3}),
  supabaseRequest<Row[]>("agentech_code_submissions",{query:owner+"&id=not.like.master-body-*&select=id,uploaded_file_name,robot_model,created_at&order=created_at.desc,id.desc&limit=4&offset="+(s-1)*3})]);
  content=<><p className="file-label">Your account</p><h1>My submissions</h1><p>Open an original upload or the code saved with a specific submission.</p><div className="file-grid">{recents(uploads,"uploads",u,s)}{recents(codes,"sources",s,u)}</div></>;
  }
