@@ -11,5 +11,5 @@ export default async function EaicHubLayout({
     return children;
   }
 
-  return <AgentechLibraryAccessGate>{children}</AgentechLibraryAccessGate>;
+  return <AgentechLibraryAccessGate signedInWorkspace>{children}</AgentechLibraryAccessGate>;
 }

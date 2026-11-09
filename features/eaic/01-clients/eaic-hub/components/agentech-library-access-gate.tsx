@@ -42,7 +42,7 @@ function LibraryGateShell({
   );
 }
 
-export function AgentechLibraryAccessGate({ children }: { children: ReactNode }) {
+export function AgentechLibraryAccessGate({ children, signedInWorkspace = false }: { children: ReactNode; signedInWorkspace?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const [status, setStatus] = useState<AccessStatus>("checking");
@@ -97,13 +97,14 @@ export function AgentechLibraryAccessGate({ children }: { children: ReactNode })
           return;
         }
 
+        if (response.status === 401) { setStatus("signed-out"); router.replace(loginHref); return; }
         if (!response.ok) {
           setStatus("error");
           return;
         }
 
         const hasDeveloperProfile = result.accessProfiles?.some((profile) => profile.profile_type === "developer") ?? false;
-        setStatus(hasDeveloperProfile ? "allowed" : "locked");
+        setStatus(signedInWorkspace || hasDeveloperProfile ? "allowed" : "locked");
       } catch {
         if (!cancelled) {
           setStatus("error");
@@ -116,7 +117,7 @@ export function AgentechLibraryAccessGate({ children }: { children: ReactNode })
     return () => {
       cancelled = true;
     };
-  }, [loginHref, router]);
+  }, [loginHref, router, signedInWorkspace]);
 
   if (status === "allowed") {
     return children;
@@ -124,8 +125,8 @@ export function AgentechLibraryAccessGate({ children }: { children: ReactNode })
 
   if (status === "signed-out") {
     return (
-      <LibraryGateShell eyebrow="Developer access required" title="Sign in to open EAIC HUB.">
-        <p>You need an Agentech account with a developer profile before this workspace opens.</p>
+      <LibraryGateShell eyebrow="Sign in required" title="Sign in to open EAIC HUB.">
+        <p>Sign in with your Agentech account to open this workspace.</p>
         <Link href={loginHref} className={`mt-6 ${primaryGateAction}`}>
           Sign In
         </Link>
@@ -153,8 +154,8 @@ export function AgentechLibraryAccessGate({ children }: { children: ReactNode })
 
   if (status === "error") {
     return (
-      <LibraryGateShell eyebrow="Access check failed" title="We could not verify developer access.">
-        <p>Refresh the page or open your account dashboard to confirm this account has a developer profile.</p>
+      <LibraryGateShell eyebrow="Access check failed" title={signedInWorkspace ? "We could not verify your account." : "We could not verify developer access."}>
+        <p>Refresh the page or sign in again to verify your account.</p>
         <Link href="/account" className={`mt-6 ${primaryGateAction}`}>
           Open Account
         </Link>
@@ -164,7 +165,7 @@ export function AgentechLibraryAccessGate({ children }: { children: ReactNode })
 
   return (
     <LibraryGateShell eyebrow="Checking access" title="Opening EAIC HUB.">
-      <p>Verifying that this account has a developer profile.</p>
+      <p>Verifying your account.</p>
     </LibraryGateShell>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { submissionHref, submissionAssetId } from "@/lib/submission-href";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { accountSessionEvent, clearAccountSession, getAccountSession } from "@/lib/account-session";
@@ -1018,7 +1019,9 @@ function BookingHistory({sessions, submissions}: {
                   {session.profile_username && <>@{session.profile_username} &middot; </>}{formatInvoiceStatus(runType)}
                   {session.preset_demo && session.preset_demo !== title && <> &middot; {session.preset_demo}</>}
                 </p>
-                {isCustomCodeSession ? (
+                {session.code_submission_id && submissionAssetId(session.code_submission_id) ? (
+                  <Link href={submissionHref(session.code_submission_id)} className="inline-block py-2 text-sm font-semibold text-[#2f70c8]">View submitted file</Link>
+                ) : isCustomCodeSession ? (
                   <details className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                     <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-[#2f70c8]">
                       View submitted code
@@ -1994,7 +1997,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
       visual: profileVisuals[profile.profile_type]
     }))
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 4);
-  const codeSubmissions = (data.codeSubmissions ?? []).filter((submission) => submission.physical_safety_status === "passed");
+  const codeSubmissions = (data.codeSubmissions ?? []).filter((submission) => submission.physical_safety_status === "passed" && !submissionAssetId(submission.id));
   const hardwarePassedCodeCount = codeSubmissions.length;
   const softwarePassedCodeCount = codeSubmissions.filter((submission) => submission.ai_security_status === "passed").length;
   const tabCounts: Partial<Record<DashboardTab, number>> = {
@@ -2238,6 +2241,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
       {!focusedRobotScheduling ? (
       <div data-account-tabs aria-label="Account sections" className="relative z-[1] overflow-x-auto border-b border-slate-200 px-5 sm:px-7 md:px-8">
         <div className="flex min-w-max items-center gap-5">
+          <Link data-account-tab href="/account/submissions" className="shrink-0 py-3 text-sm font-semibold text-[#2f70c8]">My submissions</Link>
           {visibleDashboardTabs.map((tab) => {
             const selected = currentTab === tab.id;
             const count = tabCounts[tab.id];
@@ -2819,7 +2823,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
                           Download
                         </button>
                         <Link
-                          href={`${getEaicHubTaskPath("software-check")}?submissionId=${encodeURIComponent(submission.id)}`}
+                          href={submissionHref(submission.id)}
                           className="border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-[#2f70c8] hover:text-[#2f70c8]"
                         >
                           View Submission
@@ -3322,19 +3326,15 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
       ) : null}
 
       {currentTab === "robot" && !nativeAssetId && !hasAccessProfiles ? (
-        <section data-schedule-panel="empty" className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6">
-          <h2 className="text-xl font-bold text-slate-950">Create a profile to request robot time</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">Robot viewing is tied to a developer, student, teacher, or talent profile so each session has its own credit limit and activity history.</p>
-          {focusedRobotScheduling ? (
-            <Link data-schedule-action="primary" href="/account/create-profile" className="mt-5 inline-flex rounded-lg bg-[#2563eb] px-5 py-3 text-sm font-bold text-white">
-              Create Profile
-            </Link>
-          ) : (
-            <button type="button" onClick={() => setActiveTab("settings")} className="mt-5 rounded-lg bg-[#2563eb] px-5 py-3 text-sm font-bold text-white">
-              Create Profile
-            </button>
-          )}
-        </section>
+        <div className="grid gap-4">
+          <section data-schedule-panel="empty" className="rounded-xl border border-slate-200 p-5">
+            <h2 className="text-xl font-bold">Choose a motion to book</h2>
+            <p className="my-2 text-sm">Open one of your checked Master uploads, or submit a new file.</p>
+            <Link href="/account/submissions" className="mr-5 font-semibold text-[#2f70c8]">My submissions</Link>
+            <Link href={getEaicHubTaskPath("software-check")} className="font-semibold text-[#2f70c8]">Upload a motion</Link>
+          </section>
+          <BookingHistory key={email} sessions={data.robotSessions ?? []} submissions={data.codeSubmissions ?? []}/>
+        </div>
       ) : null}
 
       {currentTab === "billing" ? (

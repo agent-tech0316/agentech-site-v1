@@ -584,8 +584,8 @@ await runScenario(scenarioNames[13], async ({ page, context, audit, attach }) =>
     await gated.goto(`${nonLocalOrigin}/`, { waitUntil: "domcontentloaded" });
     await gated.evaluate(() => localStorage.setItem("agentechAccount", JSON.stringify({ email: "browser-check@example.com", signedInAt: new Date().toISOString() })));
     await gated.goto(`${nonLocalOrigin}${routePath}`, { waitUntil: "domcontentloaded" });
-    await gated.getByText(mode === "locked" ? "EAIC HUB is only available to developers." : "We could not verify developer access.", { exact: true }).waitFor();
-    assert.equal(await gated.locator('[data-eaic-sdk-onboarding="true"]').count(), 0);
+    if (mode === "locked") await gated.locator('[data-eaic-sdk-onboarding="true"]').waitFor();
+    else await gated.getByText("We could not verify your account.", { exact: true }).waitFor();
   }
   audit.errors.splice(0, audit.errors.length, ...audit.errors.filter((error) => (
     error !== "console: Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
