@@ -4,7 +4,21 @@ const spec = JSON.parse(readFileSync(new URL('./master-happy-dance.json',import.
 const prefix = 'master-body-';
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 
+const bookedPrefix = 'master-body-v2-';
+const bookedMode = 'master-native-asset-v2';
+const hash = data => createHash('sha256').update(data).digest('hex');
+const sha = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+const boundedSize = n => Number.isSafeInteger(n) && n > 0 && n <= 64 * 1024 * 1024;
+
 export function parseBodySubmission(row) {
+  if (String(row.id).startsWith(bookedPrefix) || [row.run_mode, row.ai_security_model].includes(bookedMode)) {
+    const id = String(row.id).slice(bookedPrefix.length);
+    const pin = JSON.parse(row.code);
+    if (!row.id.startsWith(bookedPrefix) || !uuid.test(id) || row.robot_model !== 'Master' ||
+        row.run_mode !== bookedMode || row.ai_security_model !== bookedMode || pin?.asset_id !== id ||
+        !sha(pin.asset_sha256) || Object.keys(pin).length !== 2) throw new Error('Invalid booked native submission');
+    return id;
+  }
   if (!String(row.id).startsWith(prefix) && row.ai_security_model !== spec.mode && row.run_mode !== spec.mode) return null;
   const id = String(row.id).slice(prefix.length);
   if (!String(row.id).startsWith(prefix) || !uuid.test(id) || row.robot_model !== 'Master'
@@ -13,9 +27,40 @@ export function parseBodySubmission(row) {
   return id;
 }
 
-export function createBodyPlan(submission) {
+function bookedManifest(submission, row, id) {
+  const content = row?.content_manifest, policy = content?.movement, audio = content?.audio;
+  const contract = policy?.metadata?.masterContract;
+  if (row?.id !== id || row.sha256 !== JSON.parse(submission.code).asset_sha256 || !boundedSize(row.byte_size) ||
+      !['Package','Motion'].includes(row.asset_kind) || content?.version !== 1 || !contract ||
+      !['Master Edu','Master Ultra'].includes(contract.model) || contract.controlHz !== 50 ||
+      contract.observationSize !== (contract.model === 'Master Ultra' ? 151 : 131) ||
+      contract.actionSize !== (contract.model === 'Master Ultra' ? 29 : 25) || contract.evidence !== 'static-interface' ||
+      !Number.isSafeInteger(contract.frameCount) || contract.frameCount <= 0 || policy.format !== 'onnx' ||
+      !sha(policy.sha256) || !boundedSize(policy.bytes) || !policy.path ||
+      content.playback?.movementPath !== policy.path || content.playback.audioPath !== (audio?.path ?? null) ||
+      content.playback.mode !== (audio ? 'movement_with_audio' : 'movement_only') ||
+      (row.asset_kind === 'Motion' && (audio !== null || policy.sha256 !== row.sha256 || policy.bytes !== row.byte_size)) ||
+      !(audio === null || (audio.format === 'wav' && audio.path && sha(audio.sha256) && boundedSize(audio.bytes) &&
+        Number.isFinite(audio.durationSeconds) && audio.durationSeconds > 0 &&
+        audio.sampleRateHz === 16000 && audio.channels === 1 && audio.bitsPerSample === 16))) {
+    throw new Error('Booked package differs from its validated native manifest');
+  }
+  return {asset_id:id,asset_sha256:row.sha256,bytes:row.byte_size,kind:row.asset_kind,model:contract.model,
+    frames:contract.frameCount,policy:{path:policy.path,sha256:policy.sha256,bytes:policy.bytes},
+    audio:audio && {path:audio.path,sha256:audio.sha256,bytes:audio.bytes,seconds:audio.durationSeconds},
+    motion:'linkcraft_resource_onnx_ffeaic'+row.sha256+'_0.0.1'};
+}
+
+export function createBodyPlan(submission, assetRow) {
   const id = parseBodySubmission(submission);
   if (!id) throw new Error('A pinned Master package is required');
+  if (submission.run_mode === bookedMode) {
+    const manifest = bookedManifest(submission, assetRow, id);
+    return {version:2,robot_model:'master',asset_id:id,submission_id:submission.id,
+      source_sha256:hash(submission.code),native_body_manifest:manifest,
+      native_body_required_seconds:Math.ceil(Math.max(manifest.frames/50,manifest.audio?.seconds ?? 0))+10,
+      commands:[{name:'play_body',args:{motion_name:manifest.motion,audio_path:''},line:1}]};
+  }
   return {version:2,robot_model:'master',asset_id:id,submission_id:submission.id,
     source_sha256:createHash('sha256').update(spec.source).digest('hex'),
     commands:[{name:'play_body',args:{motion_name:spec.motion,audio_path:''},line:1}]};
@@ -83,7 +128,55 @@ function verifiedPerformance(value) {
     && finish - started >= r.playing_seconds*1000 && finish <= Date.parse(value.booked_end));
 }
 
-export function verifyBodyReceipt(value) {
+function bookedPerformance(v, plan) {
+  const m = plan?.native_body_manifest, c = v.commands?.[0], r = c?.result;
+  if (!m || !r || v.submission_id !== plan.submission_id || v.source_sha256 !== plan.source_sha256 ||
+      v.submission_id !== bookedPrefix+m.asset_id || v.body_start_authority !== 'signed_booking' ||
+      v.handoff_mode !== 'native-body-playback' || !v.handoff_ready || v.owner_hold_preserved !== false ||
+      v.owner_hold_verified !== false || v.error || v.outcome !== 'completed' || v.command_count !== 1 ||
+      v.completed_count !== 1 || v.commands.length !== 1 || c.error || c.status !== 'completed' ||
+      c.name !== 'play_body' || c.args?.motion_name !== m.motion || c.args?.audio_path !== '' ||
+      r.request_attempted !== true || r.asset_id !== m.asset_id || r.asset_sha256 !== m.asset_sha256 ||
+      r.model !== m.model || m.model !== 'Master Ultra' || r.serial !== spec.serial ||
+      r.policy_probe?.policy_sha256 !== m.policy.sha256 || r.policy_probe?.model !== m.model ||
+      r.policy_probe?.frames !== m.frames || r.policy_probe?.check !== (m.policy.sha256 === spec.policy
+        ? 'exact-physically-recorded-policy' : 'ultra-closed-loop-simulation') ||
+      r.policy_sha256 !== m.policy.sha256 || r.audio_sha256 !== (m.audio?.sha256 ?? null) ||
+      r.play_response !== 'Play success' || r.native_motion !== m.motion || r.motion_complete !== true ||
+      r.terminal_standing_observed !== true || r.joints_fault_free !== true || r.joint_fault_count !== 0 ||
+      !Array.isArray(r.joint_faults) || r.joint_faults.length || r.partial_observation) return false;
+  const before = v.owner_binding, after = v.final_owner_binding, transitions = r.native_transitions;
+  const seconds = m.frames/50, tolerance = Math.min(.5,seconds*.1);
+  if (![before,after].every(b => b?.settled === true && b.mode === 'STAND_DEFAULT' && b.player === 0 &&
+      /^mc_ros2_node\d+$/.test(b.owner)) || before.owner !== after.owner ||
+      !Number.isFinite(r.playing_seconds) || Math.abs(r.playing_seconds-seconds) > tolerance ||
+      !(Number.isFinite(r.peak_travel_rad) && r.peak_travel_rad > 0) ||
+      !Array.isArray(transitions) || ![2,3].includes(transitions.length) ||
+      transitions[0]?.mode !== 'BMIMIC' || transitions[0]?.motion !== m.motion || transitions[0]?.player !== 2 ||
+      transitions.at(-1)?.mode !== 'STAND_DEFAULT' || (transitions.length === 3 && transitions[1]?.mode !== 'BMIMIC_STEP') ||
+      transitions.slice(1).some(t=>t?.motion !== '' || t?.player !== 0) ||
+      transitions.some(t=>!/^\d{16,20}$/.test(t.stamp_ns)) ||
+      ![before,after].every(b=>/^\d{16,20}$/.test(b.mc_stamp_ns)) ||
+      BigInt(before.mc_stamp_ns)>BigInt(transitions[0].stamp_ns) ||
+      BigInt(after.mc_stamp_ns)<BigInt(transitions.at(-1).stamp_ns) ||
+      transitions.slice(1).some((t,i)=>BigInt(t.stamp_ns)<=BigInt(transitions[i].stamp_ns))) return false;
+  const firstGap = Number(BigInt(transitions[1].stamp_ns)-BigInt(transitions[0].stamp_ns))/1e9-r.playing_seconds;
+  const start = Date.parse(c.sdk_call_started_at), finish = Date.parse(v.finished_at);
+  if (firstGap < -1e-6 || firstGap > .501 || !(Date.parse(v.started_at) <= start && finish-start >= r.playing_seconds*1000 &&
+      finish <= Date.parse(v.booked_end))) return false;
+  if (!m.audio) return r.music_played === null && r.audio_output === null;
+  const a = r.audio_output, duration = m.audio.seconds;
+  return r.music_played === true && a?.completed === true && a.transport_status === 'confirmed' && !a.error &&
+    a.sha256 === m.audio.sha256 && a.file === 'audio.wav' && a.board === 'soc2' && a.muted === false &&
+    Number.isInteger(a.volume) && a.volume > 0 && a.volume <= 100 &&
+    a.sample_rate_hz === 16000 && a.channels === 1 && a.bits_per_sample === 16 && a.pcm_bytes === Math.round(duration*32000) &&
+    Date.parse(a.opened_at_robot) <= Date.parse(a.started_at_robot) && a.playing_seconds > 0 &&
+    Math.abs(a.playing_seconds-duration) <= Math.min(2,duration*.1) &&
+    Math.abs((Date.parse(a.finished_at_robot)-Date.parse(a.started_at_robot))/1000-a.playing_seconds) < .02;
+}
+
+export function verifyBodyReceipt(value, plan) {
+  if (String(value?.submission_id).startsWith(bookedPrefix)) return Boolean(bookedPerformance(value, plan));
   return Boolean(value && value.handoff_mode === 'native-body-playback' && value.handoff_ready === true && verifiedPerformance(value));
 }
 
@@ -108,12 +201,4 @@ export function reconcileMissingSpeakerEnd(value) {
   Object.assign(command,{status:'completed',error:null});
   Object.assign(report,{outcome:'completed',completed_count:1,error:null});
   return verifiedPerformance(report) ? report : null;
-}
-
-export async function bodyOperatorConfirmation(request, session, assetId, notBefore) {
-  const query = new URLSearchParams({session_id:'eq.'+session.id,email:'eq.'+session.email,asset_id:'eq.'+assetId,
-    booked_start:'eq.'+session.scheduled_start,booked_end:'eq.'+session.scheduled_end,select:'confirmed_at'});
-  const [row] = await request('agentech_body_operator_ready',query.toString());
-  const target = Math.max(Date.now(),Date.parse(notBefore)), confirmed = Date.parse(row?.confirmed_at);
-  return Number.isFinite(confirmed) && confirmed <= Date.now() && target-confirmed < 90000 ? row.confirmed_at : null;
 }

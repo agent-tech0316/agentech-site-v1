@@ -7,11 +7,15 @@ const origin = new URL(process.env.EAIC_THEME_TEST_BASE_URL ?? "http://127.0.0.1
 assert.ok(["127.0.0.1", "localhost"].includes(origin.hostname));
 const schedule = new URL("/agentech-products/eaic-hub/schedule-time", origin);
 const email = "schedule-fixture@example.invalid";
-const booked = [true, false].map((automatic, i) => ({
+const motionNames = ["Slow turn", "Arm wave", "Head turn", "Standing bow", "Two-arm wave", "Happy Dance", "Shoulder motion", "Happy Dance with bundled audio"];
+const booked = Array.from({ length: 8 }, (_, i) => ({
   id: i + 1,
-  session_title: automatic ? "Automatic booking" : "Manual booking",
-  body_booking_starts_automatically: automatic,
-  session_status: "approved",
+  session_title: motionNames[i],
+  approved_run_type: "custom_code",
+  created_at: new Date(Date.UTC(2026, 9, i+1)).toISOString(),
+  scheduled_start: new Date(Date.UTC(2026, 10, 10-i)).toISOString(),
+  body_booking_starts_automatically: i % 2 === 0,
+  session_status: ["scheduled", "failed", "completed"][i % 3],
   code_submission_id: "master-body-fixture",
   robot_model: "Master",
   device_results: [],
@@ -44,6 +48,7 @@ try {
             robotSessions: booked,
           },
           "/api/account/code-submissions": { submissions: [] },
+          "/api/eaic-account-assets": {file:{name:"Example.zip",receipt:{id:"fixture",content_manifest:{movement:{metadata:{}}}}}},
           "/api/robot-slot": { ok: true, bookedSlots: [] },
         };
         return route.fulfill({ json: fixtures[url.pathname] ?? {} });
@@ -63,10 +68,27 @@ try {
         theme === "light" ? "rgb(250, 249, 246)" : "rgb(17, 21, 27)");
       assert.doesNotMatch(await form.innerText(), /confirm your presence/i);
       const entries = page.locator("[data-schedule-session]");
-      await entries.filter({ hasText: "Automatic booking" }).waitFor();
-      const checkIn = { name: "Iâ€™m ready at Master" };
-      assert.equal(await entries.filter({ hasText: "Automatic booking" }).getByRole("button", checkIn).count(), 0);
-      assert.equal(await entries.filter({ hasText: "Manual booking" }).getByRole("button", checkIn).count(), 1);
+      await entries.first().waitFor();
+      assert.equal(await entries.count(),3);
+      const titles = () => page.locator("[data-booking-title]").allTextContents();
+      assert.deepEqual(await titles(),motionNames.slice(5,8).reverse());
+      if (process.env.EAIC_BOOKING_QA_DIR) {
+        const {mkdir} = await import("node:fs/promises");
+        const {join} = await import("node:path");
+        await mkdir(process.env.EAIC_BOOKING_QA_DIR,{recursive:true});
+        await page.locator('[data-schedule-panel="history"]').screenshot({path:join(process.env.EAIC_BOOKING_QA_DIR,`history-${theme}-${width}.png`)});
+      }
+      const previous = page.getByRole("button",{name:"View previous bookings"});
+      await previous.click();
+      assert.deepEqual(await titles(),motionNames.slice(2,5).reverse());
+      await previous.click();
+      assert.deepEqual(await titles(),motionNames.slice(0,2).reverse());
+      await entries.first().locator("summary").first().click();
+      assert.ok(await entries.first().getByText("View submitted code").isVisible());
+      assert.equal(await page.getByRole("button",{name:"I’m ready at Master"}).count(),0);
+      await page.getByRole("button",{name:"Newer bookings"}).click();
+      await page.getByRole("button",{name:"Newer bookings"}).click();
+      assert.deepEqual(await titles(),motionNames.slice(5,8).reverse());
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 
       await page.goto(schedule.href);

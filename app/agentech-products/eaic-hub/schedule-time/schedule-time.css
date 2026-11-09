@@ -97,3 +97,24 @@
   background: var(--schedule-surface);
   color: var(--schedule-status);
 }
+
+[data-eaic-schedule] [data-schedule-session] > summary:hover {
+  background: color-mix(in srgb, var(--schedule-accent) 5%, var(--schedule-surface));
+}
+[data-eaic-schedule] [data-schedule-session] > summary:focus-visible,
+[data-eaic-schedule] [aria-label="Booking history pages"] button:focus-visible {
+  outline: 2px solid var(--schedule-accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+[data-eaic-schedule] [data-booking-status] {
+  color: var(--booking-ink, var(--schedule-muted));
+  background: color-mix(in srgb, var(--booking-ink, var(--schedule-muted)) 8%, var(--schedule-surface));
+  border-color: color-mix(in srgb, var(--booking-ink, var(--schedule-muted)) 25%, var(--schedule-border));
+}
+[data-eaic-schedule] [data-booking-status="completed"] { --booking-ink: var(--color-success); }
+[data-eaic-schedule] [data-booking-status="failed"],
+[data-eaic-schedule] [data-booking-status="rejected"] { --booking-ink: var(--color-danger); }
+[data-eaic-schedule] [data-booking-status="scheduled"],
+[data-eaic-schedule] [data-booking-status="running"] { --booking-ink: var(--schedule-accent); }
+[data-eaic-schedule] [aria-label="Booking history pages"] button { color: var(--schedule-accent); }

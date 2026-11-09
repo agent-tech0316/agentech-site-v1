@@ -118,16 +118,35 @@ def failed_body_package(config,plan,failed):
         raise ValueError('Failed native body receipt has no unique playback record')
     cmd = records[0]
     result, initial, error = cmd.get('result') or {}, failed.get('owner_binding') or {}, failed.get('error') or {}
+    manifest = plan.get('native_body_manifest')
+    args = plan['commands'][0]['args']
     if (failed.get('command_count') != 1 or failed.get('completed_count') != 0 or failed.get('handoff_ready') is not False
             or failed.get('owner_hold_preserved') is not False or failed.get('owner_hold_verified') is not False
-            or initial.get('mode') != 'STAND_DEFAULT' or initial.get('player') != 0 or initial.get('settled') is not True
-            or not re.fullmatch(r'mc_ros2_node\d+',initial.get('owner','')) or cmd.get('command_index') != 1
-            or cmd.get('line') != 1 or cmd.get('status') != 'failed' or cmd.get('name') != 'play_body'
-            or cmd.get('args') != body.ARGS or cmd.get('source_args') != body.ARGS or not isinstance(cmd.get('error'),dict)
+            or cmd.get('command_index') != 1 or cmd.get('line') != 1 or cmd.get('status') != 'failed' or cmd.get('name') != 'play_body'
+            or cmd.get('args') != args or cmd.get('source_args') != args or not isinstance(cmd.get('error'),dict)
             or not error.get('type') or not error.get('message') or any(cmd['error'].get(k)!=error[k] for k in ('type','message'))
-            or error.get('command','play_body') != 'play_body' or error.get('command_index',1) != 1
-            or any(result.get(k) != v for k,v in package.items()) or result.get('bundled_audio') != 'audio.wav'
-            or result.get('request_attempted') is not True or result.get('play_response') != 'Play success'):
+            or error.get('command','play_body') != 'play_body' or error.get('command_index',1) != 1):
+        raise ValueError('Failed native receipt differs from the booked command')
+    if manifest:
+        identities = dict(asset_id=manifest['asset_id'],asset_sha256=manifest['asset_sha256'],model=manifest['model'],
+            policy_sha256=manifest['policy']['sha256'],audio_sha256=manifest['audio']['sha256'] if manifest['audio'] else None)
+        if (manifest['model'] != 'Master Ultra' or failed.get('body_start_authority') != 'signed_booking' or
+            any(k not in result or result[k] != v for k,v in identities.items())):
+            raise ValueError('Failed native receipt differs from booked asset bytes')
+        package = dict(**identities,serial=body.SPEC['serial'],request_attempted=result.get('request_attempted'))
+        if result.get('request_attempted') is False:
+            # Positive, version-specific no-dispatch record. Unknown or partial HTTP outcomes are never classified here.
+            expected = dict(**identities,request_attempted=False,audio_output=None,motion_complete=False,
+                            music_played=False if manifest['audio'] else None)
+            before = {k:v for k,v in result.items() if k != 'policy_probe'}
+            if (before != expected or 'sdk_call_started_at' in cmd or 'owner_binding' in failed or 'final_owner_binding' in failed):
+                raise ValueError('Contradictory pre-dispatch evidence')
+            return package
+    elif any(result.get(k) != v for k,v in package.items()) or result.get('bundled_audio') != 'audio.wav':
+        raise ValueError('Failed native receipt differs from the installed dance')
+    if (initial.get('mode') != 'STAND_DEFAULT' or initial.get('player') != 0 or initial.get('settled') is not True
+            or not re.fullmatch(r'mc_ros2_node\d+',initial.get('owner','')) or result.get('request_attempted') is not True
+            or result.get('serial') != body.SPEC['serial'] or result.get('play_response') != 'Play success'):
         raise ValueError('Failed native body receipt does not identify the accepted, pinned playback')
     start,call,finish = (runner._timestamp(t) for t in (failed['started_at'],cmd['sdk_call_started_at'],failed['finished_at']))
     if not (runner._timestamp(config['scheduled_start']) <= start <= call <= finish and call < runner._timestamp(config['scheduled_end'])):
@@ -135,11 +154,20 @@ def failed_body_package(config,plan,failed):
     return package
 
 
-def observe_body_window(config,now):
+def observe_body_window(config,now,package=None):
     import master_native_body as body
-    # Each connection verifies the pinned SSH host key and hashes the installed ONNX/WAV.
-    with body.connection(config) as client, body.observer(client,handoff=True) as (binding,_):
-        return {**binding,'observed_at':runner._iso(now())}
+    with body.connection(config) as client:
+        manifest = config.get('native_body_manifest')
+        if manifest:
+            from master_booked_body import RESOURCES, exact_install, load_package, require_target
+            with client.open_sftp() as sftp:
+                sftp.get_channel().settimeout(8)
+                require_target(sftp)
+                if package['request_attempted']:
+                    target = RESOURCES+'/'+manifest['motion'].removesuffix('_0.0.1')+'/0.0.1/unzip'
+                    exact_install(sftp,target,load_package(manifest,config['native_body_files']['motion']))
+        with body.observer(client,handoff=True) as (binding,_):
+            return {**binding,'observed_at':runner._iso(now())}
 
 
 def check_body_windows(first,last,package,started,finished):
@@ -213,7 +241,8 @@ def verify_native_handoff(plan_path, deployment_path, failed_result, output, *,
         raise ValueError('Observation must use the canonical historical gateway paths')
     origin = json.loads(bounded(root/(base+'.master.json'),1024*1024))
     if any(origin.get(k)!=config.get(k) for k in ('session_id','attempt_id','submission_id','plan_sha256','source_sha256',
-        'scheduled_start','scheduled_end','host','port','ssh_port','ssh_username','relay_url','lease_file','standing_deployment','native_body_asset_id')):
+        'scheduled_start','scheduled_end','host','port','ssh_port','ssh_username','relay_url','lease_file','standing_deployment','native_body_asset_id',
+        'native_body_manifest','native_body_files','native_body_start_policy')):
         raise ValueError('Historical deployment and command identity do not agree')
     check_idle(root,config,waiting_session)
     plan, _, end = runner.load_bound_plan(plan_path, config)
@@ -269,9 +298,9 @@ def verify_native_handoff(plan_path, deployment_path, failed_result, output, *,
         check_idle(root,config,waiting_session)
         terminal = None
         if body_package:
-            first = observe_body_window(config,now)
+            first = observe_body_window(config,now,body_package)
             check_idle(root,config,waiting_session)
-            current = observe_body_window(config,now)
+            current = observe_body_window(config,now,body_package)
             finished = now()
             check_body_windows(first,current,body_package,started,finished)
         else:

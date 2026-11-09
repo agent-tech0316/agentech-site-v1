@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
 import {registerHooks} from "node:module";
+import {policy} from "./fixtures/master-policy-fixture.mjs";
 registerHooks({resolve(s,c,next){
   if(s==="next/headers") return {url:"data:text/javascript,export async function cookies(){return {get(){}}}",shortCircuit:true};
   if(s==="next/server") return next("next/server.js",c);
@@ -11,7 +12,7 @@ registerHooks({resolve(s,c,next){
 },load(u,c,n){return n(u,u.endsWith(".json")?{...c,importAttributes:{type:"json"}}:c)}});
 const {NextRequest}=await import("next/server"), code=await import("../app/api/agentech-code-submit/route.ts");
 const assets=await import("../app/api/eaic-account-assets/route.ts");
-const {assetDisplayName,assetPrefix,newAssetName,recordAsset}=await import("../lib/eaic-review-exemption.ts");
+const {assetDisplayName,assetPrefix,ensureMasterMotionReceipt,newAssetName,recordAsset}=await import("../lib/eaic-review-exemption.ts");
 const {readAssetManifest,saveAssetManifest}=await import("../lib/eaic-asset-manifests.ts");
 const {createSignedAccountSession}=await import("../lib/server-account-session.ts");
 const exempt="operator@example.test", regular="student@example.test";
@@ -54,15 +55,46 @@ test("private asset links always bind to the signed account, including standalon
   t.mock.method(globalThis,"fetch",async(url)=>{
     const u=new URL(url);
     if(u.pathname.endsWith("/agentech_code_review_exemptions"))return Response.json(u.searchParams.get("email")==="eq."+exempt?[{email:exempt}]:[]);
-    assert.ok(u.pathname.startsWith("/storage/v1/object/upload/sign/eaic-account-assets/"+assetPrefix(exempt)+"/"));
+    assert.ok(u.pathname.startsWith("/storage/v1/object/upload/sign/eaic-account-assets/"+(signed.length ? assetPrefix(exempt) : assetPrefix(regular))+"/"));
     signed.push(u.pathname);return Response.json({url:u.pathname.slice("/storage/v1".length)+"?token=example"});
   });
-  assert.equal((await assets.POST(request(regular,{action:"upload",name:"voice.wav",email:exempt}))).status,403);
+  assert.equal((await assets.POST(request(regular,{action:"upload",name:"voice.wav",robotModel:"Master",email:exempt}))).status,200);
+  assert.equal((await assets.POST(request(regular,{action:"upload",name:"voice.wav",robotModel:"Navi",email:exempt}))).status,403);
   for(const [file,kind] of [["bundle.zip","Package"],["动作.ONNX","Motion"],["voice.wav","Audio"]]){
     const res=await assets.POST(request(exempt,{action:"upload",name:file,robotModel:"Master",prefix:assetPrefix(regular)}));
     assert.equal(res.status,200);const out=await res.json();assert.equal(out.kind,kind);assert.equal(assetDisplayName(out.key),file);
   }
-  assert.equal(signed.length,3);assert.equal(newAssetName("file.exe"),null);
+  assert.equal(signed.length,4);assert.equal(newAssetName("file.exe"),null);
+});
+test("an ordinary signed account receives a canonical receipt for its own distinct policy", async t=>{
+  process.env.SUPABASE_URL="https://exemption-test.invalid";process.env.SUPABASE_SERVICE_ROLE_KEY="test";
+  process.env.AGENTECH_SESSION_SECRET="regression-test-only";
+  const key=newAssetName("new-routine.onnx","Master"), model=policy(), prefix=assetPrefix(regular);
+  const hash=createHash("sha256").update(model).digest("hex");
+  let row, reads=0;
+  t.mock.method(globalThis,"fetch",async(url,init)=>{
+    const u=new URL(url);
+    if(u.pathname.endsWith("/agentech_account_asset_submissions")){
+      if(init.method==="POST"){row=JSON.parse(init.body);return new Response(null,{status:204});}
+      assert.equal(u.searchParams.get("email"),"eq."+regular);
+      return Response.json(row?[row]:[]);
+    }
+    assert.equal(u.pathname,"/storage/v1/object/authenticated/eaic-account-assets/"+prefix+"/"+key);
+    reads++;return new Response(model);
+  });
+  const body={action:"submit",key,email:exempt,prefix:assetPrefix(exempt),content_manifest:{movement:{sha256:"forged"}}};
+  const first=await assets.POST(request(regular,body));
+  assert.equal(first.status,200);
+  const {receipt}=await first.json();
+  assert.equal(row.email,regular);
+  assert.equal(row.object_key,prefix+"/"+key);
+  assert.equal(receipt.approval_basis,"master-policy-contract-v1");
+  assert.equal(receipt.native_motion_name,null);
+  assert.equal(receipt.content_manifest.movement.sha256,hash);
+  assert.equal(receipt.content_manifest.audio,null);
+  assert.equal(receipt.content_manifest.movement.metadata.masterContract.model,"Master Ultra");
+  assert.equal((await assets.POST(request(regular,body))).status,200);
+  assert.equal(reads,1);
 });
 test("the exemption workbench offers a single code save and standalone binary uploads",()=>{
   const ui=readFileSync(new URL("../features/eaic/01-clients/eaic-hub/components/exempt-submission-workbench.tsx",import.meta.url),"utf8");
@@ -77,8 +109,7 @@ test("a binary submission records the received bytes and exact robot; a filename
   t.mock.method(globalThis,"fetch",async(url,init)=>{
     const storage=metadataRequest(url,init,metadata);if(storage)return storage;
     assert.equal(new URL(url).pathname,"/rest/v1/agentech_account_asset_submissions");
-    assert.ok(!new URL(url).searchParams.get("select")?.includes("content_manifest"));
-    if (init.method==="POST") {row=JSON.parse(init.body);assert.equal(Object.hasOwn(row,"content_manifest"),false);records.set(row.id,row);return new Response(null,{status:204});}
+    if (init.method==="POST") {row=JSON.parse(init.body);assert.equal(Object.hasOwn(row,"content_manifest"),true);records.set(row.id,row);return new Response(null,{status:204});}
     const id=new URL(url).searchParams.get("id").slice(4,-1);
     return Response.json(records.has(id)?[records.get(id)]:[]);
   });
@@ -88,13 +119,15 @@ test("a binary submission records the received bytes and exact robot; a filename
   audio.writeUInt16LE(1,20);audio.writeUInt16LE(1,22);audio.writeUInt32LE(16000,24);audio.writeUInt32LE(32000,28);
   audio.writeUInt16LE(2,32);audio.writeUInt16LE(16,34);audio.write("data",36);audio.writeUInt32LE(4,40);
   const first=await recordAsset(exempt,key,new Response(audio));
-  assert.equal(first.native_motion_name,null);assert.equal(first.byte_size,audio.length);
+  assert.equal(first.approval_basis,"pcm-wav-v1");assert.equal(first.native_motion_name,null);assert.equal(first.byte_size,audio.length);
   assert.equal(first.sha256,createHash("sha256").update(audio).digest("hex"));
   assert.equal(first.content_manifest.playback.mode,"audio_only");
   assert.equal(row.robot_model,"Master");assert.equal(row.file_name,"ultra_example_kuaile.wav");
   if(process.env.EAIC_HAPPY_DANCE_FIXTURE){
     const genuine=await recordAsset(exempt,newAssetName("renamed-dance.zip","Master"),new Response(readFileSync(process.env.EAIC_HAPPY_DANCE_FIXTURE)));
     assert.equal(genuine.byte_size,5164116);
+    assert.equal(genuine.approval_basis,"master-policy-contract-v1");
+    assert.equal(genuine.content_manifest.movement.metadata.masterContract.frameCount,2969);
     assert.equal(genuine.native_motion_name,"linkcraft_resource_onnx_ffkuaile_0.0.1");
     assert.equal(genuine.content_manifest.movement.path,"policy.onnx");
     assert.equal(genuine.content_manifest.audio.path,"audio.wav");
@@ -122,28 +155,39 @@ test("invalid package content returns 400 and never creates an approval receipt"
   assert.match((await response.json()).error,/ZIP/i);
 });
 
-test("legacy receipts gain private metadata without a database migration or approval changes",{skip:!process.env.EAIC_HAPPY_DANCE_FIXTURE},async t=>{
+test("owned legacy Master receipts promote atomically after validating the original bytes", {skip:!process.env.EAIC_HAPPY_DANCE_FIXTURE},async t=>{
   process.env.SUPABASE_URL="https://exemption-test.invalid";process.env.SUPABASE_SERVICE_ROLE_KEY="test";
   const key=newAssetName("renamed.zip","Master"), id=key.slice(0,36);
   const data=readFileSync(process.env.EAIC_HAPPY_DANCE_FIXTURE);
-  const row={id,sha256:createHash("sha256").update(data).digest("hex"),native_motion_name:null};
-  const metadata=new Map();
+  const row={id,sha256:createHash("sha256").update(data).digest("hex"),native_motion_name:null,
+    robot_model:"Master", asset_kind:"Package", object_key:assetPrefix(exempt)+"/"+key, file_name:"renamed.zip",
+    approval_basis:"account-certification-exemption",byte_size:data.length,content_manifest:null};
+  let reads=0, promotions=0;
   t.mock.method(globalThis,"fetch",async(url,init)=>{
     const u=new URL(url);
-    const storage=metadataRequest(url,init,metadata);if(storage)return storage;
-    assert.equal(init.method,"GET");
-    assert.equal(u.searchParams.get("email"),"eq."+exempt);
-    assert.ok(!u.searchParams.get("select").includes("content_manifest"));
+    if (u.pathname.includes("/object/authenticated/")) {
+      assert.ok(u.pathname.endsWith("/"+row.object_key));reads++;return new Response(data);
+    }
+    assert.equal(u.pathname,"/rest/v1/agentech_account_asset_submissions");
+    if (u.searchParams.get("email")!=="eq."+exempt) return Response.json([]);
+    if (init.method==="PATCH") {
+      assert.equal(u.searchParams.get("sha256"),"eq."+row.sha256);
+      assert.equal(u.searchParams.get("approval_basis"),"eq.account-certification-exemption");
+      Object.assign(row,JSON.parse(init.body));promotions++;return new Response(null,{status:204});
+    }
     return Response.json([row]);
   });
-  const receipt=await recordAsset(exempt,key,new Response(data));
-  assert.equal(metadata.size,1);
+  assert.equal(await ensureMasterMotionReceipt(regular,id),null);
+  const receipt=await ensureMasterMotionReceipt(exempt,id);
+  assert.equal(receipt.approval_basis,"master-policy-contract-v1");
   assert.equal(receipt.content_manifest.playback.audioPath,"audio.wav");
-  assert.equal(receipt.native_motion_name,"linkcraft_resource_onnx_ffkuaile_0.0.1");
-  assert.equal(row.native_motion_name,null);
+  assert.equal((await ensureMasterMotionReceipt(exempt,id)).id,id);
+  assert.equal(reads,1);assert.equal(promotions,1);
+  const response=await assets.GET(new NextRequest("https://site.invalid/api/eaic-account-assets?id="+id,{headers:{authorization:"Bearer "+createSignedAccountSession(exempt)}}));
+  assert.equal(response.status,200);
+  assert.equal((await response.json()).file.name,"renamed.zip");
   row.sha256="a".repeat(64);
   await assert.rejects(()=>recordAsset(exempt,key,new Response(data)),/differ from the saved submission/);
-  assert.equal(metadata.size,1);
 });
 
 test("private metadata is bound to owner, receipt and archive hash and is immutable",async t=>{

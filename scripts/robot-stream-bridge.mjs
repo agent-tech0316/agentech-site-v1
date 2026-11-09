@@ -1,6 +1,6 @@
 import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
-import {parseBodySubmission,createBodyPlan,bodyOperatorConfirmation} from "./master-native-body.mjs";
+import {parseBodySubmission,createBodyPlan} from "./master-native-body.mjs";
 import { MasterReadinessChecks } from "./master-readiness-check.mjs";
 import { automaticNativeHandoff } from "./master-native-handoff.mjs";
 import { createHash, createHmac, randomUUID } from "node:crypto";
@@ -19,7 +19,7 @@ import {
   selectNaviResetBaseline, reconcileNaviCleanupOutcome, parseNaviProgramResult,
 } from "./navi-session-handoff.mjs";
 import { ensureStreamWithRecovery } from "./obs-stream-recovery.mjs";
-import { writeReviewedSource } from "./robot-stream-staging.mjs";
+import { stageBookedMotion, writeReviewedSource } from "./robot-stream-staging.mjs";
 import {
   endSessionCleanupPolicy,
   finalSessionDatabaseStatus,
@@ -195,6 +195,14 @@ async function reviewedSubmission(session) {
   if (robotModel(rows[0].robot_model) !== robotModel(session.robot_model)) throw new Error("session robot model does not match its reviewed submission");
   if (robotModel(session.robot_model) === "master") assertMasterExecutableSubmission(rows[0]);
   const assetId = parseBodySubmission(rows[0]);
+  if (assetId && rows[0].id.startsWith("master-body-v2-")) {
+    const asset = await request("rpc/agentech_get_booked_body_asset", "", {method:"POST", body:{
+      p_email:session.email, p_session:session.id, p_submission:rows[0].id,
+      p_start:session.scheduled_start, p_end:session.scheduled_end
+    }});
+    if (!asset || asset.id !== assetId) throw new Error("Booked motion receipt is unavailable");
+    return {...rows[0], bookedAsset:asset};
+  }
   if (assetId && !await request("rpc/agentech_happy_dance_asset", "", {method:"POST",body:{p_email:session.email,p_asset:assetId}}))
     throw new Error("The signed account no longer has this approved Master package");
   return rows[0];
@@ -249,7 +257,10 @@ function stage(session, submission) {
   const planPath = join(runtimeDir, `${prefix}.plan.json`);
   writeReviewedSource(sourcePath, submission.code);
   const bodyAssetId = selectedModel === "master" && parseBodySubmission(submission);
-  if (bodyAssetId) writeReviewedSource(planPath, JSON.stringify(createBodyPlan(submission)));
+  if (bodyAssetId) {
+    const nativePlan = createBodyPlan(submission, submission.bookedAsset);
+    writeReviewedSource(planPath, JSON.stringify(nativePlan));
+  }
   else if (selectedModel === "navi" || selectedModel === "master") run(localPython, [compiler, sourcePath, submission.id, selectedModel, planPath]);
   else run(localPython, [compiler, sourcePath, submission.id, planPath]);
   const planBytes = readFileSync(planPath);
@@ -292,6 +303,11 @@ function stage(session, submission) {
     executionStatus: "pending",
     executionSubmissionId: submission.id,
     ...(bodyAssetId ? {bodyAssetId} : {}),
+    ...(submission.bookedAsset ? {
+      bookedObject:{id:submission.bookedAsset.id, email:session.email, object_key:submission.bookedAsset.object_key,
+        sha256:submission.bookedAsset.sha256, byte_size:submission.bookedAsset.byte_size},
+      bodyManifest:plan.native_body_manifest, bodyRequiredSeconds:plan.native_body_required_seconds
+    } : {}),
     executionSourceSha256: plan.source_sha256,
     executionPlanSha256: createHash("sha256").update(planBytes).digest("hex"),
     remoteExecutionResult: selectedModel === "aegis"
@@ -317,6 +333,34 @@ function stage(session, submission) {
   };
   saveState();
   console.log(`[robot-stream] Code X compiled and staged ${plan.commands.length} ${selectedModel} commands for session ${session.id}.`);
+}
+
+// Preparing one untrusted package can outlast a bridge poll. Keep the stream,
+// cleanup, and other bookings responsive while it downloads and runs offline.
+let preparingAsset = false;
+function prepareBookedMotion(session, item) {
+  if (item.bodyFile) return true;
+  if (preparingAsset || Date.now() < (item.nextPreparationAt ?? 0)) return false;
+  preparingAsset = true;
+  void (async () => {
+    try {
+      const file = await stageBookedMotion(item.bookedObject, {email:session.email, runtimeDir, baseUrl:supabaseUrl, apiKey:supabaseKey});
+      await runAsync(localPython, [join(here, "master_booked_body.py"), "--prepare", item.localPlan, file],
+        {env:masterEnvironment(), timeout:90000, windowsHide:true, maxBuffer:65536});
+      item.bodyFile = file;
+      delete item.launchBlockedReason;
+      delete item.nextPreparationAt;
+    } catch (error) {
+      const detail = String(error.stderr || error.message).trim().split("\n").at(-1);
+      item.launchBlockedReason = "Booked motion preparation failed: " + detail.slice(0,350);
+      item.nextPreparationAt = Date.now() + 15000;
+    } finally {
+      preparingAsset = false;
+      saveState();
+      wakeForMasterReadiness();
+    }
+  })();
+  return false;
 }
 
 async function ensureSessionStream(id, item, nowMs) {
@@ -356,9 +400,21 @@ async function ensureSessionStream(id, item, nowMs) {
 
 async function claimSession(session) {
   const item = state.sessions[session.id];
-  if (item.bodyAssetId) return (await request("rpc/agentech_claim_body_booking","",{method:"POST",body:{
-    p_email:session.email,p_session:session.id,p_asset:item.bodyAssetId,p_start:item.start,p_end:item.end,
-    p_confirmed:item.bodyOperatorConfirmedAt}})) === true;
+  if (item.bodyAssetId) {
+    if (item.bodyClaimInFlight || !item.masterPreparedAttemptId) throw new Error("Motion claim already pending or missing its prepared attempt");
+    item.bodyClaimInFlight = item.masterPreparedAttemptId;
+    saveState();
+    const claimed = await request("rpc/agentech_claim_validated_body_booking", "", {method:"POST", body:{
+      p_email:item.accountEmail, p_session:session.id, p_submission:item.executionSubmissionId,
+      p_start:item.start, p_end:item.end, p_attempt:item.bodyClaimInFlight
+    }});
+    if (typeof claimed !== "boolean") throw new Error("Unconfirmed motion claim response");
+    if (claimed) item.bodyClaimAttempt = item.bodyClaimInFlight;
+    delete item.bodyClaimInFlight;
+    // A successful claim becomes durable with the runner intent (or the terminal no-launch record).
+    if (!claimed) saveState();
+    return claimed;
+  }
   const statuses = claimableStatuses.join(",");
   const model = state.sessions[session.id]?.executionModel;
   const binding = ["navi", "master"].includes(model)
@@ -436,12 +492,10 @@ async function launch(session) {
       return;
     }
     if (item.bodyAssetId) {
-      const bookingAuthorizesStart = session.body_booking_starts_automatically === true;
-      item.bodyOperatorConfirmedAt = bookingAuthorizesStart ? null :
-        await bodyOperatorConfirmation(request,session,item.bodyAssetId,masterNotBefore);
       const remaining = Date.parse(item.end) - Math.max(Date.now(),Date.parse(masterNotBefore));
-      if ((!bookingAuthorizesStart && !item.bodyOperatorConfirmedAt) || remaining < 80000) {
-        const reason = remaining < 80000 ? "Insufficient booking time for full Happy Dance playback" : "Waiting for the on-site operator at Master";
+      const requiredSeconds = item.bodyRequiredSeconds ?? 80;
+      if (remaining < requiredSeconds * 1000) {
+        const reason = "Insufficient booking time to finish the motion and soundtrack";
         if (item.launchBlockedReason !== reason) { item.launchBlockedReason = reason; saveState(); }
         return;
       }
@@ -482,11 +536,10 @@ async function launch(session) {
   if (Date.now() >= Date.parse(item.end)) return;
   if (!(await claimSession(session))) {
     if (item.bodyAssetId) {
-      // Another click can refresh confirmed_at between read and atomic claim.
       // Only a fresh, still open booking may try the claim on a later poll.
       const [current] = await request("agentech_robot_sessions", "id=eq."+encodeURIComponent(session.id)+"&select=session_status");
       if (current && claimableStatuses.includes(normalized(current.session_status))) {
-        item.launchBlockedReason = "Native package or operator confirmation changed before claim";
+        item.launchBlockedReason = "Booked motion or slot changed before claim";
         saveState();
         return;
       }
@@ -517,12 +570,8 @@ async function launch(session) {
     item.masterFirstCommandNotBefore = masterNotBefore;
     const bodyAuthorizationArgs = [];
     if (item.bodyAssetId) {
-      if (session.body_booking_starts_automatically === true) {
-        item.bodyBookingClaimedAt = new Date().toISOString();
-        bodyAuthorizationArgs.push("--body-booking-claimed-at", item.bodyBookingClaimedAt);
-      } else {
-        bodyAuthorizationArgs.push("--body-operator-confirmed-at", item.bodyOperatorConfirmedAt);
-      }
+      item.bodyBookingClaimedAt = new Date().toISOString();
+      bodyAuthorizationArgs.push("--body-booking-claimed-at", item.bodyBookingClaimedAt);
     }
     item.masterHandoffReady = false;
     item.localExecutionResult = join(runtimeDir, `session-${session.id}.${item.executionAttemptId}.master-result.json`);
@@ -821,7 +870,14 @@ function collectExecutionResult(id, item) {
     }
     const parseResult = item.executionModel === "master" ? parseMasterExecutionResult
       : item.executionModel === "navi" ? parseNaviProgramResult : parseExecutionResult;
+    let bodyPlan;
+    if (item.executionSubmissionId?.startsWith("master-body-v2-")) {
+      const bytes = readFileSync(item.localPlan);
+      if (createHash("sha256").update(bytes).digest("hex") !== item.executionPlanSha256) throw new Error("Staged motion plan changed");
+      bodyPlan = JSON.parse(bytes);
+    }
     item.executionResult = parseResult(readFileSync(localResult, "utf8"), {
+      bodyPlan,
       sessionId: id,
       submissionId: item.executionSubmissionId,
       sourceSha256: item.executionSourceSha256,
@@ -1025,13 +1081,30 @@ async function tick() {
   cameraStreamDeadline = activeCameraStreamDeadline(sessions, Date.now());
   for (const session of sessions) {
     try {
-      if (!state.sessions[session.id]) {
-        const submission = await reviewedSubmission(session);
-        stage(session, submission);
+      const previous = state.sessions[session.id];
+      if (!previous || (previous.status === "staged" && previous.bodyStagePending)) {
+        try {
+          const submission = await reviewedSubmission(session);
+          stage(session, submission);
+        } catch (error) {
+          if (String(session.code_submission_id).startsWith("master-body-") &&
+              String(session.robot_model).toLowerCase() === "master" && claimableStatuses.includes(normalized(session.session_status))) {
+            state.sessions[session.id] = { status:"staged", executionModel:"master", executionResultRequired:true,
+              executionStatus:"pending", bodyStagePending:true, executionSubmissionId:session.code_submission_id,
+              accountEmail:session.email, start:session.scheduled_start, end:session.scheduled_end,
+              launchBlockedReason:"Booked motion staging failed: " + error.message };
+            saveState();
+          }
+          throw error;
+        }
       }
       const item = state.sessions[session.id];
       const launchNow = Date.now();
       if (launchNow >= Date.parse(item.end)) continue;
+      if (item.bookedObject && item.status === "staged" && !prepareBookedMotion(session,item)) {
+        if (launchNow >= Date.parse(item.start)) await ensureSessionStream(session.id,item,launchNow);
+        continue;
+      }
       if (item.executionModel === "master" && item.status === "staged") {
         // Prepare only. OBS and the fresh in-window claim still gate launch.
         checkMasterBooking(session,item,true);

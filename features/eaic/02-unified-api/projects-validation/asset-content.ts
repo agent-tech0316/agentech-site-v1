@@ -4,42 +4,19 @@ import AdmZip from "adm-zip";
 
 export const maxAssetBytes = 64 * 1024 * 1024;
 const maxExpandedBytes = 96 * 1024 * 1024;
-export class AssetContentError extends Error {}
+import { AssetContentError, fail, protobuf } from "./asset-content-protobuf.ts";
+import { inspectMasterPolicy, type MasterPolicyContract } from "./asset-content-master.ts";
+export { AssetContentError };
 type AssetFile = { path: string; bytes: number; sha256: string };
 export type AssetContentManifest = {
   version: 1;
-  movement: (AssetFile & { format: "onnx"; metadata: { irVersion: number; inputs: string[]; outputs: string[] } }) | null;
+  movement: (AssetFile & { format: "onnx"; metadata: { irVersion: number; inputs: string[]; outputs: string[]; masterContract?: MasterPolicyContract } }) | null;
   audio: (AssetFile & { format: "wav"; durationSeconds: number; sampleRateHz: number; channels: number; bitsPerSample: number }) | null;
   referenceFiles: string[];
   playback: { mode: "movement_with_audio" | "movement_only" | "audio_only"; movementPath: string | null; audioPath: string | null };
 };
-function fail(message: string): never { throw new AssetContentError(message); }
 const digest = (data: Buffer) => createHash("sha256").update(data).digest("hex");
 
-// Read only protobuf structure/metadata. This is not ONNX execution or full
-// operator/runtime compatibility validation. Lengths and iteration are bounded.
-function* protobuf(data: Buffer): Generator<{ tag: number; value: Buffer | bigint }> {
-  let offset = 0, count = 0;
-  function integer() {
-    let value = BigInt(0);
-    for (let index = 0; index < 10 && offset < data.length; index++) {
-      const byte = data[offset++];
-      value |= BigInt(byte & 127) << BigInt(index * 7);
-      if (!(byte & 128)) return value;
-    }
-    return fail("ONNX metadata has an invalid integer.");
-  }
-  while (offset < data.length) {
-    if (++count > 100000) fail("ONNX metadata exceeds the inspection limit.");
-    const key = Number(integer()), tag = Math.floor(key / 8), wire = key % 8;
-    if (!Number.isSafeInteger(key) || tag < 1) fail("ONNX metadata is invalid.");
-    if (wire === 0) { yield { tag, value: integer() }; continue; }
-    const size = wire === 2 ? Number(integer()) : wire === 1 ? 8 : wire === 5 ? 4 : -1;
-    if (!Number.isSafeInteger(size) || size < 0 || size > data.length - offset) fail("ONNX metadata is truncated or invalid.");
-    yield { tag, value: data.subarray(offset, offset + size) };
-    offset += size;
-  }
-}
 function onnxMetadata(data: Buffer) {
   let irVersion = 0, graph: Buffer | null = null;
   for (const field of protobuf(data)) {
@@ -106,8 +83,10 @@ function crc32(data: Buffer) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 function unzip(data: Buffer) {
-  const entries = new AdmZip(data).getEntries();
-  if (!entries.length || entries.length > 64) fail("ZIP must contain between 1 and 64 entries.");
+  const archive = new AdmZip(data);
+  const count = archive.getEntryCount();
+  if (!count || count > 64) fail("ZIP must contain between 1 and 64 entries.");
+  const entries = archive.getEntries();
   const names = new Set<string>();
   let expanded = 0;
   return entries.flatMap(entry => {
@@ -131,7 +110,7 @@ function unzip(data: Buffer) {
   });
 }
 
-export function inspectAssetContent(data: Buffer, kind: "Package" | "Motion" | "Audio", name: string): AssetContentManifest {
+export function inspectAssetContent(data: Buffer, kind: "Package" | "Motion" | "Audio", name: string, robotModel?: string): AssetContentManifest {
   try {
     if (!data.length || data.length > maxAssetBytes) fail("File is empty or exceeds the 64 MiB upload limit.");
     const files = kind === "Package" ? unzip(data) : [{ path: name, bytes: data }];
@@ -140,8 +119,14 @@ export function inspectAssetContent(data: Buffer, kind: "Package" | "Motion" | "
     if (kind !== "Audio" && policies.length !== 1) fail("Include exactly one ONNX movement policy in the ZIP.");
     if (tracks.length > 1 || (kind === "Audio" && tracks.length !== 1)) fail("Include at most one WAV audio track for automatic pairing.");
     const identity = (file: typeof files[number]) => ({ path: file.path, bytes: file.bytes.length, sha256: digest(file.bytes) });
-    const movement = policies[0] ? { ...identity(policies[0]), format: "onnx" as const, metadata: onnxMetadata(policies[0].bytes) } : null;
+    const movement = policies[0] ? { ...identity(policies[0]), format: "onnx" as const, metadata: robotModel === "Master" ? inspectMasterPolicy(policies[0].bytes) : onnxMetadata(policies[0].bytes) } : null;
     const audio = tracks[0] ? { ...identity(tracks[0]), format: "wav" as const, ...wavMetadata(tracks[0].bytes) } : null;
+    if (robotModel === "Master" && audio && (audio.sampleRateHz !== 16000 || audio.channels !== 1 || audio.bitsPerSample !== 16)) {
+      fail("Master soundtracks must be 16 kHz, mono, 16-bit PCM WAV.");
+    }
+    if (robotModel === "Master" && tracks.length === 0 && files.some(file => /\.(mp3|aac|m4a|ogg|flac|aiff?)$/i.test(file.path))) {
+      fail("Convert the soundtrack to 16 kHz, mono, 16-bit PCM WAV before uploading.");
+    }
     return { version: 1, movement, audio,
       referenceFiles: files.filter(file => !/\.(onnx|wav)$/i.test(file.path)).map(file => file.path),
       playback: { mode: movement && audio ? "movement_with_audio" : movement ? "movement_only" : "audio_only",

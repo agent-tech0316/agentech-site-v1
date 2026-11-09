@@ -3468,6 +3468,9 @@ export function AgentechLibraryWorkbench({ task, submissionId = "" }: AgentechLi
       {showFocusedStartCoding ? <FocusedStartCodingSection /> : null}
       {showFocusedBrowseFunctions ? <FocusedBrowseFunctionsSection /> : null}
       {showFocusedLiveRun ? <FocusedLiveRunSection /> : null}
+      {showFocusedReview && !showExemptWorkspace && !isLoadingReviewGate && !reviewNeedsSignIn && !masterLiveTestSelected && (
+        <ExemptSubmissionWorkbench motionOnly initialCode="" initialModel="Master" initialFile="" schedulable={false}/>
+      )}
       {showExemptWorkspace ? (
         <ExemptSubmissionWorkbench key={submissionQuery.id || "current"} initialCode={code} initialModel={robotModel}
           initialFile={uploadedFileName} schedulable={canScheduleRobotSlot}

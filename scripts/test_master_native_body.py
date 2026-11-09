@@ -75,7 +75,7 @@ class NativePackageExecution(unittest.TestCase):
                          submission_id="master-body-"+self.asset,commands=[dict(name="play_body",args=body.ARGS,line=1)])
         self.config = dict(schema_version=1,enabled=True,robot_model="master",sdk_root=str(self.root),host="fixture",
                            session_id="12",attempt_id="test",submission_id=self.plan["submission_id"],
-                           native_body_asset_id=self.asset,source_sha256=body.SOURCE_HASH,
+                           native_body_asset_id=self.asset,native_body_start_policy="signed_booking",source_sha256=body.SOURCE_HASH,
                            scheduled_start=runner._iso(self.now),scheduled_end=runner._iso(self.now+120),
                            lease_file=str(self.root/"lease"))
         self.calls = []
@@ -122,7 +122,7 @@ class NativePackageExecution(unittest.TestCase):
         clock = SimpleNamespace(monotonic=lambda:self.now,sleep=sleep)
         with patch.object(body,"connection",connection),patch.object(body,"observer",observer),patch.object(body,"speaker_output",speaker),patch.object(body,"play_once",play),patch.object(body,"event",event),patch.object(body,'time',clock):
             return runner.execute_plan(plan,cfg,self.root/"receipt.json",first_command_not_before=runner._iso(self.now+20),
-                                       body_operator_confirmed_at=self.confirmed,body_booking_claimed_at=claimed_at,cancel_file=cancel_file,
+                                       body_booking_claimed_at=claimed_at or self.confirmed,cancel_file=cancel_file,
                                        now=lambda:self.now,sleep=sleep)
 
     def test_qualified_playback_after_countdown(self):
@@ -170,7 +170,8 @@ class NativePackageExecution(unittest.TestCase):
         self.assertEqual(receipt["outcome"], "completed")
         self.assertEqual(len(self.calls), 1)
 
-    def test_a_claim_timestamp_cannot_replace_on_site_authorization_for_another_profile(self):
+    def test_disabled_legacy_onsite_profile_cannot_start(self):
+        self.config["native_body_start_policy"] = "onsite_check_in"
         self.confirmed = None
         receipt = self.execute(claimed_at=runner._iso(self.now))
         self.assertEqual(receipt["outcome"], "failed")

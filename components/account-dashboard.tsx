@@ -252,24 +252,6 @@ type AdminAiUsageData = {
 
 type AccessProfileType = "developer" | "student" | "teacher" | "talent";
 type DashboardTab = "profile" | "courses" | "balance" | "code" | "robot" | "invoices" | "billing" | "settings";
-function BodyOperatorReady({sessionId}: {sessionId:number}) {
-  const [message, setMessage] = useState("");
-  const [pending, setPending] = useState(false);
-  async function confirm() {
-    setPending(true);
-    try {
-      const response = await fetch("/api/robot-slot/body-ready", {method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({sessionId,operatorReady:true})});
-      const result = await response.json();
-      setMessage(response.ok ? "Operator ready. The gateway will check Master and the stream before playback." : result.error);
-    } catch { setMessage("Confirmation unavailable. Try again during the booking."); }
-    finally { setPending(false); }
-  }
-  return <div className="mt-3"><p className="text-sm">At the slot, confirm that you are beside Master, the full-body movement area is clear, and you have the physical stop.</p>
-    <button data-schedule-action="primary" type="button" disabled={pending} onClick={confirm} className="mt-2 rounded-lg bg-blue-700 px-4 py-2 font-semibold text-white">I’m ready at Master</button>
-    <p role="status" className="mt-1 text-sm">{message}</p></div>;
-}
-
 type AccountDashboardProps = {
   nativeAssetId?: string;
   mode?: "account" | "robot-scheduling";
@@ -984,6 +966,142 @@ function generateRobotSlotCandidates(durationMinutes: number, unlimitedHours = f
   return slots;
 }
 
+function BookingHistory({sessions, submissions}: {
+  sessions: NonNullable<DashboardData["robotSessions"]>;
+  submissions: DashboardCodeSubmission[];
+}) {
+  const [page, setPage] = useState(0);
+  const pageSize = 3;
+  const recent = [...sessions].sort((a, b) =>
+    (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0) || b.id - a.id);
+  const lastPage = Math.max(0, Math.ceil(recent.length / pageSize) - 1);
+  const currentPage = Math.min(page, lastPage);
+  const start = currentPage * pageSize;
+  const entries = recent.slice(start, start + pageSize);
+  const byId = new Map(submissions.map(submission => [submission.id, submission]));
+
+  return (
+    <section data-schedule-panel="history" aria-label="Booking history" className="min-w-0 self-start rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+      <header className="flex items-baseline justify-between gap-3">
+        <h3 className="text-lg font-semibold text-slate-950">{currentPage ? "Previous bookings" : "Recent bookings"}</h3>
+        {recent.length > pageSize && <span aria-live="polite" className="shrink-0 text-xs tabular-nums text-slate-600">
+          {start + 1}&ndash;{start + entries.length} of {recent.length}
+        </span>}
+      </header>
+      <div className="mt-3 grid gap-2">
+        {entries.map(session => {
+          const linkedSubmission = session.code_submission_id ? byId.get(session.code_submission_id) : undefined;
+          const runType = session.approved_run_type || session.requested_run_type || "preset_demo";
+          const isCustomCodeSession = runType === "custom_code";
+          const deviceResultsView = buildDeviceResultsViewModel({
+            requested: session.device_results_requested,
+            results: session.device_results,
+            collectionError: session.device_results_error
+          });
+          const profileSuffix = session.profile_username && ` for @${session.profile_username}`;
+          const title = profileSuffix && session.session_title.endsWith(profileSuffix)
+            ? session.session_title.slice(0, -profileSuffix.length) : session.session_title;
+          return (
+            <details key={session.id} data-schedule-session className="group/booking min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-2 px-3 py-3 focus-visible:outline focus-visible:-outline-offset-2 sm:px-4 [&::-webkit-details-marker]:hidden">
+                <span className="min-w-0">
+                  <span data-booking-title className="block text-sm font-semibold leading-5 text-slate-950">{title}</span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-600">
+                    {session.robot_model && <>{session.robot_model} &middot; </>}{formatDateTime(session.scheduled_start)}
+                  </span>
+                </span>
+                <span data-booking-status={session.session_status.toLowerCase()} className="rounded-full border border-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700">{formatInvoiceStatus(session.session_status)}</span>
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-slate-600 transition-transform group-open/booking:rotate-180 motion-reduce:transition-none"><path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </summary>
+              <div className="border-t border-slate-200 px-3 pb-3 pt-2 text-sm sm:px-4">
+                <p className="text-xs text-slate-600">
+                  {session.profile_username && <>@{session.profile_username} &middot; </>}{formatInvoiceStatus(runType)}
+                  {session.preset_demo && session.preset_demo !== title && <> &middot; {session.preset_demo}</>}
+                </p>
+                {isCustomCodeSession ? (
+                  <details className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                    <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-[#2f70c8]">
+                      View submitted code
+                    </summary>
+                    <div className="border-t border-slate-200 p-4">
+                      {linkedSubmission ? (
+                        <>
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                            {getCodeSubmissionFileName(linkedSubmission)} - {normalizeAgentechRobotModel(linkedSubmission.robot_model) || linkedSubmission.robot_model}
+                          </p>
+                          <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-xs leading-5 text-slate-100">
+                            <code>{linkedSubmission.code}</code>
+                          </pre>
+                        </>
+                      ) : (
+                        <p className="text-sm text-slate-600">The exact approved source is unavailable for this historical session.</p>
+                      )}
+                    </div>
+                  </details>
+                ) : null}
+                {deviceResultsView.visible ? (
+                  <details className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-[#2f70c8]">
+                      View device results
+                    </summary>
+                    <div className="space-y-3 border-t border-slate-200 p-4">
+                      {deviceResultsView.collectionError ? (
+                        <div data-schedule-notice="danger" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                          <p className="font-semibold">Result collection failed</p>
+                          <p className="mt-1 break-words">{deviceResultsView.collectionError}</p>
+                        </div>
+                      ) : null}
+                      {deviceResultsView.items.map((item, index) => (
+                        <article
+                          key={`${item.label}-${item.recordedAt}-${index}`}
+                          data-schedule-notice={item.tone === "error" ? "danger" : item.tone}
+                          className={`rounded-lg border p-4 ${item.tone === "success" ? "border-emerald-200 bg-emerald-50" : item.tone === "warning" ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50"}`}
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="font-semibold text-slate-950">{item.label}</p>
+                              <p className="mt-1 break-words text-sm text-slate-700">{item.summary}</p>
+                            </div>
+                            <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.1em] ${item.tone === "success" ? "bg-emerald-100 text-emerald-800" : item.tone === "warning" ? "bg-amber-100 text-amber-900" : "bg-red-100 text-red-800"}`}>
+                              {item.status === "completed" ? "Completed" : "Failed"}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-xs text-slate-600">
+                            {formatDateTime(item.recordedAt)}{item.sourceLine ? ` · Source line ${item.sourceLine}` : ""}
+                          </p>
+                          {item.errorText ? <p className="mt-2 break-words text-sm font-medium text-red-800">{item.errorText}</p> : null}
+                          <details className="mt-3 rounded-lg border border-slate-200 bg-white">
+                            <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-slate-700">
+                              View raw JSON
+                            </summary>
+                            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words border-t border-slate-200 p-3 text-xs leading-5 text-slate-800">
+                              <code>{item.rawJson}</code>
+                            </pre>
+                          </details>
+                        </article>
+                      ))}
+                      {deviceResultsView.items.length === 0 && !deviceResultsView.collectionError ? (
+                        <p className="text-sm text-slate-600">Device results were requested and are awaiting Gateway collection.</p>
+                      ) : null}
+                    </div>
+                  </details>
+                ) : null}
+              </div>
+            </details>
+          );
+        })}
+        {recent.length === 0 && <p className="py-2 text-sm text-slate-600">Your bookings will appear here.</p>}
+      </div>
+      {recent.length > pageSize && (
+        <nav aria-label="Booking history pages" className="mt-3 flex flex-wrap items-center justify-between gap-x-3 border-t border-slate-200 pt-2">
+          {currentPage > 0 && <button type="button" onClick={() => setPage(currentPage - 1)} className="min-h-10 text-sm font-semibold text-slate-700 underline-offset-4 hover:underline">Newer bookings</button>}
+          {currentPage < lastPage && <button type="button" onClick={() => setPage(currentPage + 1)} className="ml-auto min-h-10 text-sm font-semibold text-[#2f70c8] underline-offset-4 hover:underline">View previous bookings <span aria-hidden="true">&rarr;</span></button>}
+        </nav>
+      )}
+    </section>
+  );
+}
+
 export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDashboardProps) {
   const router = useRouter();
   const focusedRobotScheduling = mode === "robot-scheduling";
@@ -1027,6 +1145,33 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
   const [rechargeMessage, setRechargeMessage] = useState("");
   const [rechargeMessageType, setRechargeMessageType] = useState<"success" | "error" | null>(null);
   const [startingRecharge, setStartingRecharge] = useState(false);
+  const [motionDetails, setMotionDetails] = useState<{id: string; name: string; minimumMinutes: number} | null>(null);
+  const [motionLookupError, setMotionLookupError] = useState("");
+  const selectedMotion = motionDetails?.id === nativeAssetId ? motionDetails : null;
+  useEffect(() => {
+    if (!nativeAssetId || !email) return;
+    const controller = new AbortController();
+    setMotionDetails(null);
+    setMotionLookupError("");
+    void (async () => {
+      const response = await fetch("/api/eaic-account-assets?id=" + encodeURIComponent(nativeAssetId), {
+        cache: "no-store", signal: controller.signal
+      });
+      const {file, error} = await response.json();
+      if (!response.ok || file?.receipt?.id !== nativeAssetId) throw new Error(error || "Motion receipt unavailable.");
+      const manifest = file.receipt.content_manifest;
+      if (!manifest?.movement || manifest.movement.metadata?.masterContract?.model === "Master Edu") {
+        throw new Error("Choose a compatible Master Ultra motion to book this robot.");
+      }
+      const motionSeconds = (manifest?.movement?.metadata?.masterContract?.frameCount ?? 0) / 50;
+      const minimumMinutes = Math.max(2, Math.ceil((Math.max(motionSeconds, manifest?.audio?.durationSeconds ?? 0) + 30) / 60));
+      if (!controller.signal.aborted) {
+        setMotionDetails({id: nativeAssetId, name: file.name, minimumMinutes});
+        setRobotSlotDurationMinutes(current => String(Math.max(minimumMinutes, Number(current) || 0)));
+      }
+    })().catch(error => { if (!controller.signal.aborted) setMotionLookupError(error.message); });
+    return () => controller.abort();
+  }, [nativeAssetId, email]);
   const [robotSlotProfileId, setRobotSlotProfileId] = useState("");
   const [robotSlotStart, setRobotSlotStart] = useState(getDefaultRobotSlotValue);
   const [robotSlotDurationMinutes, setRobotSlotDurationMinutes] = useState("5");
@@ -1205,7 +1350,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
   }, [data.accessProfiles, robotSlotProfileId]);
 
   useEffect(() => {
-    if (!email || !data.accessProfiles?.length) {
+    if (!email || (!nativeAssetId && !data.accessProfiles?.length)) {
       setRobotSlotOptions([]);
       return;
     }
@@ -1277,7 +1422,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
     return () => {
       cancelled = true;
     };
-  }, [data.accessProfiles?.length, data.robotSessions?.length, email, robotSlotDurationMinutes, robotSlotStart]);
+  }, [data.accessProfiles?.length, data.robotSessions?.length, email, nativeAssetId, robotSlotDurationMinutes, robotSlotStart]);
 
   async function removeUnpaidItem(itemId: string) {
     if (!email) return;
@@ -1638,7 +1783,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email,
-        profileId: robotSlotProfileId,
+        profileId: nativeAssetId && !robotSlotProfileId ? undefined : robotSlotProfileId,
         scheduledStart: Number.isNaN(scheduledDate.getTime()) ? robotSlotStart : scheduledDate.toISOString(),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         durationMinutes: robotSlotDurationMinutes,
@@ -1728,12 +1873,11 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
   const selectedRobotSlot = robotSlotOptions.find((slot) => slot.value === robotSlotStart);
   const latestApprovedCodeSubmission = (data.codeSubmissions ?? []).find((submission) => submission.id === data.account?.developer_latest_code_submission_id);
   const latestApprovedRobotModel = nativeAssetId ? "Master" : normalizeAgentechRobotModel(latestApprovedCodeSubmission?.robot_model);
-  const codeSubmissionById = new Map((data.codeSubmissions ?? []).map((submission) => [submission.id, submission]));
   const developerCodeReviewPassed = data.account?.developer_physical_safety_status === "passed" && data.account?.developer_ai_security_status === "passed" && latestApprovedCodeSubmission?.physical_safety_status === "passed" && latestApprovedCodeSubmission.ai_security_status === "passed";
   const internalCreditBypass = isInternalCompanyAccount;
   const customCodeLocked = !nativeAssetId && !developerCodeReviewPassed;
   const robotSlotCreditLocked = !internalCreditBypass && creditBalance < robotSlotCreditCost;
-  const robotSlotUnavailable = loadingRobotSlots || (Boolean(nativeAssetId) && Number(robotSlotDurationMinutes) < 2) || !robotSlotDurationValid || !selectedRobotSlot || selectedRobotSlot.disabled || robotSlotCreditLocked || customCodeLocked;
+  const robotSlotUnavailable = loadingRobotSlots || (Boolean(nativeAssetId) && (!selectedMotion || Number(robotSlotDurationMinutes) < selectedMotion.minimumMinutes)) || !robotSlotDurationValid || !selectedRobotSlot || selectedRobotSlot.disabled || robotSlotCreditLocked || customCodeLocked;
   const selectedDashboardProfile = data.accessProfiles?.find((profile) => profile.id === selectedDashboardProfileId) ?? null;
   const selectedDashboardProfileType = selectedDashboardProfile?.profile_type ?? null;
   const visibleDashboardTabs = focusedRobotScheduling
@@ -3028,31 +3172,31 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
       </section>
       ) : null}
 
-      {currentTab === "robot" && hasAccessProfiles ? (
+      {currentTab === "robot" && (nativeAssetId || hasAccessProfiles) ? (
         <section className={focusedRobotScheduling ? undefined : "rounded-[24px] border border-slate-200 bg-white p-6 shadow-[0_18px_55px_rgba(15,23,42,0.08)] md:p-8"}>
           <div data-schedule-intro className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p data-schedule-label className="text-xs font-semibold uppercase tracking-[0.18em] text-[#2f70c8]">Robot Slot</p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-950">Schedule Approved Robot Code</h2>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-950">{nativeAssetId ? "Schedule your Master motion" : "Schedule Approved Robot Code"}</h2>
               <p className="mt-2 text-sm text-slate-600">
-                Sessions cost {robotViewingCreditsPerMinute} credits per minute. External accounts choose {externalRobotViewingMinimumMinutes}-{externalRobotViewingMaximumMinutes} minutes; @agent-tech.ai accounts are not charged. Only customer-approved code that passed both review gates can be scheduled.
+                Sessions cost {robotViewingCreditsPerMinute} credits per minute. External accounts choose {externalRobotViewingMinimumMinutes}-{externalRobotViewingMaximumMinutes} minutes; @agent-tech.ai accounts are not charged.{" "}{!nativeAssetId && "Only customer-approved code that passed both review gates can be scheduled."}
               </p>
             </div>
             <div data-schedule-notice={developerCodeReviewPassed ? "success" : "neutral"} className={`rounded-2xl px-4 py-3 text-sm font-semibold ${developerCodeReviewPassed ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-700"}`}>
-              <p>{nativeAssetId ? "Happy Dance with bundled audio" : developerCodeReviewPassed ? "Live code approved" : "Live code locked"}</p>
+              <p>{nativeAssetId ? (selectedMotion?.name ?? "Master motion") : developerCodeReviewPassed ? "Live code approved" : "Live code locked"}</p>
               <p className="mt-1 text-xs opacity-80">
-                {nativeAssetId ? `ZIP receipt ${nativeAssetId}` : developerCodeReviewPassed
+                {nativeAssetId ? (motionLookupError || `Motion receipt ${nativeAssetId}`) : developerCodeReviewPassed
                   ? "Latest code package passed both gates."
                   : "Pass the hardware and software checks in Code Certification (03) first."}
               </p>
             </div>
           </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="mt-6 grid items-start gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
             <div data-schedule-panel="request" className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <h3 className="text-lg font-semibold text-slate-950">New Slot Request</h3>
               <div className="mt-4 space-y-4">
-                <label className="block">
+                {hasAccessProfiles && <label className="block">
                   <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">Profile Login</span>
                   <select
                     value={robotSlotProfileId}
@@ -3065,14 +3209,14 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
                       </option>
                     ))}
                   </select>
-                </label>
+                </label>}
                 <div className="block">
                   <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">Run Type</span>
                   <div data-schedule-notice="success" className="mt-2 w-full rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
-                    {nativeAssetId ? "Master · Happy Dance with bundled audio" : "Approved custom code live test"}
+                    {nativeAssetId ? (selectedMotion?.name ?? "Master motion") : "Approved custom code live test"}
                   </div>
                   <span className="mt-2 block text-sm text-slate-600">
-                    {nativeAssetId ? "Playback uses the audio.wav bundled with this motion." : developerCodeReviewPassed
+                    {nativeAssetId ? "Playback uses the files verified for this booking." : developerCodeReviewPassed
                       ? "This session will use your latest approved submission."
                       : "Scheduling requires a passed physical safety gate and AI security scan."}
                   </span>
@@ -3100,7 +3244,7 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
                     type="number"
                     value={robotSlotDurationMinutes}
                     onChange={(event) => setRobotSlotDurationMinutes(event.target.value)}
-                    min={Math.max(nativeAssetId ? 2 : 1, isInternalCompanyAccount ? 1 : externalRobotViewingMinimumMinutes)}
+                    min={Math.max(selectedMotion?.minimumMinutes ?? (nativeAssetId ? 2 : 1), isInternalCompanyAccount ? 1 : externalRobotViewingMinimumMinutes)}
                     max={isInternalCompanyAccount ? undefined : externalRobotViewingMaximumMinutes}
                     step="1"
                     className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 outline-none focus:border-[#2f70c8] focus:ring-4 focus:ring-[#dbeafe]"
@@ -3128,13 +3272,13 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
                     ))}
                   </select>
                   <span className="mt-2 block text-sm text-slate-600">
-                    {nativeAssetId ? "Select at least two minutes for the viewing countdown and dance." : latestApprovedRobotModel
+                    {nativeAssetId ? "Choose a slot long enough for the motion and its soundtrack." : latestApprovedRobotModel
                       ? `Locked to the ${latestApprovedRobotModel} model used by the latest approved code check.`
                       : "Submit and approve code for Aegies or Navi before scheduling."}
                   </span>
                 </label>
                 <p data-schedule-notice={nativeAssetId ? "neutral" : developerCodeReviewPassed ? "success" : "warning"} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${developerCodeReviewPassed ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                  {nativeAssetId ? "Your booking will show whether you need to check in before playback." : developerCodeReviewPassed
+                  {nativeAssetId ? "Your session starts automatically at your booked time. Playback follows the 20-second viewing countdown." : developerCodeReviewPassed
                     ? "This slot will use the latest Supabase-approved custom code package."
                     : "Custom live-code testing is locked until both approval checks pass."}
                 </p>
@@ -3172,124 +3316,12 @@ export function AccountDashboard({ mode = "account", nativeAssetId }: AccountDas
               </div>
             </div>
 
-            <div data-schedule-panel="history" className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <h3 className="text-lg font-semibold text-slate-950">Requested Robot Slots</h3>
-              <div className="mt-4 space-y-3">
-                {hasRobotSessions ? (
-                  data.robotSessions?.map((session) => {
-                    const linkedSubmission = session.code_submission_id
-                      ? codeSubmissionById.get(session.code_submission_id)
-                      : undefined;
-                    const isCustomCodeSession = (session.approved_run_type || session.requested_run_type) === "custom_code";
-                    const deviceResultsView = buildDeviceResultsViewModel({
-                      requested: session.device_results_requested,
-                      results: session.device_results,
-                      collectionError: session.device_results_error
-                    });
-
-                    return (
-                      <div data-schedule-session key={session.id} className="rounded-xl border border-slate-200 bg-white p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-slate-950">{session.session_title}</p>
-                          <p className="mt-1 text-sm text-slate-600">
-                            {session.profile_username ? `@${session.profile_username}` : "Profile"} - {session.robot_model || "Robot"}
-                          </p>
-                          <p className="mt-1 text-sm text-slate-600">{formatDateTime(session.scheduled_start)}</p>
-                          {session.preset_demo ? <p className="mt-1 text-sm text-slate-600">{session.preset_demo}</p> : null}
-                        </div>
-                        <div data-schedule-label className="text-sm font-semibold text-[#2f70c8] md:text-right">
-                          <p>{formatInvoiceStatus(session.session_status)}</p>
-                          <p className="mt-1 text-xs text-slate-500">Run: {formatInvoiceStatus(session.approved_run_type || "preset_demo")}</p>
-                        </div>
-                      </div>
-                      {session.code_submission_id?.startsWith("master-body-") && session.body_booking_starts_automatically !== true &&
-                        ["approved","confirmed","scheduled","requested","pending"].includes(session.session_status) && (
-                        <BodyOperatorReady sessionId={Number(session.id)} />
-                      )}
-                      {isCustomCodeSession ? (
-                        <details className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-[#2f70c8]">
-                            View submitted code
-                          </summary>
-                          <div className="border-t border-slate-200 p-4">
-                            {linkedSubmission ? (
-                              <>
-                                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                                  {getCodeSubmissionFileName(linkedSubmission)} - {normalizeAgentechRobotModel(linkedSubmission.robot_model) || linkedSubmission.robot_model}
-                                </p>
-                                <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-xs leading-5 text-slate-100">
-                                  <code>{linkedSubmission.code}</code>
-                                </pre>
-                              </>
-                            ) : (
-                              <p className="text-sm text-slate-600">The exact approved source is unavailable for this historical session.</p>
-                            )}
-                          </div>
-                        </details>
-                      ) : null}
-                      {deviceResultsView.visible ? (
-                        <details className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-                          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-[#2f70c8]">
-                            View device results
-                          </summary>
-                          <div className="space-y-3 border-t border-slate-200 p-4">
-                            {deviceResultsView.collectionError ? (
-                              <div data-schedule-notice="danger" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                                <p className="font-semibold">Result collection failed</p>
-                                <p className="mt-1 break-words">{deviceResultsView.collectionError}</p>
-                              </div>
-                            ) : null}
-                            {deviceResultsView.items.map((item, index) => (
-                              <article
-                                key={`${item.label}-${item.recordedAt}-${index}`}
-                                data-schedule-notice={item.tone === "error" ? "danger" : item.tone}
-                                className={`rounded-lg border p-4 ${item.tone === "success" ? "border-emerald-200 bg-emerald-50" : item.tone === "warning" ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50"}`}
-                              >
-                                <div className="flex flex-wrap items-start justify-between gap-2">
-                                  <div>
-                                    <p className="font-semibold text-slate-950">{item.label}</p>
-                                    <p className="mt-1 break-words text-sm text-slate-700">{item.summary}</p>
-                                  </div>
-                                  <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.1em] ${item.tone === "success" ? "bg-emerald-100 text-emerald-800" : item.tone === "warning" ? "bg-amber-100 text-amber-900" : "bg-red-100 text-red-800"}`}>
-                                    {item.status === "completed" ? "Completed" : "Failed"}
-                                  </span>
-                                </div>
-                                <p className="mt-3 text-xs text-slate-600">
-                                  {formatDateTime(item.recordedAt)}{item.sourceLine ? ` · Source line ${item.sourceLine}` : ""}
-                                </p>
-                                {item.errorText ? <p className="mt-2 break-words text-sm font-medium text-red-800">{item.errorText}</p> : null}
-                                <details className="mt-3 rounded-lg border border-slate-200 bg-white">
-                                  <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-slate-700">
-                                    View raw JSON
-                                  </summary>
-                                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words border-t border-slate-200 p-3 text-xs leading-5 text-slate-800">
-                                    <code>{item.rawJson}</code>
-                                  </pre>
-                                </details>
-                              </article>
-                            ))}
-                            {deviceResultsView.items.length === 0 && !deviceResultsView.collectionError ? (
-                              <p className="text-sm text-slate-600">Device results were requested and are awaiting Gateway collection.</p>
-                            ) : null}
-                          </div>
-                        </details>
-                      ) : null}
-                      </div>
-                    );
-                  })
-                ) : (
-                  <p className="text-sm leading-6 text-slate-600">
-                    No robot viewing slots requested yet. The first available request is the next 5-minute slot after a 2-minute prep buffer.
-                  </p>
-                )}
-              </div>
-            </div>
+            <BookingHistory key={email} sessions={data.robotSessions ?? []} submissions={data.codeSubmissions ?? []}/>
           </div>
         </section>
       ) : null}
 
-      {currentTab === "robot" && !hasAccessProfiles ? (
+      {currentTab === "robot" && !nativeAssetId && !hasAccessProfiles ? (
         <section data-schedule-panel="empty" className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6">
           <h2 className="text-xl font-bold text-slate-950">Create a profile to request robot time</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">Robot viewing is tied to a developer, student, teacher, or talent profile so each session has its own credit limit and activity history.</p>

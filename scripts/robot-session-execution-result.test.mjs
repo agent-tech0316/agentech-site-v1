@@ -183,3 +183,22 @@ test("builds only the execution-result Supabase columns", () => {
     },
   );
 });
+
+test('native result and terminal status writes bind the claimed attempt, account and original window', async () => {
+  const item = {executionModel:'master',accountEmail:'owner@example.test',start:'2030-01-01T00:00:00Z',
+    end:'2030-01-01T00:05:00Z',executionSubmissionId:'master-body-v2-asset',bodyClaimAttempt:'attempt-a',executionAttemptId:'attempt-a'};
+  let count=0;
+  const request = async (_table,query)=>{
+    count++;
+    const q = new URLSearchParams(query);
+    assert.equal(q.get('email'),'eq.'+item.accountEmail);
+    assert.equal(q.get('scheduled_start'),'eq.'+item.start);
+    assert.equal(q.get('scheduled_end'),'eq.'+item.end);
+    assert.equal(q.get('body_attempt_id'),'eq.attempt-a');
+    assert.equal(q.get('session_status'),'in.(running,completed,failed)');
+    return [];
+  };
+  assert.equal(await publishTerminalPatch(request,1,item,{session_status:'completed'}),false);
+  assert.equal(await publishTerminalPatch(request,1,{...item,executionAttemptId:'other'},{execution_result:{}}),false);
+  assert.equal(count,1);
+});

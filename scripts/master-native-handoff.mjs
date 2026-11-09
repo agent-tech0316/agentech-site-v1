@@ -104,19 +104,37 @@ function bodyWindow(binding) {
 
 function bodyHandoff(proof,plan,receipt,nowMs,previous) {
   const cmd=receipt.commands[0],r=cmd?.result, p=proof.body_package;
-  const argsOk = a => a && Object.keys(a).length===2 && a.motion_name===dance.motion && a.audio_path==='';
-  const pkg={asset_id:plan.asset_id,zip_sha256:dance.zip,policy_sha256:dance.policy,audio_sha256:dance.audio,serial:dance.serial};
-  if (!uuid.test(plan.asset_id) || plan.version!==2 || plan.submission_id!=='master-body-'+plan.asset_id || plan.source_sha256!==hash(dance.source)
-      || plan.commands.length!==1 || plan.commands[0].name!=='play_body' || plan.commands[0].line!==1 || !argsOk(plan.commands[0].args)
+  const m=plan.native_body_manifest;
+  const argsOk = a => a && Object.keys(a).length===2 && a.motion_name===(m?.motion ?? dance.motion) && a.audio_path==='';
+  if (!uuid.test(plan.asset_id) || plan.version!==2 || plan.commands.length!==1 || plan.commands[0].name!=='play_body'
+      || plan.commands[0].line!==1 || !argsOk(plan.commands[0].args)
       || receipt.outcome!=='failed' || receipt.handoff_ready!==false || receipt.owner_hold_preserved!==false || receipt.owner_hold_verified!==false
       || receipt.command_count!==1 || receipt.completed_count!==0 || receipt.commands.length!==1 || cmd.command_index!==1 || cmd.line!==1 || cmd.name!=='play_body'
-      || cmd.status!=='failed' || !argsOk(cmd.args) || !argsOk(cmd.source_args) || !cmd.error || !receipt.error?.message
+      || cmd.status!=='failed' || !argsOk(cmd.args) || !argsOk(cmd.source_args) || !cmd.error || !receipt.error?.message || !r
       || receipt.error.type!==cmd.error.type || receipt.error.message!==cmd.error.message || (receipt.error.command ?? 'play_body')!=='play_body'
-      || (receipt.error.command_index ?? 1)!==1 || r?.request_attempted!==true || r.play_response!=='Play success' || r.bundled_audio!=='audio.wav'
-      || !Object.entries(pkg).every(([k,v])=>r[k]===v && p?.[k]===v)) return false;
-  const initial=receipt.owner_binding;
-  if (!/^mc_ros2_node\d+$/.test(initial?.owner) || initial?.mode!=='STAND_DEFAULT' || initial.player!==0 || initial.settled!==true) return false;
-  const start=Date.parse(receipt.started_at),call=Date.parse(cmd.sdk_call_started_at),finish=Date.parse(receipt.finished_at),end=Date.parse(previous.end);
+      || (receipt.error.command_index ?? 1)!==1) return false;
+  const noDispatch=m && r.request_attempted===false;
+  if (m) {
+    if (m.asset_id!==plan.asset_id || m.model!=='Master Ultra' || m.motion!=='linkcraft_resource_onnx_ffeaic'+m.asset_sha256+'_0.0.1'
+        || plan.submission_id!=='master-body-v2-'+m.asset_id || receipt.body_start_authority!=='signed_booking') return false;
+    const identity={asset_id:m.asset_id,asset_sha256:m.asset_sha256,model:m.model,policy_sha256:m.policy.sha256,audio_sha256:m.audio?.sha256??null};
+    if (!Object.entries(identity).every(([k,v])=>r[k]===v && p?.[k]===v) || p.serial!==dance.serial || p.request_attempted!==r.request_attempted) return false;
+    if (noDispatch) {
+      const {policy_probe,...before}=r;
+      if (!isDeepStrictEqual(before,{...identity,request_attempted:false,audio_output:null,motion_complete:false,music_played:m.audio?false:null})
+          || Object.hasOwn(cmd,'sdk_call_started_at') || Object.hasOwn(receipt,'owner_binding') || Object.hasOwn(receipt,'final_owner_binding')) return false;
+    }
+  } else {
+    const pkg={asset_id:plan.asset_id,zip_sha256:dance.zip,policy_sha256:dance.policy,audio_sha256:dance.audio,serial:dance.serial};
+    if (plan.submission_id!=='master-body-'+plan.asset_id || plan.source_sha256!==hash(dance.source) || r.bundled_audio!=='audio.wav'
+        || !Object.entries(pkg).every(([k,v])=>r[k]===v && p?.[k]===v)) return false;
+  }
+  if (!noDispatch) {
+    const initial=receipt.owner_binding;
+    if (r.request_attempted!==true || r.play_response!=='Play success' || r.serial!==dance.serial ||
+        !/^mc_ros2_node\d+$/.test(initial?.owner) || initial.mode!=='STAND_DEFAULT' || initial.player!==0 || initial.settled!==true) return false;
+  }
+  const start=Date.parse(receipt.started_at),call=Date.parse(noDispatch?cmd.started_at:cmd.sdk_call_started_at),finish=Date.parse(receipt.finished_at),end=Date.parse(previous.end);
   const first=proof.native_binding_before,last=proof.native_binding;
   const a=Date.parse(first?.observed_at),b=Date.parse(last?.observed_at),issued=Date.parse(proof.observed_at);
   return start<=call && call<=finish && call<end && finish<=a && end<=a && a<b && b<=issued && issued<=nowMs && issued-a<=90000
@@ -140,9 +158,10 @@ export function verifyNativeHandoff(proof, {id, previous, config, receiptBytes, 
     && Array.isArray(plan.commands) && plan.commands.length > 0, 'invalid native program');
   const receipt = parseMasterExecutionResult(receiptBytes.toString('utf8'), {sessionId:String(id),
     submissionId:previous.executionSubmissionId, attemptId:previous.executionAttemptId,
-    sourceSha256:proof.source_sha256, planSha256:proof.plan_sha256, bookedEnd:previous.end});
+    sourceSha256:proof.source_sha256, planSha256:proof.plan_sha256, bookedEnd:previous.end, bodyPlan:plan});
   if (String(plan.submission_id).startsWith('master-body-')) {
-    require(signed && bodyHandoff(proof,plan,receipt,nowMs,previous),'failed body attempt, installed package or two terminal native windows were not verified');
+    const bodyReceipt = plan.native_body_manifest ? JSON.parse(receiptBytes.toString('utf8')) : receipt;
+    require(signed && bodyHandoff(proof,plan,bodyReceipt,nowMs,previous),'failed body attempt, installed package or two terminal native windows were not verified');
     return proof;
   }
   require(plan.commands.every(c=>['native_preset','native_head','passive'].includes(commands[c.name]?.backend)), 'program can own raw or retained control');

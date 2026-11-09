@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import ts from 'typescript';
 import { checkNaviBookedReadiness } from './navi-booking-admission.mjs';
 import { masterFirstCommandNotBefore } from './master-booking-admission.mjs';
-import { writeReviewedSource } from './robot-stream-staging.mjs';
+import { stageBookedMotion, writeReviewedSource } from './robot-stream-staging.mjs';
+import { finishExpiredAdmission, publishExpiredAdmission } from './robot-session-execution-result.mjs';
 import { activeCameraStreamDeadline } from './robot-stream-session-policy.mjs';
 
 test('a failed compilation can retry identical reviewed source without overwriting changed source', t => {
@@ -154,7 +155,7 @@ test('dispatcher restart cannot replay an exhausted Navi cleanup or convert its 
 });
 function fixture({ sessions = [booking()], stageError, deadline = 0, fetchError } = {}) {
   const events = [];
-  const bindings = { state: { sessions: {} }, Date: { now: () => now }, cameraStreamDeadline: deadline,
+  const bindings = { state: { sessions: {} }, Date: { now: () => now, parse: Date.parse }, cameraStreamDeadline: deadline,
     masterChecks: { retain() {} }, claimableStatuses: ['requested', 'confirmed', 'approved', 'scheduled', 'pending', 'running'],
     normalized:value=>String(value ?? '').trim().toLowerCase(),
     activeCameraStreamDeadline, keepsStreamActive: () => false,
@@ -165,10 +166,11 @@ function fixture({ sessions = [booking()], stageError, deadline = 0, fetchError 
     stopObs: async () => { events.push('stop-camera'); },
     stopObsVirtualCamera: async () => { events.push('virtual-camera-check'); },
     launch: async () => { events.push('ROBOT-LAUNCH'); },
-    console: { error() {} },
+    finishExpiredAdmission, endCleanupCanRun:()=>false, saveState:()=>{}, syncExecutionResult:async()=>{},
+    syncDeviceResults:async()=>{}, console: { error() {} },
   };
   const run = new Function(...Object.keys(bindings), `${tick}; return tick();`);
-  return { events, run: () => run(...Object.values(bindings)) };
+  return { events, state:bindings.state, run: () => run(...Object.values(bindings)) };
 }
 
 test('a staging failure starts the camera for the booked window without launching robot code', async () => {
@@ -192,4 +194,90 @@ test('a future booking with a staging failure does not start video early', async
   await f.run();
   assert.ok(!f.events.includes('start-camera'));
   assert.ok(!f.events.includes('ROBOT-LAUNCH'));
+});
+
+test('staging downloads only the booked account object and caches only exact validated bytes', async t => {
+  const runtimeDir = mkdtempSync(join(tmpdir(),'eaic-booked-motion-'));
+  t.after(() => rmSync(runtimeDir,{recursive:true,force:true}));
+  const {createHash} = await import('node:crypto');
+  const hash = value => createHash('sha256').update(value).digest('hex');
+  const email = 'regular@example.test', bytes = Buffer.from('motion archive fixture');
+  const id = '62ac7c77-2175-4fc3-88db-2ad6fa5e9827';
+  const asset = {id,email,object_key:hash(email)+'/'+id+'--Master--YS56aXA.zip',
+    sha256:hash(bytes),byte_size:bytes.length};
+  let calls=0;
+  const config = {email,runtimeDir,baseUrl:'https://fixture.invalid',apiKey:'private-fixture',
+    fetchImpl:async (url,opts) => {
+      calls++;
+      assert.equal(url,'https://fixture.invalid/storage/v1/object/authenticated/eaic-account-assets/'+asset.object_key);
+      assert.equal(opts.redirect,'error');
+      return new Response(bytes);
+    }};
+  await assert.rejects(stageBookedMotion({...asset,email:'other@example.test'},config),/storage object/);
+  await assert.rejects(stageBookedMotion({...asset,object_key:asset.object_key+'/..'},config),/storage object/);
+  assert.equal(calls,0);
+  await assert.rejects(stageBookedMotion(asset,{...config,fetchImpl:async()=>new Response(Buffer.alloc(bytes.length))}),/checksum/);
+  await assert.rejects(stageBookedMotion(asset,{...config,fetchImpl:async()=>new Response(Buffer.alloc(bytes.length+1))}),/exceeds/);
+  const file = await stageBookedMotion(asset,config);
+  assert.deepEqual(readFileSync(file),bytes);
+  assert.equal(await stageBookedMotion(asset,config),file);
+  assert.equal(calls,1);
+  writeFileSync(file,'tampered');
+  await assert.rejects(stageBookedMotion(asset,config),/checksum/);
+});
+
+test('a failed private receipt lookup/stage is retried within the slot and records the bound terminal refusal on expiry', async () => {
+  const session = booking({id:87,robot_model:'Master',email:'artist@example.test',code_submission_id:'master-body-v2-asset'});
+  const f = fixture({sessions:[session],stageError:new Error('Invalid booked manifest')});
+  await f.run();
+  await f.run();
+  assert.equal(f.events.filter(e=>e==='stage').length,2);
+  const item = f.state.sessions[session.id];
+  assert.equal(item.bodyStagePending,true);
+  assert.equal(finishExpiredAdmission(item,Date.parse(session.scheduled_end)),true);
+  assert.match(item.executionResultError,/0 commands dispatched.*Invalid booked manifest/);
+  let patches = 0;
+  const request = async (_table, query, options) => {
+    const q = new URLSearchParams(query);
+    assert.equal(q.get('scheduled_start'),'eq.'+session.scheduled_start);
+    assert.equal(q.get('body_attempt_id'),'is.null');
+    assert.equal(q.get('email'),'eq.'+session.email);
+    if (!options) return [{id:87,session_status:'scheduled',execution_error:null}];
+    patches++;
+    return [{id:87}];
+  };
+  assert.equal(await publishExpiredAdmission(request,session.id,item),true);
+  assert.equal(patches,1);
+});
+
+test('lost body claim acknowledgement remains durable across a restart and cannot dispatch or replay', async () => {
+  const decl = ast.statements.find(n=>ts.isFunctionDeclaration(n) && n.name?.text==='claimSession').getText(ast);
+  const session = {id:85,email:'artist@example.test'};
+  const item = {status:'staged',executionStatus:'pending',executionModel:'master',executionResultRequired:true,
+    bodyAssetId:'asset',masterPreparedAttemptId:'prepared',executionSubmissionId:'master-body-v2-asset',
+    accountEmail:session.email,start:new Date(now-1000).toISOString(),end:new Date(now+120000).toISOString()};
+  const state = {sessions:{85:item}};
+  let saved, calls=0;
+  const claim = new Function('state','saveState','request',decl+'; return claimSession;')(state,
+    ()=>{saved=structuredClone(state);},async (name,_query,options)=>{
+      calls++;
+      assert.equal(saved.sessions[85].bodyClaimInFlight,'prepared');
+      assert.equal(options.body.p_attempt,'prepared');
+      throw new Error('lost response');
+    });
+  await assert.rejects(claim(session),/lost response/);
+  state.sessions = saved.sessions;
+  await assert.rejects(claim(session),/pending/);
+  const recovered = state.sessions[85];
+  assert.equal(finishExpiredAdmission(recovered,now),true);
+  assert.equal(await publishExpiredAdmission(async (name,_query,{body})=>{
+    assert.equal(name,'rpc/agentech_reconcile_unlaunched_body_booking');
+    assert.equal(body.p_attempt,'prepared');
+    assert.equal(body.p_start,item.start);
+    assert.equal(body.p_end,item.end);
+    assert.equal(body.p_email,session.email);
+    return true;
+  },85,recovered),true);
+  assert.equal(calls,1);
+  assert.equal(recovered.executionAttemptId,undefined);
 });

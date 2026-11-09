@@ -18,7 +18,7 @@ const program = {
   physicalSafetyStatus: "passed", aiSecurityStatus: "passed",
 };
 const receipt = {
-  id: "local-receipt", sha256: dance.zip, native_motion_name: dance.motion,
+  id: "local-receipt", sha256: dance.zip, approval_basis:"master-policy-contract-v1", native_motion_name: dance.motion,
   content_manifest: {
     movement: { path: "policy.onnx" },
     audio: { path: "audio.wav", durationSeconds: 65, sampleRateHz: 16000, channels: 1 },
@@ -155,7 +155,7 @@ try {
         ["submission heading", workspace.getByRole("heading", { name: "File submissions" })],
         ["package help", workspace.locator("[data-asset-zip-help]")], ["upload label", workspace.locator("label").last()],
         ["asset type", workspace.getByText("Package", { exact: true })], ["download", workspace.getByRole("button", { name: "ultra_example_kuaile.zip" })],
-        ["schedule link", workspace.getByRole("link", { name: "Schedule Happy Dance with audio" })],
+        ["schedule link", workspace.getByRole("link", { name: "Schedule this motion" })],
         ["manifest", workspace.locator("[data-asset-contents] dt").first()],
         ["manifest path", workspace.getByText("policy.onnx", { exact: true })],
         ["manifest note", workspace.getByText("File identification does not verify", { exact: false })],

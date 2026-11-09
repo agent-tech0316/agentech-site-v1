@@ -8,13 +8,15 @@ import {
   getAccountRecord,
   getCodeSubmissionRecord,
   getRobotSessionsInWindow,
-  spendAccountCredits
+  spendAccountCredits,
+  type RobotSessionRecord
 } from "@/lib/account-records";
 import { getServerAccountEmail } from "@/lib/server-account-session";
-import { fullReviewExemption, hasFullReviewExemption } from "@/lib/eaic-review-exemption";
+import { ensureMasterMotionReceipt, fullReviewExemption, hasFullReviewExemption } from "@/lib/eaic-review-exemption";
+import { AssetContentError } from "@/lib/eaic-asset-content";
 import { normalizeAgentechRobotModel } from "@/lib/agentech-robot-model";
 import { isAgentechCompanyEmail } from "@/lib/company-accounts";
-import { masterBookingBlocker } from "@/lib/master-booking-policy";
+import { masterBookingBlocker, masterGatewayConfigurationBlocker } from "@/lib/master-booking-policy";
 import { MASTER_LIVE_TEST_LABEL } from "@/lib/master-live-test-access";
 import { sendEmail } from "@/lib/email";
 import { isValidAccountIdentifier, isValidEmail, normalizeEmail } from "@/lib/prototype-auth";
@@ -152,8 +154,9 @@ function formatDateTime(date: Date, timeZone: string) {
 async function sendRobotSlotConfirmation(input: {
   email: string;
   accountName: string;
-  profileUsername: string;
-  profileType: string;
+  profileUsername?: string | null;
+  profileType?: string | null;
+  validatedMotion?: boolean;
   robotModel: string;
   presetDemo: string;
   scheduledStart: Date;
@@ -161,33 +164,39 @@ async function sendRobotSlotConfirmation(input: {
   timeZone: string;
 }) {
   const scheduledWindow = `${formatDateTime(input.scheduledStart, input.timeZone)} - ${formatDateTime(input.scheduledEnd, input.timeZone)}`;
-  const subject = "Agentech robot slot request received";
+  const subject = input.validatedMotion ? "Agentech Master motion booked" : "Agentech robot slot request received";
+  const heading = input.validatedMotion ? "Master motion booked" : "Robot slot request received";
+  const confirmation = input.validatedMotion ? "Your Master viewing slot is reserved." : "We received your robot viewing slot request.";
+  const description = input.validatedMotion
+    ? "The gateway will check readiness before playing your uploaded motion at the booked time."
+    : "This slot is for a supervised live test of code that passed Agentech physical safety and AI software security review.";
+  const profile = input.profileUsername ? `@${input.profileUsername} (${input.profileType})` : input.email;
   const text = [
     `Hi ${input.accountName || "there"},`,
     "",
-    "We received your robot viewing slot request.",
+    confirmation,
     "",
-    `Profile: @${input.profileUsername} (${input.profileType})`,
+    `Booked by: ${profile}`,
     `Robot: ${input.robotModel}`,
     `Time: ${scheduledWindow}`,
     `Demo: ${input.presetDemo}`,
     "",
-    "This slot is for a supervised live test of code that passed Agentech physical safety and AI software security review.",
+    description,
     "",
     "Agentech"
   ].join("\n");
   const html = `
     <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.5; max-width: 640px;">
-      <h1 style="font-size: 24px; margin: 0 0 16px;">Robot slot request received</h1>
+      <h1 style="font-size: 24px; margin: 0 0 16px;">${escapeHtml(heading)}</h1>
       <p>Hi ${escapeHtml(input.accountName || "there")},</p>
-      <p>We received your robot viewing slot request.</p>
+      <p>${escapeHtml(confirmation)}</p>
       <table style="border-collapse: collapse; width: 100%; margin: 20px 0;">
-        <tr><td style="padding: 8px 0; color: #6b7280;">Profile</td><td style="padding: 8px 0; font-weight: 700;">@${escapeHtml(input.profileUsername)} (${escapeHtml(input.profileType)})</td></tr>
+        <tr><td style="padding: 8px 0; color: #6b7280;">Booked by</td><td style="padding: 8px 0; font-weight: 700;">${escapeHtml(profile)}</td></tr>
         <tr><td style="padding: 8px 0; color: #6b7280;">Robot</td><td style="padding: 8px 0; font-weight: 700;">${escapeHtml(input.robotModel)}</td></tr>
         <tr><td style="padding: 8px 0; color: #6b7280;">Time</td><td style="padding: 8px 0; font-weight: 700;">${escapeHtml(scheduledWindow)}</td></tr>
         <tr><td style="padding: 8px 0; color: #6b7280;">Demo</td><td style="padding: 8px 0; font-weight: 700;">${escapeHtml(input.presetDemo)}</td></tr>
       </table>
-      <p>This slot is for a supervised live test of code that passed Agentech physical safety and AI software security review.</p>
+      <p>${escapeHtml(description)}</p>
       <p style="margin-top: 24px;">Agentech</p>
     </div>
   `;
@@ -231,7 +240,9 @@ export async function GET(request: Request) {
 export async function POST(request: NextRequest) {
   const payload = (await request.json().catch(() => null)) as RobotSlotPayload | null;
   const email = normalizeEmail(payload?.email);
-  const signedInEmail = await getServerAccountEmail(request, {requireSignedSession:payload?.nativeAssetId !== undefined});
+  const nativeAssetId = payload?.nativeAssetId;
+  const nativeBooking = nativeAssetId !== undefined;
+  const signedInEmail = await getServerAccountEmail(request, { requireSignedSession: nativeBooking });
   const profileId = toProfileId(payload?.profileId);
   const scheduledStartRaw = clean(payload?.scheduledStart);
   const requestedScheduledStart = new Date(scheduledStartRaw);
@@ -252,7 +263,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Robot slots can only be scheduled from the signed-in account." }, { status: 403 });
   }
 
-  if (!profileId) {
+  if (!profileId && (!nativeBooking || payload?.profileId != null)) {
     return NextResponse.json({ error: "Choose the profile that will use this robot slot." }, { status: 400 });
   }
 
@@ -266,6 +277,10 @@ export async function POST(request: NextRequest) {
 
   const internalCompanyAccount = isAgentechCompanyEmail(email);
   const scheduledStart = normalizeRobotSlotStart(requestedScheduledStart, timeZone, internalCompanyAccount);
+
+  if (nativeBooking && scheduledStart.getTime() !== requestedScheduledStart.getTime()) {
+    return NextResponse.json({ error: "Choose a current available slot for your Master motion." }, { status: 409 });
+  }
 
   if (!internalCompanyAccount && !isWithinRobotHours(scheduledStart, timeZone)) {
     return NextResponse.json({ error: "Robot slots must start between 9:00 AM and 5:00 PM." }, { status: 400 });
@@ -300,7 +315,7 @@ export async function POST(request: NextRequest) {
 
   const creditsRequired = internalCompanyAccount ? 0 : getRobotViewingCreditCost(durationMinutes);
   const creditPreview = allocateCreditSpend(account, creditsRequired);
-  if (!internalCompanyAccount && creditPreview.rechargeRequired) {
+  if (!nativeBooking && !internalCompanyAccount && creditPreview.rechargeRequired) {
     return NextResponse.json(
       {
         error: `This ${durationMinutes}-minute session costs ${creditsRequired.toLocaleString()} credits (${robotViewingCreditsPerMinute} per minute). Add ${creditPreview.shortfall.toLocaleString()} more credits to continue.`
@@ -309,24 +324,61 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const scheduledEnd = addMinutes(scheduledStart, durationMinutes);
+  const scheduledEndParts = getTimeParts(scheduledEnd, timeZone);
+  if (!internalCompanyAccount && scheduledEndParts.hour * 60 + scheduledEndParts.minute > 17 * 60) {
+    return NextResponse.json({ error: "Choose a start time that keeps the full viewing session within robot hours." }, { status: 400 });
+  }
+
+  if (nativeBooking) {
+    if (robotModel !== "Master" || typeof nativeAssetId !== "string" ||
+        !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(nativeAssetId)) {
+      return NextResponse.json({ error: "Choose a submitted Master motion." }, { status: 400 });
+    }
+    const blocker = masterGatewayConfigurationBlocker(process.env);
+    if (blocker) return NextResponse.json({ error: blocker.error, errorCode: blocker.errorCode }, { status: blocker.status });
+
+    let result: { session?: RobotSessionRecord; reused?: boolean; error?: string };
+    try {
+      const receipt = await ensureMasterMotionReceipt(email, nativeAssetId);
+      if (!receipt) return NextResponse.json({ error: "Choose a validated Master motion from your account." }, { status: 403 });
+      result = await supabaseRequest<typeof result>("rpc/agentech_reserve_validated_body", {
+        method: "POST",
+        body: { p_email: email, p_asset: nativeAssetId, p_profile: profileId, p_start: scheduledStart.toISOString(),
+          p_end: scheduledEnd.toISOString(), p_credits: creditsRequired, p_notes: clean(payload?.notes) || null }
+      });
+    } catch (error) {
+      if (error instanceof AssetContentError) return NextResponse.json({ error: error.message }, { status: 422 });
+      return NextResponse.json({ error: "Could not confirm the reservation. Refresh your bookings before trying again." }, { status: 503 });
+    }
+    if (!result?.session) {
+      const errors: Record<string, [number, string]> = {
+        invalid_asset: [403, "Choose a validated Master motion from your account."],
+        target_mismatch: [409, "This policy targets Master Edu. The available Master robot is Master Ultra."],
+        invalid_profile: [403, "That profile does not belong to this account."],
+        insufficient_credits: [402, "Your credit balance changed. Add credits to book this slot."],
+        conflict: [409, "That time is already reserved or another reservation is being saved. Refresh available times."],
+        short_slot: [400, "Choose a longer slot to include the viewing countdown and the full motion and soundtrack."],
+        invalid_slot: [400, "Choose a future viewing slot."]
+      };
+      const [status, error] = errors[result?.error ?? ""] ?? [503, "Unable to confirm that reservation."];
+      return NextResponse.json({ error }, { status });
+    }
+    const session = result.session;
+    const emailResult = !result.reused && isValidEmail(email) && await sendRobotSlotConfirmation({
+      email, accountName: [account.first_name, account.last_name].filter(Boolean).join(" "),
+      profileUsername: session.profile_username, profileType: session.profile_type, validatedMotion: true,
+      robotModel, presetDemo: session.session_title, scheduledStart, scheduledEnd, timeZone
+    }).catch(() => ({ sent: false }));
+    return NextResponse.json({ ok: true, session, emailSent: Boolean(emailResult && emailResult.sent), creditsCharged: result.reused ? 0 : creditsRequired });
+  }
+
   const profiles = await getAccessProfiles(email);
   const selectedProfile = profiles.find((profile) => profile.id === profileId);
   if (!selectedProfile) {
     return NextResponse.json({ error: "That profile does not belong to this account." }, { status: 403 });
   }
-
-  const nativeAssetId = payload?.nativeAssetId;
-  let submissionId = account.developer_latest_code_submission_id;
-  if (nativeAssetId !== undefined) {
-    if (robotModel !== "Master" || durationMinutes < 2 || typeof nativeAssetId !== "string" ||
-        !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(nativeAssetId)) {
-      return NextResponse.json({error:"Choose a Master Happy Dance package and a slot of at least two minutes."},{status:400});
-    }
-    submissionId = await supabaseRequest<string|null>("rpc/agentech_pin_happy_dance", {
-      method:"POST",body:{p_email:email,p_asset:nativeAssetId}
-    });
-    if (!submissionId) return NextResponse.json({error:"This account has no eligible Happy Dance ZIP with that receipt."},{status:403});
-  }
+  const submissionId = account.developer_latest_code_submission_id;
   const codeSubmission = submissionId
     ? await getCodeSubmissionRecord(submissionId, email)
     : null;
@@ -341,10 +393,10 @@ export async function POST(request: NextRequest) {
       { status: 403 }
     );
   }
-  if (!nativeAssetId && submissionId?.startsWith("master-body-")) {
-    return NextResponse.json({error:"Select the Happy Dance ZIP receipt to book it."},{status:409});
+  if (submissionId?.startsWith("master-body-")) {
+    return NextResponse.json({error:"Select your submitted Master motion to book it."},{status:409});
   }
-  const exemptSubmission = Boolean(nativeAssetId) || codeSubmission.ai_security_model === fullReviewExemption;
+  const exemptSubmission = codeSubmission.ai_security_model === fullReviewExemption;
   if (exemptSubmission && !(await hasFullReviewExemption(email))) {
     return NextResponse.json({ error: "The account exemption for this program is no longer active." }, { status: 403 });
   }
@@ -363,13 +415,7 @@ export async function POST(request: NextRequest) {
     if (blocker) return NextResponse.json({ error: blocker.error, errorCode: blocker.errorCode }, { status: blocker.status });
   }
 
-  const presetDemo = nativeAssetId ? "Happy Dance with bundled audio" : approvedCustomCodeLabel;
-  const scheduledEnd = addMinutes(scheduledStart, durationMinutes);
-  const scheduledEndParts = getTimeParts(scheduledEnd, timeZone);
-  if (!internalCompanyAccount && scheduledEndParts.hour * 60 + scheduledEndParts.minute > 17 * 60) {
-    return NextResponse.json({ error: "Choose a start time that keeps the full viewing session within robot hours." }, { status: 400 });
-  }
-
+  const presetDemo = approvedCustomCodeLabel;
   let conflictingSession: Awaited<ReturnType<typeof findRobotSessionConflict>>;
   try {
     conflictingSession = await findRobotSessionConflict(scheduledStart.toISOString(), scheduledEnd.toISOString());

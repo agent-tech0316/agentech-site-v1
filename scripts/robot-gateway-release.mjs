@@ -14,7 +14,7 @@ const scopes = {
   master:['trusted-master-runner.py','master-command-contract.json','master_gateway_spec.py','master-session-gateway.mjs',
     'master-native-handoff.mjs','verify-master-native-handoff.py','master_native_gesture_readiness.py','master-readiness-check.mjs',
     'master-movement-a-adapter.py','master-booking-admission.mjs','master-native-body.mjs','master-happy-dance.json',
-    'master_native_body.py','master_body_observer.py'],
+    'master_native_body.py','master_body_observer.py','master_booked_body.py','master_policy_probe.py','master-ultra-native-profile.json'],
   navi:['trusted-navi-runner.py','navi_gateway_spec.py','navi-session-handoff.mjs','navi-booking-admission.mjs'],
   aegis:['trusted-robot-runner.py','aegis_gateway_spec.py','aegis-device-results.py'],
 };

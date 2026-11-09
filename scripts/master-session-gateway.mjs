@@ -220,7 +220,8 @@ export function createMasterSessionDeployment(config, session, item, attemptId) 
     source_sha256: item.executionSourceSha256, plan_sha256: item.executionPlanSha256,
     attempt_id: attemptId, scheduled_start: session.scheduled_start, scheduled_end: session.scheduled_end,
     ...(item.bodyAssetId ? {native_body_asset_id:item.bodyAssetId,
-      native_body_start_policy:session.body_booking_starts_automatically === true ? 'signed_booking' : 'onsite_check_in'} : {}),
+      native_body_start_policy:'signed_booking'} : {}),
+    ...(item.bodyFile ? {native_body_files:{motion:item.bodyFile}, native_body_manifest:item.bodyManifest} : {}),
     ...(item.masterRecoveryOwner ? { recovery_owner_binding: item.masterRecoveryOwner } : {}) };
 }
 
@@ -261,7 +262,7 @@ export function parseMasterExecutionResult(text, expected) {
   }
   const nativeBody = String(expected.submissionId).startsWith('master-body-');
   if ((value.handoff_mode === 'native-body-playback' || (nativeBody && (value.outcome === 'completed' || value.handoff_ready)))
-      && (!nativeBody || !verifyBodyReceipt(value))) throw new Error('Missing measured Happy Dance playback and native standing evidence');
+      && (!nativeBody || !verifyBodyReceipt(value, expected.bodyPlan))) throw new Error('Missing measured booked motion playback and native standing evidence');
   if (value.handoff_ready && !nativeBody) {
     const first = value.owner_binding;
     const last = value.final_owner_binding;

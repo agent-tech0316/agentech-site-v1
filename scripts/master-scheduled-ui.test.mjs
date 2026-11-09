@@ -5,12 +5,11 @@ import { loadTypeScriptModule } from "./test-utils/load-typescript-module.mjs";
 
 const workbench = readFileSync(new URL("../features/eaic/01-clients/eaic-hub/components/agentech-library-workbench.tsx", import.meta.url), "utf8");
 
-test("the booking page shows on-site check-in only when the signed booking does not authorize the start", () => {
+test("a native motion booking starts automatically and never asks for a check-in", () => {
   const dashboard = readFileSync(new URL("../components/account-dashboard.tsx", import.meta.url), "utf8");
-  assert.ok(!dashboard.includes("confirm your presence in the booking below"), "the pre-booking form must not require check-in for every Happy Dance request");
-  assert.match(dashboard, /session\.body_booking_starts_automatically\s*!==\s*true[\s\S]{0,230}<BodyOperatorReady/);
+  assert.doesNotMatch(dashboard, /BodyOperatorReady|body-ready|I’m ready at Master|need to check in/);
+  assert.match(dashboard, /starts automatically at your booked time/);
 });
-
 test("gateway owner accounts retain the focused robot booking form", () => {
   const dashboard = readFileSync(new URL("../components/account-dashboard.tsx", import.meta.url), "utf8");
   assert.match(dashboard, /if \(isGatewayOwnerAccount && !focusedRobotScheduling\) \{/);

@@ -9,9 +9,13 @@ export function masterBookingBlocker(code: string, configuration: Record<string,
     errorCode: "MASTER_PROGRAM_INVALID", status: 409,
     error: `The saved Master program no longer matches the upper-body SDK contract. Run Code Certification again. ${report.findings.map(item => item.message).join(" ")}`,
   };
+  return masterGatewayConfigurationBlocker(configuration);
+}
+
+export function masterGatewayConfigurationBlocker(configuration: Record<string, string | undefined>) {
   if (configuration.AGENTECH_MASTER_EXECUTION_ENABLED !== "true" || configuration.AGENTECH_MASTER_GATEWAY_PROTOCOL !== masterGatewayProtocol) return {
     errorCode: "MASTER_GATEWAY_NOT_CONFIGURED", status: 503,
-    error: "Master scheduling is awaiting activation of its upper-body execution gateway. Ask the operator to finish the gateway deployment and enable Master booking. Your code remains saved; no booking credits were charged.",
+    error: "Master scheduling is unavailable until the gateway is online and configured. Your submission is saved and no booking credits were charged.",
   };
   return null;
 }

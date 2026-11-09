@@ -23,7 +23,8 @@ export function createGatewayCloudRequest({
     throw new TypeError("Invalid cloud request deadline");
   }
   return async function request(table, query, options = {}) {
-    const nativeRpc = table === "rpc/agentech_happy_dance_asset" || table === "rpc/agentech_claim_body_booking";
+    const nativeRpc = ["rpc/agentech_happy_dance_asset", "rpc/agentech_get_booked_body_asset",
+      "rpc/agentech_claim_validated_body_booking", "rpc/agentech_reconcile_unlaunched_body_booking", "rpc/agentech_claim_body_booking"].includes(table);
     if ((!nativeRpc && !/^[a-z][a-z0-9_]*$/i.test(table)) || (nativeRpc && options.method !== "POST"))
       throw new TypeError("Invalid cloud table");
     const method = String(options.method || "GET").toUpperCase();

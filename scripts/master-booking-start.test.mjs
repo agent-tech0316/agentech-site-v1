@@ -6,7 +6,7 @@ import { PGlite } from '@electric-sql/pglite';
 const sql = name => readFileSync(new URL('../supabase/migrations/'+name+'.sql',import.meta.url),'utf8');
 const dance = JSON.parse(readFileSync(new URL('./master-happy-dance.json',import.meta.url),'utf8'));
 
-test('Victoria and the existing granted developer can each start their own pinned dance exactly once without check-in', async t => {
+test('historical v1 migration: Victoria and the existing granted developer can each start their own pinned dance exactly once without check-in', async t => {
   const db = new PGlite();
   t.after(() => db.close());
   await db.exec(`

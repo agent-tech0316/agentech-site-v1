@@ -64,22 +64,36 @@ test('changed lease, invalid signature, stale native timestamp or unfinished own
   }
 });
 
-function bodyAttempt() {
+function bodyAttempt(booked=false) {
   const spec=JSON.parse(readFileSync(new URL('./master-happy-dance.json',import.meta.url)));
   const asset='d927d8cc-c519-4f41-b566-68a90ecf48e9', id='106', owner='mc_ros2_node3097';
   const now=Date.now(), at=delta=>new Date(now+delta).toISOString(), end=at(-12000);
   const args={motion_name:spec.motion,audio_path:''};
   const plan={version:2,robot_model:'master',asset_id:asset,submission_id:'master-body-'+asset,source_sha256:sha(spec.source),
     commands:[{name:'play_body',args,line:1}]};
+  let manifest;
+  if (booked) {
+    const digest='e'.repeat(64);
+    manifest={asset_id:asset,asset_sha256:digest,policy:{sha256:digest},audio:null,model:'Master Ultra',
+      motion:'linkcraft_resource_onnx_ffeaic'+digest+'_0.0.1'};
+    args.motion_name=manifest.motion;
+    Object.assign(plan,{submission_id:'master-body-v2-'+asset,native_body_manifest:manifest,source_sha256:sha('fixture')});
+  }
   const planBytes=Buffer.from(JSON.stringify(plan));
   const common={session_id:id,attempt_id:'body-attempt',submission_id:plan.submission_id,source_sha256:plan.source_sha256,plan_sha256:sha(planBytes)};
   const error={type:'RuntimeError',message:'Invalid joint feedback: leg'};
   const pkg={asset_id:asset,zip_sha256:spec.zip,policy_sha256:spec.policy,audio_sha256:spec.audio,serial:spec.serial};
+  if (booked) {
+    delete pkg.zip_sha256;
+    Object.assign(pkg,{asset_sha256:manifest.asset_sha256,policy_sha256:manifest.policy.sha256,audio_sha256:null,
+      model:'Master Ultra',request_attempted:true});
+  }
   const initial={mode:'STAND_DEFAULT',settled:true,player:0,owner};
   const receipt={schema_version:1,robot_model:'master',...common,outcome:'failed',booked_end:end,started_at:at(-85000),finished_at:at(-24000),
     command_count:1,completed_count:0,handoff_ready:false,owner_hold_preserved:false,owner_hold_verified:false,owner_binding:initial,error,
     commands:[{name:'play_body',command_index:1,line:1,args,source_args:args,status:'failed',started_at:at(-85000),sdk_call_started_at:at(-84000),
       duration_ms:61000,error,result:{...pkg,request_attempted:true,play_response:'Play success',bundled_audio:'audio.wav'}}]};
+  if (booked) receipt.body_start_authority='signed_booking';
   const config={host:'fixture.invalid',sdk_api_sha256:'3'.repeat(64)};
   const previous={status:'finished',executionStatus:'failed',executionModel:'master',masterHandoffReady:false,end,executionAttemptId:common.attempt_id,
     executionSubmissionId:common.submission_id,executionSourceSha256:common.source_sha256,executionPlanSha256:common.plan_sha256,executionResult:{outcome:'failed'}};
@@ -146,4 +160,20 @@ test('a proven signed-booking cancellation before viewer countdown closes only t
     x=>{x.origin.host='different';},x=>{x.r.error.message='native request timed out';},x=>{x.plan.commands[0].args.audio_path='changed';}]) {
     assert.deepEqual(run(change),['107','108']);
   }
+});
+
+test('generic failed motion handoff binds exact attempted package; only explicit pre-dispatch may omit install evidence',()=>{
+  const failed=bodyAttempt(true);
+  assert.equal(failed.check().body_package.request_attempted,true);
+  delete failed.receipt.commands[0].result.play_response;
+  assert.throws(()=>failed.check(),/handoff/);
+  const idle=bodyAttempt(true), cmd=idle.receipt.commands[0], result=cmd.result;
+  delete idle.receipt.owner_binding;
+  delete cmd.sdk_call_started_at;
+  for(const field of ['serial','play_response','bundled_audio']) delete result[field];
+  Object.assign(result,{request_attempted:false,motion_complete:false,music_played:null,audio_output:null});
+  idle.proof.body_package.request_attempted=false;
+  assert.equal(idle.check().body_package.request_attempted,false);
+  result.partial_observation={};
+  assert.throws(()=>idle.check(),/handoff/);
 });

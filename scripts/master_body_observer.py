@@ -157,7 +157,7 @@ def body_owners(node):
                 competing_body_pose_publishers=0,mc_body_pose_subscriber=True)
 
 
-def observe(motion, watch, handoff=False):
+def observe(motion, watch, handoff=False, seconds=None):
     import rclpy
     from aimdk_msgs.msg import HandStateArray, JointStateArray, McCommonState
     from aimdk_msgs.srv import GetMcAction
@@ -170,14 +170,25 @@ def observe(motion, watch, handoff=False):
     # A permanently ready high-rate sensor subscription must not starve the service response.
     mode_node = rclpy.create_node('eaic_body_mode_'+receiver.hex,enable_rosout=False,start_parameter_services=False) if handoff else node
     samples, seen, baseline = {}, {}, {}
-    groups = tuple(JOINTS) if handoff else ('arm','leg','waist')
+    whole_body = handoff or seconds is not None
+    groups = tuple(JOINTS) if whole_body else ('arm','leg','waist')
     window = None
     playback = None
     invalid_groups = set()
+    frame_stamps = {}
     peak = 0.0
 
     def sample(key, msg):
         nonlocal peak
+        if seconds is not None:
+            stamp = stamp_ns(msg.header)
+            if key in frame_stamps and not 0 < stamp - frame_stamps[key] <= 500_000_000:
+                raise RuntimeError(f'{key} source timestamps stalled or skipped')
+            frame_stamps[key] = stamp
+            if key == 'hand' and (msg.left_hand_type.value != 0 or msg.right_hand_type.value != 0 or msg.left_hands or msg.right_hands):
+                raise RuntimeError('Active hand attachments differ from the simulated Ultra model')
+            if key in ('torso','chest') and not all(math.isfinite(x) for x in imu_motion(msg)):
+                raise RuntimeError(f'{key} IMU is not finite')
         if key in JOINTS:
             try:
                 check_joint_feedback(key,msg)
@@ -221,7 +232,7 @@ def observe(motion, watch, handoff=False):
         return all(abs(j.velocity) < .12 for key in groups for j in samples[key].joints)
 
     def fresh():
-        return len(seen) == (len(STREAMS) if handoff else 6) and max(time.monotonic()-t for t in seen.values()) < .15
+        return len(seen) == (len(STREAMS) if whole_body else len(groups)+3) and max(time.monotonic()-t for t in seen.values()) < .15
 
     def spin():
         rclpy.spin_once(node, timeout_sec=.025)
@@ -241,7 +252,7 @@ def observe(motion, watch, handoff=False):
         for key in groups:
             node.create_subscription(JointStateArray, '/aima/hal/joint/'+key+'/state',
                                      lambda m,k=key: sample(k,m), qos_profile_sensor_data)
-        if handoff:
+        if whole_body:
             node.create_subscription(HandStateArray,'/aima/hal/joint/hand/state',lambda m:sample('hand',m),qos_profile_sensor_data)
         for key in ('torso','chest'):
             node.create_subscription(Imu, '/aima/hal/imu/'+key+'/state',
@@ -298,33 +309,39 @@ def observe(motion, watch, handoff=False):
                 steady = None
         else:
             raise RuntimeError('Master did not reach fresh settled native standing')
-        owner = ownership()
+        owner = body_owners(node)["owner"] if seconds is not None else ownership()
         binding = {'owner':owner,'mode':'STAND_DEFAULT','player':0,'settled':True}
+        if seconds is not None: binding['mc_stamp_ns'] = str(stamp_ns(samples['mc'].header))
         baseline.update({k:{j.name:j.position for j in samples[k].joints} for k in groups})
         print(json.dumps({'ready':binding}),flush=True)
         if not watch: return
         begin = time.monotonic()
         playback,steady = BodyPlayback(motion),None
         check_owner_at = begin + 1
-        while time.monotonic()-begin < 78:
+        timeout = 78 if seconds is None else seconds + 10
+        while time.monotonic()-begin < timeout:
             spin()
             now = time.monotonic()
             if not fresh(): raise RuntimeError('Lost fresh body playback telemetry')
             if now >= check_owner_at:
-                if ownership() != owner: raise RuntimeError('Native MC owner changed')
+                if (body_owners(node)['owner'] if seconds is not None else ownership()) != owner: raise RuntimeError('Native MC owner changed')
                 check_owner_at = now+1
             if playback.first is not None and signature()[1] == 100 and settled():
                 if steady is None: steady = now
                 if now-steady >= .4:
-                    if ownership() != owner:
+                    if (body_owners(node)['owner'] if seconds is not None else ownership()) != owner:
                         raise RuntimeError('Native MC owner changed at playback endpoint')
                     result = playback.evidence(peak,True)
                     if playback.fault_count:
                         print(json.dumps({'error':playback.faults[0],'partial_observation':result},allow_nan=False),flush=True)
                         return
-                    if not 55 <= result['playing_seconds'] <= 75 or peak <= .1:
+                    measured = result['playing_seconds']
+                    valid = (55 <= measured <= 75 and peak > .1) if seconds is None else (
+                        abs(measured-seconds) <= min(.5,seconds*.1) and peak > 0)
+                    if not valid:
                         raise RuntimeError('Incomplete dance duration, displacement or final ownership')
-                    print(json.dumps({'final':binding,**result},allow_nan=False),flush=True)
+                    final = dict(binding,mc_stamp_ns=str(stamp_ns(samples['mc'].header))) if seconds is not None else binding
+                    print(json.dumps({'final':final,**result},allow_nan=False),flush=True)
                     return
             else:
                 steady = None
@@ -341,7 +358,7 @@ def observe(motion, watch, handoff=False):
 
 if __name__ == '__main__':
     try:
-        observe(sys.argv[1],sys.argv[2]=='watch',sys.argv[2]=='handoff')
+        observe(sys.argv[1],sys.argv[2]=='watch',sys.argv[2]=='handoff',float(sys.argv[3]) if len(sys.argv)>3 else None)
     except Exception as exc:
         print(json.dumps({'error':str(exc)}),flush=True)
         sys.exit(1)

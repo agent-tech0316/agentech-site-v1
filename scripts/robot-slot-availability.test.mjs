@@ -23,7 +23,7 @@ const compiled = ts.transpileModule(`return (${effect})();`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText;
 
-async function availability(fetch) {
+async function availability(fetch, extraBindings = {}) {
   const candidates = [{ value: '2026-10-27T01:15:00Z', label: '6:15 PM', disabled: false }];
   const state = { options: candidates, error: '', loading: false };
   let finished;
@@ -35,7 +35,7 @@ async function availability(fetch) {
     setRobotSlotOptions: value => { state.options = value; },
     setLoadingRobotSlots: value => { state.loading = value; if (!value) finished(); },
     setRobotSlotAvailabilityError: value => { state.error = value; },
-    setRobotSlotStart: () => {}, fetch,
+    setRobotSlotStart: () => {}, fetch, nativeAssetId: undefined, ...extraBindings,
   };
   new Function(...Object.keys(bindings), compiled)(...Object.values(bindings));
   await done;
@@ -62,6 +62,13 @@ test('successful availability retains the overlapping-slot disabled state', asyn
   ] })));
   assert.equal(state.options[0].disabled, true);
   assert.equal(state.error, '');
+});
+
+test('a signed motion customer without a profile can read available slots', async () => {
+  const state = await availability(async () => new Response(JSON.stringify({ ok:true, bookedSlots:[] })),
+    { nativeAssetId:'submitted-motion', data:{ accessProfiles:[] } });
+  assert.equal(state.options[0].disabled,false);
+  assert.equal(state.error,'');
 });
 
 test('availability API returns safe JSON503 rather than exposing a database failure', async t => {

@@ -343,3 +343,59 @@ test("normal booking preserves account review and billing gates before creating 
   assert.ok(route.indexOf("masterBookingBlocker(codeSubmission.code") < route.indexOf("creditSpend = await spendAccountCredits"));
   assert.match(route, /codeSubmissionId: codeSubmission\.id/);
 });
+
+test("signed non-exempt accounts can book their validated motion without a profile, check-in or duplicate charge", async () => {
+  const email = "artist@example.test", asset = "90e0634e-c41e-42cb-842d-a568a6de67fa";
+  let signedIn = "", ownsReceipt = false, reused = false;
+  const writes = [], notifications = [];
+  const route = loadRoute("app/api/robot-slot/route.ts", {
+    "@/lib/server-account-session": { getServerAccountEmail: async (_request, options) => {
+      assert.equal(options.requireSignedSession, true);
+      return signedIn;
+    } },
+    "@/lib/account-records": {
+      getAccountRecord: async () => ({ first_name: "Artist", paid_credit_balance: 600 }),
+      allocateCreditSpend: () => ({ rechargeRequired: false }),
+    },
+    "@/lib/eaic-review-exemption": { ensureMasterMotionReceipt: async (owner, id) => {
+      assert.equal(owner,email);
+      assert.equal(id,asset);
+      return ownsReceipt ? { id } : null;
+    } },
+    "@/lib/master-booking-policy": { masterGatewayConfigurationBlocker: () => null },
+    "@/lib/supabase-server": { supabaseRequest: async (name, { body }) => {
+      assert.equal(name, "rpc/agentech_reserve_validated_body");
+      writes.push(body);
+      return { reused, session: { id: 72, session_title: "my-motion.zip", body_booking_starts_automatically: true } };
+    } },
+    "@/lib/email": { sendEmail: async message => { notifications.push(message); return { sent: true }; } },
+  });
+  const start = "2099-10-27T16:00:00.000Z";
+  const request = { json: async () => ({ email, nativeAssetId: asset, scheduledStart: start,
+    timeZone: "America/Los_Angeles", durationMinutes: 5, robotModel: "Master" }) };
+  assert.equal((await route.POST(request)).status,401);
+  signedIn = "stranger@example.test";
+  assert.equal((await route.POST(request)).status,403);
+  signedIn = email;
+  assert.equal((await route.POST(request)).status,403);
+  assert.equal(writes.length,0);
+  ownsReceipt = true;
+  const first = await route.POST(request);
+  assert.equal(first.status,200);
+  assert.equal(first.body.creditsCharged,500);
+  assert.equal(first.body.session.body_booking_starts_automatically,true);
+  assert.deepEqual(writes[0],{p_email:email,p_profile:null,p_asset:asset,p_start:start,
+    p_end:"2099-10-27T16:05:00.000Z",p_credits:500,p_notes:null});
+  assert.match(notifications[0].text,/gateway will check readiness/);
+  reused = true;
+  const second = await route.POST(request);
+  assert.equal(second.body.session.id,first.body.session.id);
+  assert.equal(second.body.creditsCharged,0);
+  assert.equal(notifications.length,1);
+});
+
+test("retired operator check-in endpoint cannot create an attestation", async () => {
+  const { POST } = loadRoute("app/api/robot-slot/body-ready/route.ts");
+  const response = await POST({ json: async () => ({ sessionId:42,operatorReady:true }) });
+  assert.equal(response.status,410);
+});

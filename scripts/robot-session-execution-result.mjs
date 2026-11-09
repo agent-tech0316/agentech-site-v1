@@ -28,7 +28,7 @@ function publicAdmissionReason(raw) {
 export function finishExpiredAdmission(item, nowMs) {
   if (!item || !["master", "navi"].includes(item.executionModel) || !item.executionResultRequired || item.admissionFailureRecordedAt
       || !["pending", "failed"].includes(item.executionStatus)
-      || !Number.isFinite(Date.parse(item.end)) || (nowMs < Date.parse(item.end) && !item.claimedWithoutLaunch)
+      || !Number.isFinite(Date.parse(item.end)) || (nowMs < Date.parse(item.end) && !item.claimedWithoutLaunch && !item.bodyClaimInFlight)
       || item.executionAttemptId || item.pid || item.executionGuardianPid || item.naviCleanupOwner || item.naviSessionGuardian
       || item.localExecutionResult || item.executionResult || item.endCleanupAttempts || item.endCleanupResult) return false;
   const fresh = item.status === "staged";
@@ -39,7 +39,8 @@ export function finishExpiredAdmission(item, nowMs) {
   Object.assign(item, {
     status: "finished", endCleanupRequired: false, endCleanupStatus: "not_started",
     executionStatus: "failed", executionResult: null,
-    executionResultError: "Program did not start. 0 commands dispatched. " + publicAdmissionReason(item.launchBlockedReason),
+    executionResultError: "Program did not start. 0 commands dispatched. " + (item.bodyClaimInFlight
+      ? "The gateway could not confirm its motion claim before launch." : publicAdmissionReason(item.launchBlockedReason)),
     executionResultCollectionAttempted: true, executionResultPersisted: false,
     admissionFailureRecordedAt: new Date(nowMs).toISOString(),
   });
@@ -49,9 +50,19 @@ export function finishExpiredAdmission(item, nowMs) {
 export async function publishExpiredAdmission(request, id, item) {
   // Bind retries and historical repairs to the same booking; a terminal result,
   // rescheduled/cancelled booking or another owner's error must survive untouched.
+  if (item.bodyClaimInFlight) {
+    return await request("rpc/agentech_reconcile_unlaunched_body_booking", "", { method:"POST", body:{
+      p_session:id, p_email:item.accountEmail, p_submission:item.executionSubmissionId, p_start:item.start,
+      p_end:item.end, p_attempt:item.bodyClaimInFlight, p_error:item.executionResultError
+    }}) === true;
+  }
   const filters = new URLSearchParams({id: `eq.${id}`, robot_model: `ilike.${item.executionModel}`,
     code_submission_id: `eq.${item.executionSubmissionId}`, approved_run_type: "eq.custom_code",
     scheduled_start: `eq.${item.start}`, scheduled_end: `eq.${item.end}`, execution_result: "is.null"});
+  if (item.executionSubmissionId?.startsWith("master-body-")) {
+    filters.set("email", "eq."+item.accountEmail);
+    filters.set("body_attempt_id", item.bodyClaimAttempt ? "eq."+item.bodyClaimAttempt : "is.null");
+  }
   const table = "agentech_robot_sessions";
   const rows = await request(table, `${filters}&select=id,session_status,execution_error`);
   const row = rows?.length === 1 && rows[0];
@@ -78,6 +89,15 @@ export async function publishTerminalPatch(request, id, item, patch) {
   if (item.executionModel === "master") {
     filters.set("execution_result->>reporting_review", "is.null");
     if (item.executionSubmissionId != null) filters.set("code_submission_id", `eq.${item.executionSubmissionId}`);
+    if (item.bodyClaimAttempt || item.executionSubmissionId?.startsWith("master-body-v2-")) {
+      const attempt = item.bodyClaimAttempt ?? item.executionAttemptId;
+      if (!attempt || attempt !== item.executionAttemptId || !item.accountEmail || !item.start || !item.end) return false;
+      filters.set("body_attempt_id","eq."+attempt);
+      filters.set("email","eq."+item.accountEmail);
+      filters.set("scheduled_start","eq."+item.start);
+      filters.set("scheduled_end","eq."+item.end);
+      filters.set("session_status","in.(running,completed,failed)");
+    }
   }
   const rows = await request("agentech_robot_sessions", filters.toString(), { method: "PATCH", body: patch });
   return item.executionModel !== "master" || (Array.isArray(rows) && rows.length === 1);
