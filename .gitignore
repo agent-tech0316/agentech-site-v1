@@ -36,3 +36,4 @@ review_submissions/
 supabase/.temp/
 .robot-stream-backups/
 .env*
+Site connection.json

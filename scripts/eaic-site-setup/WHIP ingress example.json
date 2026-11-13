@@ -1,0 +1,6 @@
+{
+  "input_type": "WHIP_INPUT",
+  "name": "REPLACE_WITH_SITE_CAMERA_NAME",
+  "room_name": "REPLACE_WITH_WEBSITE_VIEWER_ROOM",
+  "participant_identity": "REPLACE_WITH_UNIQUE_SITE_CAMERA_ID"
+}

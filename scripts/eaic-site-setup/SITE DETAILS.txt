@@ -1,0 +1,18 @@
+EAIC | Site worksheet
+
+Record the robot model, robot LAN address, and USB camera device name.
+Quick setup reads the private Site connection.json beside START HERE.cmd.
+Use Site connection.example.json as the field reference.
+
+Navi
+Confirm the robot's rosbridge service is reachable on TCP 9090.
+
+Aegis
+Record the provisioned SSH username, local private key path, and verified host
+fingerprint. Enroll the trusted host key under the Windows account that runs
+EAIC Site Setup. Confirm the robot-side Linux SDK revision with the operator.
+
+Master
+Record the robot serial, reviewed deployment JSON path, and commissioned
+controller owner. Menu M can prepare a disabled draft using the local SDK.
+The operator supplies the SSH password when the gateway starts.

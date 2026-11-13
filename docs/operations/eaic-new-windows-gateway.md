@@ -1,5 +1,8 @@
 # Install EAIC on a new Windows PC
 
+For the single-venue workflow with Quick setup and automatic booking discovery,
+use the [EAIC Site Setup installer](eaic-site-setup.md).
+
 [Download gateway 1.0.1 and its checksum](https://github.com/agent-tech0316/agentech-site-v1/releases/tag/eaic-gateway-v1.0.1).
 This patch fixes Windows credential loading, including protected files saved
 with line endings by gateway 1.0.0. The cloud key and OBS password remain

@@ -1,0 +1,1079 @@
+import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
+import { promisify } from "node:util";
+import {parseBodySubmission,createBodyPlan,bodyOperatorConfirmation} from "./master-native-body.mjs";
+import { MasterReadinessChecks } from "./master-readiness-check.mjs";
+import { automaticNativeHandoff } from "./master-native-handoff.mjs";
+import { createHash, createHmac, randomUUID } from "node:crypto";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
+import OBSWebSocket from "obs-websocket-js";
+import {gatewayAssignment,ownsGatewaySession} from './eaic-site-assignment-v1.mjs';
+import { checkNaviBookedReadiness } from "./navi-booking-admission.mjs";
+import { createGatewayCloudRequest } from "./robot-cloud-request.mjs";
+import { masterReceiptNeedsReload, parseMasterExecutionResult, assertMasterExecutableSubmission } from "./master-session-gateway.mjs";
+import { masterBookingAdmission, masterFirstCommandNotBefore } from "./master-booking-admission.mjs";
+import {
+  naviLaunchBlocker, parseNaviCleanupResult, loadGatewayState, saveGatewayState,
+  selectNaviResetBaseline, reconcileNaviCleanupOutcome, parseNaviProgramResult,
+} from "./navi-session-handoff.mjs";
+import { ensureStreamWithRecovery } from "./obs-stream-recovery.mjs";
+import { writeReviewedSource } from "./robot-stream-staging.mjs";
+import {
+  endSessionCleanupPolicy,
+  finalSessionDatabaseStatus,
+  keepsStreamActive,
+  activeCameraStreamDeadline,
+} from "./robot-stream-session-policy.mjs";
+import {
+  buildDeviceResultsPatch,
+  deviceResultsStateForPlan,
+  parseDeviceResults,
+} from "./robot-session-device-results.mjs";
+import {
+  buildExecutionResultPatch,
+  finishExpiredAdmission,
+  publishExpiredAdmission,
+  publishTerminalPatch,
+  parseExecutionResult,
+} from "./robot-session-execution-result.mjs";
+
+for (const key of ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "ROBOT_HOST", "ROBOT_SSH_USER"]) {
+  if (!process.env[key]) throw new Error(`${key} is required.`);
+}
+
+const here = dirname(fileURLToPath(import.meta.url));
+const assignment=gatewayAssignment();
+console.log("[EAIC] Waiting for eligible "+assignment.model+" website bookings. Leave this window open.");
+const runtimeDir = join(here, "..", ".robot-stream-runtime");
+const stateFile = join(runtimeDir, "state.json");
+// Written only by a trusted supervised handoff, never by cached bridge state.
+const supervisedNaviBaselineFile = join(runtimeDir, "navi-supervised-baseline.json");
+const compiler = join(here, "compile-robot-plan.py");
+const trustedRunner = join(here, "trusted-robot-runner.py");
+const deviceResultsSerializer = join(here, "aegis-device-results.py");
+const gatewaySpec = join(here, "aegis_gateway_spec.py");
+const runnerResultSerializer = join(here, "aegis-runner-result.py");
+const trustedNaviRunner = join(here, "trusted-navi-runner.py");
+const trustedMasterRunner = join(here, "trusted-master-runner.py");
+const masterDeploymentFile = process.env.AGENTECH_MASTER_DEPLOYMENT_FILE;
+const obsHiddenLauncher = join(here, "ensure-obs-running-hidden.vbs");
+const captureUploadUrl = process.env.AGENTECH_CAPTURE_UPLOAD_URL || "https://www.agent-tech.ai/api/agentech-capture";
+const supabaseUrl = process.env.SUPABASE_URL.replace(/\/$/, "").replace(/\/rest\/v1$/, "");
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const robot = `${process.env.ROBOT_SSH_USER}@${process.env.ROBOT_HOST}`;
+const remoteDir = process.env.ROBOT_REMOTE_DIR || "/home/firefly/agentech-stream";
+const robotPython = process.env.ROBOT_PYTHON || "python3";
+const localPython = process.env.ROBOT_LOCAL_PYTHON || "python";
+const naviHost = process.env.AGENTECH_NAVI_HOST || "unused.invalid";
+const naviPort = process.env.AGENTECH_NAVI_PORT || "9090";
+// Navi's verified deployment is isolated from the older Aegis gateway package.
+const agentechSdkRoot = process.env.AGENTECH_NAVI_SDK_ROOT || process.env.AGENTECH_SDK_ROOT || join(here, "..", "navi-sdk");
+const sshKey = process.env.ROBOT_SSH_KEY;
+const requestedPollMs = Number(process.env.ROBOT_STREAM_POLL_MS || 1000);
+const pollMs = Number.isFinite(requestedPollMs)
+  ? Math.min(60000, Math.max(500, requestedPollMs))
+  : 1000;
+const prepMs = Number(process.env.ROBOT_STREAM_PREP_SECONDS || 120) * 1000;
+const obsUrl = process.env.OBS_WEBSOCKET_URL || "ws://127.0.0.1:4455";
+const obsPassword = process.env.OBS_WEBSOCKET_PASSWORD || undefined;
+const activeStatuses = new Set(["requested", "confirmed", "approved", "scheduled", "pending", "running"]);
+const claimableStatuses = ["requested", "confirmed", "approved", "scheduled", "pending"];
+const runAsync = promisify(execFile);
+const masterChecks = new MasterReadinessChecks({ onReady: wakeForMasterReadiness });
+
+mkdirSync(runtimeDir, { recursive: true });
+let state = loadGatewayState(stateFile);
+let cameraStreamDeadline = 0;
+let obs;
+const obsRecoveryState = { lastAttemptAt: 0 };
+const obsRecoveryCooldownMs = 5 * 60 * 1000;
+
+async function boundedObs(operation) {
+  let timer;
+  try {
+    return await Promise.race([operation, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("OBS response timed out")), 3000);
+    })]);
+  } finally { clearTimeout(timer); }
+}
+
+async function obsCall(requestType, requestData) {
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      if (!obs) {
+        obs = new OBSWebSocket();
+        await boundedObs(obs.connect(obsUrl, obsPassword));
+      }
+      return await boundedObs(obs.call(requestType, requestData));
+    } catch (error) {
+      lastError = error;
+      try { await obs?.disconnect(); } catch {}
+      obs = undefined;
+    }
+  }
+  throw lastError;
+}
+
+function saveState() { saveGatewayState(stateFile, state); }
+function refreshNaviResetBaseline() {
+  let supervised;
+  try { supervised = JSON.parse(readFileSync(supervisedNaviBaselineFile, "utf8")); }
+  catch (error) { if (error.code !== "ENOENT") throw error; }
+  return selectNaviResetBaseline({verified_at:state.naviResetVerifiedAt,result:state.naviResetResult}, supervised, Date.now());
+}
+
+function createNaviSessionOwner(id) {
+  const attempt_id = randomUUID();
+  return {attempt_id, pid:null, result_file:join(runtimeDir,`navi-${id}-${attempt_id}.cleanup.json`),
+    owner_file:join(runtimeDir,`navi-${id}-${attempt_id}.owner.json`)};
+}
+function normalized(value) { return String(value || "").replaceAll(" ", "_").toLowerCase(); }
+function robotModel(value) {
+  const model = normalized(value);
+  if (model === "aegis" || model === "aegies" || !model) return "aegis";
+  if (model === "navi") return "navi";
+  if (model === "master") return "master";
+  throw new Error(`unsupported robot model: ${value}`);
+}
+function naviEnvironment() {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("AGENTECH_MASTER_") || key === "SUPABASE_SERVICE_ROLE_KEY") delete env[key];
+  }
+  return { ...env, AGENTECH_NAVI_HOST: naviHost, AGENTECH_NAVI_PORT: naviPort, AGENTECH_SDK_ROOT: agentechSdkRoot,
+    AGENTECH_NAVI_OWNER_LOCK:join(runtimeDir,"navi-owner.lock") };
+}
+function masterEnvironment() {
+  const env = { ...process.env };
+  delete env.AGENTECH_MASTER_HANDOFF_EVIDENCE_KEY;
+  delete env.AGENTECH_MASTER_HANDOFF_SIGNING_KEY_V1;
+  delete env.SUPABASE_SERVICE_ROLE_KEY;
+  delete env.OBS_WEBSOCKET_PASSWORD;
+  return env;
+}
+function sshArgs() { return [...(sshKey ? ["-i", sshKey] : []), "-o", "BatchMode=yes", "-o", "ConnectTimeout=8"]; }
+function run(program, args, options = {}) { return execFileSync(program, args, { encoding: "utf8", timeout: 20000, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], ...options }); }
+
+const request = createGatewayCloudRequest({
+  baseUrl: supabaseUrl,
+  apiKey: supabaseKey,
+  onDiagnostic: event => console.warn("[robot-stream] cloud request:", JSON.stringify(event)),
+});
+
+async function dueSessions() {
+  const now = new Date();
+  const end = new Date(now.getTime() + prepMs);
+  const select = "id,email,session_title,robot_model,scheduled_start,scheduled_end,session_status,approved_run_type,code_submission_id,created_at,body_booking_starts_automatically";
+  const query = `scheduled_start=lte.${encodeURIComponent(end.toISOString())}&scheduled_end=gte.${encodeURIComponent(now.toISOString())}&approved_run_type=eq.custom_code&select=${select}&order=scheduled_start.asc`;
+  return (await request("agentech_robot_sessions", query)).filter((item) => activeStatuses.has(normalized(item.session_status))&&ownsGatewaySession(assignment,item));
+}
+
+async function reviewedSubmission(session) {
+  if (session.approved_run_type !== "custom_code") throw new Error("session is not approved for custom code");
+  if (!session.code_submission_id) {
+    // Compatibility for website deployments created before booking-time pinning:
+    // choose only the newest fully reviewed submission that already existed when the booking was made.
+    const cutoff = encodeURIComponent(session.created_at);
+    const fallbackQuery = `email=eq.${encodeURIComponent(session.email)}&created_at=lte.${cutoff}&id=not.like.master-body-*&physical_safety_status=eq.passed&ai_security_status=eq.passed&select=id,code,robot_model,run_mode,ai_security_model&order=created_at.desc&limit=1`;
+    const candidates = await request("agentech_code_submissions", fallbackQuery);
+    if (candidates.length !== 1) throw new Error("custom session has no eligible reviewed submission to pin");
+    if (robotModel(session.robot_model) === "master") assertMasterExecutableSubmission(candidates[0]);
+    const updated = await request(
+      "agentech_robot_sessions",
+      `id=eq.${encodeURIComponent(session.id)}&code_submission_id=is.null`,
+      { method: "PATCH", body: { code_submission_id: candidates[0].id } }
+    );
+    if (!updated?.length) throw new Error("unable to atomically pin reviewed submission");
+    session.code_submission_id = candidates[0].id;
+    console.log(`[robot-stream] pinned reviewed submission ${candidates[0].id} to legacy booking ${session.id}.`);
+  }
+  const query = `id=eq.${encodeURIComponent(session.code_submission_id)}&email=eq.${encodeURIComponent(session.email)}&physical_safety_status=eq.passed&ai_security_status=eq.passed&select=id,code,robot_model,run_mode,ai_security_model&limit=1`;
+  const rows = await request("agentech_code_submissions", query);
+  if (rows.length !== 1) throw new Error("pinned submission no longer passes both reviews");
+  if (robotModel(rows[0].robot_model) !== robotModel(session.robot_model)) throw new Error("session robot model does not match its reviewed submission");
+  if (robotModel(session.robot_model) === "master") assertMasterExecutableSubmission(rows[0]);
+  const assetId = parseBodySubmission(rows[0]);
+  if (assetId && !await request("rpc/agentech_happy_dance_asset", "", {method:"POST",body:{p_email:session.email,p_asset:assetId}}))
+    throw new Error("The signed account no longer has this approved Master package");
+  return rows[0];
+}
+
+async function startObs() {
+  let startedNow = false;
+  await ensureStreamWithRecovery({
+    getStatus: () => obsCall("GetStreamStatus"),
+    startStream: () => {
+      startedNow = true;
+      return obsCall("StartStream");
+    },
+    recover: async () => {
+      const wscript = join(process.env.SystemRoot || "C:\\Windows", "System32", "wscript.exe");
+      const result = spawnSync(wscript, ["//B", "//Nologo", obsHiddenLauncher, "repair-nvenc"], {
+        encoding: "utf8",
+        timeout: 120000,
+        windowsHide: true,
+      });
+      if (result.error) throw result.error;
+      if (result.status !== 10) return false;
+      try { await obs?.disconnect(); } catch {}
+      obs = undefined;
+      return true;
+    },
+    recoveryState: obsRecoveryState,
+    recoveryCooldownMs: obsRecoveryCooldownMs,
+    nowMs: Date.now(),
+  });
+  const verified = await obsCall("GetStreamStatus");
+  if (!verified.outputActive) throw new Error("OBS did not enter the streaming state");
+  return { startedNow, reconnecting: verified.outputReconnecting === true };
+}
+
+async function stopObs() {
+  const status = await obsCall("GetStreamStatus");
+  if (status.outputActive) await obsCall("StopStream");
+}
+
+async function stopObsVirtualCamera() {
+  const stream = await obsCall("GetStreamStatus");
+  if (stream.outputActive) return;
+  const camera = await obsCall("GetVirtualCamStatus");
+  if (camera.outputActive) await obsCall("StopVirtualCam");
+}
+
+function stage(session, submission) {
+  const prefix = `session-${session.id}`;
+  const selectedModel = robotModel(session.robot_model);
+  const sourcePath = join(runtimeDir, `${prefix}.reviewed.py`);
+  const planPath = join(runtimeDir, `${prefix}.plan.json`);
+  writeReviewedSource(sourcePath, submission.code);
+  const bodyAssetId = selectedModel === "master" && parseBodySubmission(submission);
+  if (bodyAssetId) writeReviewedSource(planPath, JSON.stringify(createBodyPlan(submission)));
+  else if (selectedModel === "navi" || selectedModel === "master") run(localPython, [compiler, sourcePath, submission.id, selectedModel, planPath]);
+  else run(localPython, [compiler, sourcePath, submission.id, planPath]);
+  const planBytes = readFileSync(planPath);
+  const plan = JSON.parse(planBytes.toString("utf8"));
+  if (plan.source_sha256 !== createHash("sha256").update(submission.code).digest("hex")) throw new Error("compiled plan source hash mismatch");
+  const endCleanup = endSessionCleanupPolicy(plan, selectedModel);
+  const deviceResultsState = selectedModel === "aegis"
+    ? deviceResultsStateForPlan(plan, `${remoteDir}/${prefix}`)
+    : deviceResultsStateForPlan({ commands: [] }, `${remoteDir}/${prefix}`);
+  let captureIndex = 0;
+  const remoteCaptures = [];
+  if (selectedModel === "aegis") {
+    run("ssh", [...sshArgs(), robot, "mkdir", "-p", remoteDir]);
+    run("scp", [
+      ...sshArgs(),
+      planPath,
+      trustedRunner,
+      deviceResultsSerializer,
+      gatewaySpec,
+      runnerResultSerializer,
+      join(here,'eaic_sdk_commands.py'),
+      join(here,'eaic-sdk-contract.json'),
+      join(here,'master-command-contract.json'),
+      join(here,'master_gateway_spec.py'),
+      join(here,'navi_gateway_spec.py'),
+      `${robot}:${remoteDir}/`,
+    ]);
+    for (const command of plan.commands) {
+      if (command.name !== "capture_image") continue;
+      captureIndex += 1;
+      remoteCaptures.push(`${remoteDir}/${prefix}.plan-capture-${captureIndex}.jpg`);
+    }
+  }
+  state.sessions[session.id] = {
+    status: "staged",
+    executionModel: selectedModel,
+    executionResultRequired: true,
+    executionResultCollectionAttempted: false,
+    executionResultPersisted: false,
+    executionStatus: "pending",
+    executionSubmissionId: submission.id,
+    ...(bodyAssetId ? {bodyAssetId} : {}),
+    executionSourceSha256: plan.source_sha256,
+    executionPlanSha256: createHash("sha256").update(planBytes).digest("hex"),
+    remoteExecutionResult: selectedModel === "aegis"
+      ? `${remoteDir}/${prefix}.execution.json`
+      : null,
+    localPlan: planPath,
+    remotePlan: selectedModel === "aegis" ? `${remoteDir}/${prefix}.plan.json` : null,
+    ...deviceResultsState,
+    remoteCaptures,
+    publishedCaptures: [],
+    accountEmail: session.email,
+    start: session.scheduled_start,
+    end: session.scheduled_end,
+    streamStatus: "pending",
+    streamAvailableDuringSession: false,
+    streamFailureCount: 0,
+    endCleanupRequired: endCleanup.required,
+    sdkReadOnly: endCleanup.readOnly===true,
+    sdkContract:plan.sdk_contract??null,
+    endReturnHomeRequired: endCleanup.returnHomeRequired,
+    endCleanupStatus: endCleanup.required ? "pending" : "not_required",
+    endCleanupAttempts: 0
+  };
+  saveState();
+  console.log(`[robot-stream] Code X compiled and staged ${plan.commands.length} ${selectedModel} commands for session ${session.id}.`);
+}
+
+async function ensureSessionStream(id, item, nowMs) {
+  try {
+    const stream = await startObs();
+    const firstStart = item.streamStatus !== "publishing";
+    const wasAvailableDuringSession = item.streamAvailableDuringSession === true;
+    const confirmedAt = new Date().toISOString();
+    let masterStreamChanged = false;
+    if (item.executionModel === "master") {
+      if (stream.reconnecting) throw new Error("Master stream is reconnecting");
+      if (firstStart || stream.startedNow || !item.masterViewerStreamStartedAt) {
+        item.masterViewerStreamStartedAt = confirmedAt;
+        masterStreamChanged = true;
+      }
+    }
+    item.streamStatus = "publishing";
+    item.streamStartedAt ??= confirmedAt;
+    delete item.streamError;
+    if (nowMs >= Date.parse(item.start) && nowMs < Date.parse(item.end)) {
+      item.streamAvailableDuringSession = true;
+      item.streamAvailableDuringSessionAt ??= new Date().toISOString();
+    }
+    const becameAvailableDuringSession = !wasAvailableDuringSession
+      && item.streamAvailableDuringSession === true;
+    if (firstStart || becameAvailableDuringSession || masterStreamChanged) saveState();
+    return true;
+  } catch (error) {
+    item.streamStatus = "failed";
+    item.streamError = error.message;
+    item.streamFailureCount = Number(item.streamFailureCount || 0) + 1;
+    saveState();
+    console.error(`[robot-stream] session ${id} OBS delivery check failed:`, error.message);
+    return false;
+  }
+}
+
+async function claimSession(session) {
+  const item = state.sessions[session.id];
+  if (item.bodyAssetId) return (await request("rpc/agentech_claim_body_booking","",{method:"POST",body:{
+    p_email:session.email,p_session:session.id,p_asset:item.bodyAssetId,p_start:item.start,p_end:item.end,
+    p_confirmed:item.bodyOperatorConfirmedAt}})) === true;
+  const statuses = claimableStatuses.join(",");
+  const model = state.sessions[session.id]?.executionModel;
+  const binding = ["navi", "master"].includes(model)
+    ? ["scheduled_start", "scheduled_end", "code_submission_id", "robot_model", "approved_run_type", "email"]
+      .map(key => `&${key}=eq.${encodeURIComponent(session[key])}`).join("")
+    : "";
+  const claimed = await request(
+    "agentech_robot_sessions",
+    `id=eq.${encodeURIComponent(session.id)}&session_status=in.(${statuses})&scheduled_end=gt.${encodeURIComponent(new Date().toISOString())}${binding}&select=id`,
+    { method: "PATCH", body: { session_status: "running" } }
+  );
+  return claimed?.length === 1;
+}
+
+const handoffSigningKey = createHmac('sha256', process.env.AGENTECH_MASTER_HANDOFF_EVIDENCE_KEY || supabaseKey)
+  .update('EAIC/Master/native-control-handoff/v1').digest('hex');
+const observePriorMaster = automaticNativeHandoff({
+  runtimeDir, wake: wakeForMasterReadiness,
+  run: args => runAsync(localPython, [join(here, 'verify-master-native-handoff.py'), ...args], {
+    env: {...masterEnvironment(), AGENTECH_MASTER_HANDOFF_SIGNING_KEY_V1: handoffSigningKey},
+    timeout: 95000, windowsHide: true, maxBuffer: 256 * 1024,
+  }),
+});
+
+function checkMasterBooking(session,item,prepareOnly=false) {
+  return masterBookingAdmission(session,item,{
+    prepareOnly,
+    sessions:state.sessions, runtimeDir, deploymentFile:masterDeploymentFile, claimableStatuses, masterChecks, observePrior:observePriorMaster,
+    runCheck:async ({planPath,deploymentPath,timeoutMs,signal}) => {
+      const attempt = item.masterPreparedAttemptId;
+      const began = Date.now();
+      const processResult = runAsync(localPython,[trustedMasterRunner,"--check-ready","--plan",planPath,
+        "--deployment",deploymentPath],{env:masterEnvironment(),timeout:timeoutMs,signal,windowsHide:true,maxBuffer:1024*1024});
+      // execFile may reject on abort before the read-only Python process has exited.
+      const closed = new Promise(resolve => processResult.child.once("close",resolve));
+      let outcome = "failed";
+      try {
+        const { stdout } = await processResult;
+        const result = JSON.parse(stdout);
+        outcome = result.ready === true ? "ready" : "refused";
+        return result;
+      } finally {
+        await closed;
+        if (item.masterPreparedAttemptId === attempt) {
+          const finished = Date.now();
+          const timing = { attempt, startedAt:new Date(began).toISOString(), finishedAt:new Date(finished).toISOString(),
+            durationMs:finished-began, outcome:signal.aborted ? "cancelled" : outcome };
+          if (item.masterReadinessFirstProbe?.attempt !== attempt) {
+            item.masterReadinessFirstProbe = timing;
+            item.masterReadinessProbeCount = 0;
+          }
+          item.masterReadinessLastProbe = timing;
+          item.masterReadinessProbeCount = (item.masterReadinessProbeCount ?? 0) + 1;
+          // Normal state saves retain the timing. The log also records probes
+          // for an attempt that is later cancelled before a claim.
+          console.log(`[robot-stream] Master readiness #${session.id}: ${JSON.stringify(timing)}`);
+        }
+      }
+    }
+  });
+}
+
+async function launch(session) {
+  const item = state.sessions[session.id];
+  let masterReadyUntil = null;
+  let masterNotBefore = null;
+  if (!Number.isFinite(Date.parse(item.end)) || Date.now() >= Date.parse(item.end)) return;
+  if (item.executionModel === "master") {
+    try { masterNotBefore = masterFirstCommandNotBefore(item); }
+    catch (error) {
+      if (item.launchBlockedReason !== error.message) {
+        item.launchBlockedReason = error.message;
+        saveState();
+      }
+      return;
+    }
+    if (item.bodyAssetId) {
+      const bookingAuthorizesStart = session.body_booking_starts_automatically === true;
+      item.bodyOperatorConfirmedAt = bookingAuthorizesStart ? null :
+        await bodyOperatorConfirmation(request,session,item.bodyAssetId,masterNotBefore);
+      const remaining = Date.parse(item.end) - Math.max(Date.now(),Date.parse(masterNotBefore));
+      if ((!bookingAuthorizesStart && !item.bodyOperatorConfirmedAt) || remaining < 80000) {
+        const reason = remaining < 80000 ? "Insufficient booking time for full Happy Dance playback" : "Waiting for the on-site operator at Master";
+        if (item.launchBlockedReason !== reason) { item.launchBlockedReason = reason; saveState(); }
+        return;
+      }
+    }
+    const admission = checkMasterBooking(session,item);
+    if (admission.status === "blocked" && item.launchBlockedReason !== admission.reason) {
+      item.launchBlockedReason = admission.reason;
+      saveState();
+      console.error(`[robot-stream] session ${session.id} waiting: ${admission.reason}`);
+    }
+    if (admission.status !== "ready") return;
+    masterReadyUntil = admission.expiresAt;
+    delete item.launchBlockedReason;
+  }
+  if (item.executionModel === "navi") {
+    let blocker;
+    try {
+      blocker = naviLaunchBlocker(state.sessions, session.id, Date.now());
+    } catch (error) { blocker = error.message; }
+    if (!blocker) {
+      try {
+        checkNaviBookedReadiness({
+          session, item, runtimeDir, claimableStatuses, readPlan: readFileSync,
+          checkRunner: args => run(localPython, [trustedNaviRunner, ...args], { env: naviEnvironment(), timeout: 20000 }),
+        });
+      } catch (error) { blocker = `Navi live readiness check failed: ${error.message}`; }
+    }
+    if (blocker) {
+      if (item.launchBlockedReason !== blocker) {
+        item.launchBlockedReason = blocker;
+        saveState();
+        console.error(`[robot-stream] session ${session.id} waiting: ${blocker}`);
+      }
+      return;
+    }
+    delete item.launchBlockedReason;
+  }
+  if (Date.now() >= Date.parse(item.end)) return;
+  if (!(await claimSession(session))) {
+    if (item.bodyAssetId) {
+      // Another click can refresh confirmed_at between read and atomic claim.
+      // Only a fresh, still open booking may try the claim on a later poll.
+      const [current] = await request("agentech_robot_sessions", "id=eq."+encodeURIComponent(session.id)+"&select=session_status");
+      if (current && claimableStatuses.includes(normalized(current.session_status))) {
+        item.launchBlockedReason = "Native package or operator confirmation changed before claim";
+        saveState();
+        return;
+      }
+    }
+    item.status = "skipped";
+    saveState();
+    console.log(`[robot-stream] session ${session.id} was claimed by another gateway; skipping.`);
+    return;
+  }
+  const masterReadinessLost = masterReadyUntil !== null &&
+    (Date.now() < Date.parse(item.start) || Date.now() >= masterReadyUntil || existsSync(item.masterCancelFile));
+  if (Date.now() >= Date.parse(item.end) || masterReadinessLost) {
+    item.claimedWithoutLaunch = true;
+    if (masterReadinessLost) {
+      item.executionStatus = "failed";
+      item.launchBlockedReason = "Master readiness expired or booking cancelled before runner launch";
+    }
+    item.status = "finished";
+    item.endCleanupRequired = false;
+    item.endCleanupStatus = "not_started";
+    finishExpiredAdmission(item, Date.now());
+    saveState();
+    return;
+  }
+  if (item.executionModel === "master") {
+    // Persist the attempt before spawn. A crash must not authorize a replay.
+    item.executionAttemptId = item.masterPreparedAttemptId;
+    item.masterFirstCommandNotBefore = masterNotBefore;
+    const bodyAuthorizationArgs = [];
+    if (item.bodyAssetId) {
+      if (session.body_booking_starts_automatically === true) {
+        item.bodyBookingClaimedAt = new Date().toISOString();
+        bodyAuthorizationArgs.push("--body-booking-claimed-at", item.bodyBookingClaimedAt);
+      } else {
+        bodyAuthorizationArgs.push("--body-operator-confirmed-at", item.bodyOperatorConfirmedAt);
+      }
+    }
+    item.masterHandoffReady = false;
+    item.localExecutionResult = join(runtimeDir, `session-${session.id}.${item.executionAttemptId}.master-result.json`);
+    item.status = "running";
+    saveState();
+    const logFd = openSync(join(runtimeDir, `session-${session.id}.master.log`), "a");
+    try {
+      const child = spawn(localPython, [trustedMasterRunner, "--plan", item.localPlan,
+        "--deployment", item.masterSessionDeployment, "--result-file", item.localExecutionResult,
+        "--session-end", item.end, "--first-command-not-before", masterNotBefore,
+        "--cancel-file", item.masterCancelFile, ...bodyAuthorizationArgs], {
+        detached: true, windowsHide: true, stdio: ["ignore", logFd, logFd], env: masterEnvironment(),
+      });
+      child.on("error", error => console.error(`[robot-stream] Master runner spawn failed: ${error.message}`));
+      if (!child.pid) throw new Error("Master runner process identity is missing; handoff verification required");
+      child.unref();
+      item.pid = String(child.pid);
+    } finally { closeSync(logFd); }
+    saveState();
+    return;
+  }
+  if (item.executionModel === "navi") {
+    // Reserve ownership before spawn: a crash in the spawn/PID-save window
+    // must leave an unverified owner, never another launch opportunity.
+    item.naviCleanupOwner = createNaviSessionOwner(session.id);
+    item.naviCleanupOwner.read_only=item.sdkReadOnly===true;
+    item.naviCleanupOwner.sdk_contract=item.sdkContract;
+    item.executionAttemptId = item.naviCleanupOwner.attempt_id;
+    item.localExecutionResult = `${item.naviCleanupOwner.result_file}.program.json`;
+    item.naviSessionGuardian = true;
+    item.endCleanupAttempts = 1;
+    item.status = "running";
+    saveState();
+    const localLog = join(runtimeDir, `session-${session.id}.navi.log`);
+    const logFd = openSync(localLog, "a");
+    try {
+      const owner = item.naviCleanupOwner;
+      const child = spawn(localPython, [trustedNaviRunner, "--booked-session", item.localPlan, item.end,
+        owner.result_file, owner.owner_file, owner.attempt_id], {
+        detached: true,
+        windowsHide: true,
+        stdio: ["ignore", logFd, logFd],
+        env: { ...naviEnvironment(), AGENTECH_NAVI_PLAN_SHA256: item.executionPlanSha256 }
+      });
+      child.on("error", error => console.error(`[robot-stream] Navi supervisor spawn failed: ${error.message}`));
+      if (!child.pid) throw new Error("Navi supervisor did not provide a process identity; ownership recovery required");
+      child.unref();
+      item.pid = String(child.pid);
+      owner.pid = String(child.pid);
+      item.executionGuardianPid = child.pid;
+      item.localLog = localLog;
+    } finally {
+      closeSync(logFd);
+    }
+    item.status = "running";
+    saveState();
+    console.log(`[robot-stream] trusted Navi SDK runner started for session ${session.id}; PID ${item.pid}.`);
+    return;
+  }
+  const remoteRunner = `${remoteDir}/trusted-robot-runner.py`;
+  const remoteLog = `${remoteDir}/session-${session.id}.log`;
+  const staleOutputs = [item.remoteExecutionResult, item.remoteResults]
+    .filter(Boolean);
+  run("ssh", [...sshArgs(), robot, "rm", "-f", ...staleOutputs]);
+  const resultsArgument = item.remoteResults ? ` --results '${item.remoteResults}'` : "";
+  const finalResultArgument = ` --final-result '${item.remoteExecutionResult}'`;
+  const command = `cd '${remoteDir}' && PYTHONPATH=/home/firefly/Agentech-SDK nohup ${robotPython} '${remoteRunner}' '${item.remotePlan}'${resultsArgument}${finalResultArgument} > '${remoteLog}' 2>&1 & echo $!`;
+  item.pid = run("ssh", [...sshArgs(), robot, command]).trim();
+  item.status = "running";
+  saveState();
+  console.log(`[robot-stream] trusted runner started for session ${session.id}; PID ${item.pid}.`);
+}
+
+async function stopSession(id) {
+  const item = state.sessions[id];
+  if (item?.executionModel === "master") {
+    // The runner enforces its own deadline before each SDK dispatch. At natural
+    // expiry it may still be observing the final endpoint and native owner.
+    item.status = "finished";
+    saveState();
+    return;
+  }
+  if (item?.executionModel === "navi" && item.naviSessionGuardian === true) {
+    // The detached supervisor enforces the deadline even if this bridge is
+    // blocked or restarted. Do not kill it while it is stopping/resetting.
+    item.status = "finished";
+    if (item.endCleanupStatus === "pending") item.endCleanupStatus = "running";
+    saveState();
+    return;
+  }
+  if (item?.pid && item.status === "running") {
+    if (item.executionModel === "navi") {
+      if (processRunning(item)) {
+        process.kill(Number(item.pid));
+        const deadline = Date.now() + 5000;
+        while (processRunning(item) && Date.now() < deadline) await delay(50);
+        if (processRunning(item)) throw new Error(`Navi session ${id} runner did not exit; reset blocked`);
+      }
+      run(localPython, [trustedNaviRunner, "--stop"], { stdio: "ignore", env: naviEnvironment(), timeout: 10000 });
+    } else {
+      try { run("ssh", [...sshArgs(), robot, "kill", item.pid], { stdio: "ignore" }); } catch {}
+    }
+  }
+  item.status = "finished";
+  saveState();
+}
+
+function processRunning(item) {
+  if (item.executionModel === "navi" || item.executionModel === "master") {
+    if (!item.pid || !/^\d+$/.test(String(item.pid))) return false;
+    try {
+      process.kill(Number(item.pid), 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  try {
+    run("ssh", [...sshArgs(), robot, "kill", "-0", String(item.pid)], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function endCleanupCanRun(item) {
+  const required = item.endCleanupRequired ?? item.endLieDownRequired;
+  const status = item.endCleanupStatus ?? item.endLieDownStatus;
+  const attempts = item.endCleanupAttempts ?? item.endLieDownAttempts;
+  if (required !== true) return false;
+  if (status === "completed") return false;
+  if (item.executionModel === "navi" && (item.naviCleanupOwner || status === "running")) return true;
+  return Number(attempts || 0) < 3;
+}
+
+function reconcileNaviCleanup(item, resolveOutcome = reconcileNaviCleanupOutcome) {
+  const owner = item.naviCleanupOwner;
+  if (!owner) return {status:"unknown",error:"Persisted Navi cleanup has no recoverable process identity"};
+  let outcome;
+  try { outcome = JSON.parse(readFileSync(owner.result_file,"utf8")); } catch {}
+  if (owner.pid && processRunning({executionModel:"navi",pid:owner.pid})) {
+    return resolveOutcome(owner,true,outcome);
+  }
+  let metadata;
+  try { metadata = JSON.parse(readFileSync(owner.owner_file,"utf8")); } catch {}
+  if (!owner.pid || metadata?.attempt_id !== owner.attempt_id
+      || ["starting","starting_cleanup"].includes(metadata.phase)) {
+    return resolveOutcome(owner,null,outcome);
+  }
+  for (const pid of [metadata.program_pid,metadata.cleanup_pid]) {
+    if (pid && processRunning({executionModel:"navi",pid})) return resolveOutcome(owner,true,outcome);
+  }
+  return resolveOutcome(owner,false,outcome);
+}
+
+function finishSessionCleanup(id, item) {
+  if (!endCleanupCanRun(item)) return;
+  if (item.executionModel === "navi" && (item.naviCleanupOwner || item.endCleanupStatus === "running")) {
+    const recovered = reconcileNaviCleanup(item);
+    if (["running","unknown"].includes(recovered.status)) {
+      item.endCleanupStatus = "running";
+      if (recovered.error) item.endCleanupError = recovered.error;
+      saveState();
+      return;
+    }
+    item.endCleanupStatus = recovered.status;
+    if(recovered.status==='not_required'){
+      item.endCleanupRequired=false;
+      item.endCleanupResult=recovered.result;
+      delete item.endCleanupError;
+    } else if (recovered.status === "completed") {
+      item.endCleanupResult = recovered.result;
+      state.naviResetVerifiedAt = recovered.verified_at;
+      state.naviResetResult = recovered.result;
+      delete item.endCleanupError;
+    } else item.endCleanupError = recovered.error;
+    delete item.naviCleanupOwner;
+    saveState();
+    return; // Failed known owner becomes eligible for retry on the next tick.
+  }
+  if (item.executionModel === "navi") {
+    // A newer trusted reset can supersede this failure without rewriting its
+    // history. Admission uses the same baseline, so never retry it afterward.
+    let baseline;
+    try { baseline = refreshNaviResetBaseline(); } catch {}
+    const end = Date.parse(item.end);
+    if (Number.isFinite(end) && end <= Date.parse(baseline?.verified_at)) return;
+    // The SDK lock ends when a program exits early; the booked guardian still
+    // owns its slot. An old cleanup must not acquire that temporarily free lock.
+    const now = Date.now();
+    const anotherOwner = Object.entries(state.sessions).some(([otherId, other]) => {
+      if (String(otherId) === String(id) || other.executionModel !== "navi") return false;
+      const otherEnd = Date.parse(other.end);
+      return other.naviCleanupOwner || other.endCleanupStatus === "running"
+        || ["running", "publishing"].includes(other.status)
+        || (other.status === "completed" && (!Number.isFinite(otherEnd) || now < otherEnd));
+    });
+    if (anotherOwner) return;
+  }
+  item.endCleanupAttempts = Number(item.endCleanupAttempts ?? item.endLieDownAttempts ?? 0) + 1;
+  item.endCleanupStatus = "running";
+  delete item.endCleanupError;
+  saveState();
+  try {
+    if (item.executionModel === "navi") {
+      if (!item.localPlan) throw new Error("Navi cleanup requires its validated session plan");
+      item.naviCleanupOwner = createNaviSessionOwner(id);
+      item.naviCleanupOwner.read_only=item.sdkReadOnly===true;
+      item.naviCleanupOwner.sdk_contract=item.sdkContract;
+      saveState();
+      const owner = item.naviCleanupOwner;
+      const child = spawn(localPython,[trustedNaviRunner,"--cleanup-supervisor",item.localPlan,
+        owner.result_file,owner.owner_file,owner.attempt_id],{
+        detached:true,windowsHide:true,stdio:"ignore",env:naviEnvironment()});
+      child.on("error",error=>console.error(`[robot-stream] Navi cleanup supervisor failed: ${error.message}`));
+      if (!child.pid) throw new Error("Navi cleanup supervisor has unknown process identity");
+      owner.pid = String(child.pid);
+      child.unref();
+      saveState();
+      return;
+    } else {
+      const remoteRunner = `${remoteDir}/trusted-robot-runner.py`;
+      const command = `cd '${remoteDir}' && PYTHONPATH=/home/firefly/Agentech-SDK ${robotPython} '${remoteRunner}' --lie-down`;
+      run("ssh", [...sshArgs(), robot, command]);
+    }
+    item.endCleanupStatus = "completed";
+    const result = item.executionModel === "navi"
+      ? "return-to-home and damping"
+      : "lie-down";
+    console.log(`[robot-stream] session ${id} reached its booked end; automatic ${result} completed.`);
+  } catch (error) {
+    item.endCleanupStatus = "failed";
+    item.endCleanupError = error.message;
+    console.error(
+      `[robot-stream] session ${id} automatic cleanup attempt ${item.endCleanupAttempts}/3 failed:`,
+      error.message,
+    );
+  }
+  saveState();
+}
+
+async function syncFinalSessionStatus(id, item) {
+  const databaseStatus = finalSessionDatabaseStatus(item);
+  if (!databaseStatus || item.databaseStatus === databaseStatus || item.terminalPublicationConflict) return;
+  try {
+    if (!await publishTerminalPatch(request, id, item, { session_status: databaseStatus })) {
+      item.terminalPublicationConflict = true;
+      saveState();
+      return;
+    }
+    item.databaseStatus = databaseStatus;
+    delete item.databaseStatusError;
+    console.log(`[robot-stream] session ${id} synchronized to ${databaseStatus} in Supabase.`);
+  } catch (error) {
+    item.databaseStatusError = error.message;
+    console.error(
+      `[robot-stream] unable to synchronize final status for session ${id}:`,
+      error.message,
+    );
+  }
+  saveState();
+}
+
+function executionErrorMessage(result) {
+  if (result?.outcome !== "failed") return null;
+  const error = result.error || {};
+  const location = error.command_index
+    ? ` at command ${error.command_index}${error.command ? ` (${error.command})` : ""}`
+    : error.command
+      ? ` during ${error.command}`
+      : "";
+  return `${error.type || "ExecutionError"}: ${error.message || "runner reported failure"}${location}`
+    .slice(0, 4000);
+}
+
+function collectExecutionResult(id, item) {
+  if (masterReceiptNeedsReload(item)) {
+    item.masterReceiptSizeVersion = 2;
+    item.executionResultCollectionAttempted = false;
+    item.executionResultPersisted = false;
+  }
+  if (
+    item.executionResultRequired !== true
+    || item.executionResultCollectionAttempted === true
+  ) return;
+  // A guardian may still be finalizing its child receipt or performing damping.
+  // Do not race a live writer; after guardian exit, missing evidence fails closed.
+  if (["navi", "master"].includes(item.executionModel) && item.localExecutionResult
+      && !existsSync(item.localExecutionResult) && item.pid && processRunning(item)) return;
+  item.executionResultCollectionAttempted = true;
+  try {
+    const localResult = ["navi", "master"].includes(item.executionModel) ? item.localExecutionResult
+      : join(runtimeDir, `session-${id}.execution.json`);
+    if (!["navi", "master"].includes(item.executionModel)) {
+      run("scp", [...sshArgs(), `${robot}:${item.remoteExecutionResult}`, localResult]);
+    }
+    const parseResult = item.executionModel === "master" ? parseMasterExecutionResult
+      : item.executionModel === "navi" ? parseNaviProgramResult : parseExecutionResult;
+    item.executionResult = parseResult(readFileSync(localResult, "utf8"), {
+      sessionId: id,
+      submissionId: item.executionSubmissionId,
+      sourceSha256: item.executionSourceSha256,
+      planSha256: item.executionPlanSha256,
+      attemptId: item.executionAttemptId,
+      guardianPid: item.executionGuardianPid,
+      bookedEnd: item.end,
+    });
+    item.executionStatus = item.executionResult.outcome;
+    if (item.executionModel === "master") item.masterHandoffReady = item.executionResult.handoff_ready === true;
+    item.executionResultError = executionErrorMessage(item.executionResult);
+    console.log(
+      `[robot-stream] collected authoritative ${item.executionStatus} result for session ${id}.`,
+    );
+  } catch (error) {
+    item.executionResult = null;
+    item.executionStatus = "failed";
+    item.executionResultError = `MissingOrInvalidExecutionResult: ${error.message}`.slice(0, 4000);
+    console.error(
+      `[robot-stream] session ${id} has no trustworthy execution result:`,
+      error.message,
+    );
+  }
+  saveState();
+}
+
+async function syncExecutionResult(id, item) {
+  if (
+    item.executionResultRequired !== true
+    || item.executionResultCollectionAttempted !== true
+    || item.executionResultPersisted === true
+    || item.admissionPublicationConflict === true
+    || item.terminalPublicationConflict === true
+  ) return;
+  try {
+    if (item.admissionFailureRecordedAt) {
+      if (!await publishExpiredAdmission(request, id, item)) {
+        item.admissionPublicationConflict = true;
+        item.executionResultPersistenceError = "Booking or authoritative result changed; admission report kept locally.";
+        saveState();
+        return;
+      }
+      item.databaseStatus = "failed";
+    } else {
+      if (!await publishTerminalPatch(request, id, item, buildExecutionResultPatch(item))) {
+        item.terminalPublicationConflict = true;
+        saveState();
+        return;
+      }
+    }
+    item.executionResultPersisted = true;
+    delete item.executionResultPersistenceError;
+    console.log(`[robot-stream] synchronized authoritative execution result for session ${id}.`);
+  } catch (error) {
+    item.executionResultPersistenceError = error.message;
+    console.error(
+      `[robot-stream] unable to persist execution result for session ${id}; final status remains unsynchronized:`,
+      error.message,
+    );
+  }
+  saveState();
+}
+
+function collectDeviceResults(id, item) {
+  if (item.deviceResultsRequested !== true || item.deviceResultsCollectionAttempted === true) return;
+  item.deviceResultsCollectionAttempted = true;
+  try {
+    const localResults = join(runtimeDir, `session-${id}.results.json`);
+    run("scp", [...sshArgs(), `${robot}:${item.remoteResults}`, localResults]);
+    item.deviceResults = parseDeviceResults(readFileSync(localResults, "utf8"));
+    delete item.deviceResultsError;
+    console.log(`[robot-stream] collected ${item.deviceResults.length} device results for session ${id}.`);
+  } catch (error) {
+    item.deviceResults = [];
+    item.deviceResultsError = error.message;
+    console.error(`[robot-stream] unable to collect device results for session ${id}:`, error.message);
+  }
+  saveState();
+}
+
+async function syncDeviceResults(id, item) {
+  if (
+    item.deviceResultsRequested !== true
+    || item.deviceResultsCollectionAttempted !== true
+    || item.deviceResultsPersisted === true
+  ) return;
+  try {
+    await request(
+      "agentech_robot_sessions",
+      `id=eq.${encodeURIComponent(id)}&select=id`,
+      { method: "PATCH", body: buildDeviceResultsPatch(item) },
+    );
+    item.deviceResultsPersisted = true;
+    delete item.deviceResultsPersistenceError;
+    console.log(`[robot-stream] synchronized device results for session ${id} in Supabase.`);
+  } catch (error) {
+    item.deviceResultsPersistenceError = error.message;
+    console.error(
+      `[robot-stream] unable to synchronize device results for session ${id}; verify the additive session schema:`,
+      error.message,
+    );
+  }
+  saveState();
+}
+
+async function publishCaptures(id, item) {
+  const remoteCaptures = item.remoteCaptures ?? (item.remoteCapture ? [item.remoteCapture] : []);
+  item.publishedCaptures ??= [];
+  const token = process.env.ROBOT_RUNNER_SECRET || createHmac("sha256", supabaseKey)
+    .update("agentech-capture-upload-v1")
+    .digest("hex");
+  for (const [index, remoteCapture] of remoteCaptures.entries()) {
+    if (item.publishedCaptures.includes(remoteCapture)) continue;
+    const localCapture = join(runtimeDir, `session-${id}.capture-${index + 1}.jpg`);
+    run("scp", [...sshArgs(), `${robot}:${remoteCapture}`, localCapture]);
+    const response = await fetch(captureUploadUrl, {
+      signal: AbortSignal.timeout(8000),
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "x-robot-runner-secret": token,
+        "Content-Type": "image/jpeg",
+        "x-agentech-account-email": item.accountEmail
+      },
+      body: readFileSync(localCapture)
+    });
+    if (!response.ok) throw new Error(`capture upload failed: ${await response.text()}`);
+    const result = await response.json();
+    item.publishedCaptures.push(remoteCapture);
+    item.captureIds ??= [];
+    item.captureIds.push(result.captureId);
+    saveState();
+    console.log(`[robot-stream] published display capture ${result.captureId} (${index + 1}/${remoteCaptures.length}) for session ${id}.`);
+  }
+}
+
+async function tick() {
+  const now = Date.now();
+  const endingSessions = new Set();
+  for (const [id, item] of Object.entries(state.sessions)) {
+    if (finishExpiredAdmission(item, now)) saveState();
+    if (["running", "completed", "publishing"].includes(item.status) && now >= Date.parse(item.end)) {
+      await stopSession(id);
+      endingSessions.add(id);
+    }
+    if (item.status === "staged" && now >= Date.parse(item.end)) {
+      item.status = "finished";
+      item.streamAvailableDuringSession = false;
+      item.endCleanupRequired = false;
+      item.endCleanupStatus = "not_started";
+      saveState();
+    }
+    if (item.status === "finished" && now >= Date.parse(item.end) && endCleanupCanRun(item)) {
+      endingSessions.add(id);
+    }
+  }
+  // Local physical cleanup must not depend on the cloud or launch a second owner.
+  for (const id of endingSessions) {
+    const item = state.sessions[id];
+    finishSessionCleanup(id, item);
+  }
+  const active = Object.values(state.sessions).some((item) => keepsStreamActive(item, Date.now()));
+  if (!active && Date.now() >= cameraStreamDeadline) {
+    try { await stopObs(); }
+    catch (error) { console.error("[robot-stream] stream stop failed:", error.message); }
+  }
+  for (const [id, item] of Object.entries(state.sessions)) {
+    const captures = item.remoteCaptures ?? (item.remoteCapture ? [item.remoteCapture] : []);
+    const pendingCaptures = captures.some(capture => !(item.publishedCaptures ?? []).includes(capture));
+    // Catch up result-tracked runs only; a restart must not replay legacy captures.
+    const expiredCaptures = item.status === "finished" && item.executionResultRequired === true && item.pid && pendingCaptures
+      && item.capturePublishingError == null;
+    if ((item.status === "running" || expiredCaptures) && !processRunning(item)) {
+      // Expiry cleanup runs first, but a runner first observed after expiry can
+      // still have captures to deliver. Publication must retain its final state.
+      const afterPublication = item.status === "finished" ? "finished" : "completed";
+      item.status = "publishing";
+      saveState();
+      collectExecutionResult(id, item);
+      try {
+        await publishCaptures(id, item);
+      } catch (error) {
+        item.capturePublishingError = error.message;
+        console.error(`[robot-stream] session ${id} capture publishing failed:`, error.message);
+      }
+      item.status = afterPublication;
+      saveState();
+    }
+    if (["completed", "finished"].includes(item.status)) collectExecutionResult(id, item);
+    await syncExecutionResult(id, item);
+    if (["completed", "finished"].includes(item.status)) collectDeviceResults(id, item);
+    await syncDeviceResults(id, item);
+    if (item.status === "finished") await syncFinalSessionStatus(id, item);
+  }
+  const sessions = await dueSessions();
+  masterChecks.retain(new Set(sessions.filter(session =>
+    claimableStatuses.includes(normalized(session.session_status)) &&
+    state.sessions[session.id]?.status === "staged").map(session => String(session.id))));
+  // A valid booking may still watch while its code is refused by the compiler.
+  // Cache only the booked end, so cloud failure cannot extend video indefinitely.
+  cameraStreamDeadline = activeCameraStreamDeadline(sessions, Date.now());
+  for (const session of sessions) {
+    try {
+      if (!state.sessions[session.id]) {
+        const submission = await reviewedSubmission(session);
+        stage(session, submission);
+      }
+      const item = state.sessions[session.id];
+      const launchNow = Date.now();
+      if (launchNow >= Date.parse(item.end)) continue;
+      if (item.executionModel === "master" && item.status === "staged") {
+        // Prepare only. OBS and the fresh in-window claim still gate launch.
+        checkMasterBooking(session,item,true);
+      }
+      const streamReady = await ensureSessionStream(session.id, item, launchNow);
+      if (streamReady && item.status === "staged" && Date.now() < Date.parse(item.end)
+          && Date.now() >= Date.parse(session.scheduled_start)) await launch(session);
+    } catch (error) {
+      // A rejected booking must not starve another robot's valid booked slot.
+      // Keep any persisted owner/failure state intact; never manufacture success.
+      console.error(`[robot-stream] session ${session.id} scheduling failed:`, error.message);
+      if (activeCameraStreamDeadline([session], Date.now()) > Date.now()) {
+        try { await startObs(); }
+        catch (streamError) { console.error(`[robot-stream] session ${session.id} camera delivery failed:`, streamError.message); }
+      }
+    }
+  }
+  if (!Object.values(state.sessions).some((item) => keepsStreamActive(item, Date.now()))) await stopObsVirtualCamera();
+}
+
+console.log(`[robot-stream] Standalone trusted command gateway running for Aegies ${robot} and Navi ${naviHost}:${naviPort}; customer source is never sent to the robot. Navi receives only exact SDK calls from an inert plan.`);
+let tickInProgress = false;
+let masterReadinessWake = false;
+function wakeForMasterReadiness() {
+  masterReadinessWake = true;
+  if (!tickInProgress) void guardedTick();
+}
+async function guardedTick() {
+  if (tickInProgress) return;
+  tickInProgress = true;
+  try {
+    do {
+      masterReadinessWake = false;
+      await tick();
+    } while (masterReadinessWake);
+  } catch (error) {
+    console.error("[robot-stream] tick failed:", error.message);
+  } finally {
+    tickInProgress = false;
+  }
+}
+
+await guardedTick();
+setInterval(() => void guardedTick(), pollMs);

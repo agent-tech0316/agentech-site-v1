@@ -1,0 +1,36 @@
+EAIC | New venue | Windows 11 x64
+
+1. Put the privately supplied Site connection.json beside START HERE.cmd.
+   Site connection.example.json shows the required fields. The setup uses
+   cloudUrl and cloudKey for Supabase and whipServer and whipToken for OBS
+   streaming. Only Aegis needs aegisUser and the optional aegisKeyName.
+2. Open START HERE.cmd, or EAIC Site Setup from the Start menu, and press
+   Enter for Quick setup. On a fresh PC it downloads and verifies Gateway
+   1.0.1 and OBS 33.0.1. Keep their default install folders. If OBS opens a
+   first-run dialog, dismiss it. If asked to close OBS, exit normally and retry.
+3. Select the robot model, enter its LAN IP and pick the USB camera. Quick
+   setup configures OBS and LiveKit and checks cloud and robot connectivity.
+   Confirm the picture in the OBS preview. No booking is needed for setup.
+4. After the previous venue's gateway has finished its work and cleanup and
+   gone offline, press S and leave the window open. The gateway waits for
+   eligible website bookings for the selected robot model. Check the website
+   video, execution receipt and cleanup during a supervised booking.
+
+Before setup
+
+* Bring the PC, robot, USB camera, power and network cables. The PC needs
+  internet access and a route to the robot's LAN.
+* Navi needs a reachable rosbridge service on TCP 9090.
+* Aegis needs Windows OpenSSH, a verified host key, a provisioned private
+  SSH key and the matching operator-supplied Linux SDK on the robot.
+* Master needs a reviewed, enabled deployment for this robot and the installed
+  SDK, plus its SSH password at start. Menu M prepares a disabled draft.
+  Master onboard cameras and newer Ultra motion uploads need separate
+  commissioning and a matching gateway release.
+* For offline software staging, place the pinned Gateway and OBS installers
+  in a Programs folder beside START HERE.cmd. The venue checks still need
+  internet and robot LAN access.
+
+On later days, open OBS, open EAIC Site Setup, and press S to resume.
+Rerun Quick setup if the robot IP, model or camera changes. Use V if Windows
+requests the Microsoft Visual C++ runtime.
