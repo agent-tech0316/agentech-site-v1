@@ -74,13 +74,12 @@ test("journey uses the approved responsive three-card editorial layout", () => {
   assert.doesNotMatch(stylesheet, /\.tabs?\b|\.panels?\b|journey-panel-enter/);
 });
 
-test("the original six members remain unchanged and three new members are appended in order", () => {
+test("the current eight-member roster preserves the remaining team order", () => {
   const teamRecords = page.slice(page.indexOf("const teamMembers"), page.indexOf("] as const"));
   const originalMembers = [
-    ["Bill Wang", "Founder and CEO"],
-    ["Meryl Li", "Co-founder and COO"],
-    ["Connie Sun", "Co-founder and Strategy Advisor"],
-    ["Xin Gao", "CTO and Senior Hardware Engineer"],
+    ["Bill Wang", "Founder"],
+    ["Lydia Li", "Co-founder and COO"],
+    ["Connie Sun", "Co-Founder and CEO"],
     ["Wesley Fan", "Senior Software Engineer"],
     ["Victoria Chen", "Senior Project Engineer"]
   ];
@@ -90,7 +89,7 @@ test("the original six members remain unchanged and three new members are append
     ["Shuangyi Lian", "Product Manager", "Product"]
   ];
 
-  assert.equal((teamRecords.match(/\n\s+name:/g) ?? []).length, 9, "Exactly nine team records should be present");
+  assert.equal((teamRecords.match(/\n\s+name:/g) ?? []).length, 8, "Exactly eight team records should be present");
   for (const [name, role] of originalMembers) {
     assert.match(teamRecords, new RegExp(`name: "${name}"[\\s\\S]*?role: "${role}"`));
   }
@@ -102,7 +101,7 @@ test("the original six members remain unchanged and three new members are append
   const williamIndex = teamRecords.indexOf('name: "William Wang"');
   const georgeIndex = teamRecords.indexOf('name: "George Huang"');
   const shuangyiIndex = teamRecords.indexOf('name: "Shuangyi Lian"');
-  assert.ok(originalLastIndex < williamIndex, "William Wang should follow the original six members");
+  assert.ok(originalLastIndex < williamIndex, "William Wang should follow Victoria Chen");
   assert.ok(williamIndex < georgeIndex, "George Huang should follow William Wang");
   assert.ok(georgeIndex < shuangyiIndex, "Shuangyi Lian should follow George Huang");
 });

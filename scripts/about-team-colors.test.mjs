@@ -8,10 +8,9 @@ const [page, stylesheet] = await Promise.all([
 ]);
 
 const expectedMembers = [
-  ["Bill Wang", "Founder and CEO", "Leadership", "leadership"],
-  ["Meryl Li", "Co-founder and COO", "Operations", "operations"],
-  ["Connie Sun", "Co-founder and Strategy Advisor", "Strategy", "strategy"],
-  ["Xin Gao", "CTO and Senior Hardware Engineer", "Hardware", "hardware"],
+  ["Bill Wang", "Founder", "Leadership", "leadership"],
+  ["Lydia Li", "Co-founder and COO", "Operations", "operations"],
+  ["Connie Sun", "Co-Founder and CEO", "Leadership", "leadership"],
   ["Wesley Fan", "Senior Software Engineer", "Software", "software"],
   ["Victoria Chen", "Senior Project Engineer", "Robotics", "robotics"],
   ["William Wang", "Software Engineer", "Software", "software"],
@@ -21,7 +20,7 @@ const expectedMembers = [
 
 const categories = ["leadership", "operations", "strategy", "hardware", "software", "robotics", "product"];
 
-test("each unchanged team member has an explicit semantic category and Software shares one category", () => {
+test("the current team roster has the requested roles and semantic categories", () => {
   const teamRecords = page.slice(page.indexOf("const teamMembers"), page.indexOf("] as const"));
 
   for (const [name, role, group, category] of expectedMembers) {
@@ -33,6 +32,8 @@ test("each unchanged team member has an explicit semantic category and Software 
     );
   }
 
+  assert.equal((teamRecords.match(/name: /g) ?? []).length, expectedMembers.length);
+  assert.doesNotMatch(teamRecords, /Xin Gao|xin-gao|Meryl Li/);
   assert.equal((teamRecords.match(/category: "software"/g) ?? []).length, 3);
   assert.doesNotMatch(teamRecords, /tone:/, "presentation colors should live in the category stylesheet");
 });

@@ -23,13 +23,13 @@ export async function generateMetadata(
 const teamMembers = [
   {
     name: "Bill Wang",
-    role: "Founder and CEO",
+    role: "Founder",
     group: "Leadership",
     category: "leadership",
     avatar: "bill-wang"
   },
   {
-    name: "Meryl Li",
+    name: "Lydia Li",
     role: "Co-founder and COO",
     group: "Operations",
     category: "operations",
@@ -37,17 +37,10 @@ const teamMembers = [
   },
   {
     name: "Connie Sun",
-    role: "Co-founder and Strategy Advisor",
-    group: "Strategy",
-    category: "strategy",
+    role: "Co-Founder and CEO",
+    group: "Leadership",
+    category: "leadership",
     avatar: null
-  },
-  {
-    name: "Xin Gao",
-    role: "CTO and Senior Hardware Engineer",
-    group: "Hardware",
-    category: "hardware",
-    avatar: "xin-gao"
   },
   {
     name: "Wesley Fan",

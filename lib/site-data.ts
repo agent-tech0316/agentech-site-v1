@@ -145,27 +145,21 @@ export const aboutIntro = {
 export const leadership = [
   {
     name: "Bill Wang",
-    role: "Founder and CEO",
+    role: "Founder",
     bio: "",
     emphasis: "primary"
   },
   {
-    name: "Mario Li",
+    name: "Lydia Li",
     role: "Co-founder and COO",
     bio: "",
     emphasis: "primary"
   },
   {
     name: "Connie Sun",
-    role: "Co-founder and Strategy Advisor",
+    role: "Co-Founder and CEO",
     bio: "",
     emphasis: "primary"
-  },
-  {
-    name: "Xin Gao",
-    role: "CTO and Senior Hardware Engineer",
-    bio: "",
-    emphasis: "secondary"
   },
   {
     name: "Wesley Fan",
